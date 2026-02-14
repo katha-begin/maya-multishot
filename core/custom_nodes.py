@@ -73,6 +73,15 @@ except ImportError:
             if node in self._nodes:
                 del self._nodes[node]
 
+        def nodeType(self, node):
+            if node in self._nodes:
+                return self._nodes[node].get('type')
+            return None
+
+        def referenceQuery(self, node, **kwargs):
+            # Mock reference query - always return False
+            return False
+
     cmds = MockCmds()
 
 
