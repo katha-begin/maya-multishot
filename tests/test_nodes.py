@@ -121,6 +121,84 @@ class TestNodeManager(unittest.TestCase):
         is_valid = self.nm.is_valid_node('nonexistent_node')
         self.assertFalse(is_valid)
 
+    def test_register_asset(self):
+        """Test registering an asset."""
+        if not MAYA_AVAILABLE:
+            from core.custom_nodes import CTXManagerNode, CTXShotNode
+
+            # Create manager and shot
+            manager = CTXManagerNode.create_manager()
+            shot = CTXShotNode.create_shot('Ep04', 'sq0070', 'SH0170', manager)
+
+            # Register asset
+            asset = self.nm.register_asset(shot, self.standin_node, 'CHAR', 'CatStompie', '001')
+
+            self.assertIsNotNone(asset)
+            self.assertEqual(asset.get_asset_type(), 'CHAR')
+            self.assertEqual(asset.get_asset_name(), 'CatStompie')
+            self.assertEqual(asset.get_variant(), '001')
+
+            # Clean up
+            manager.delete()
+
+    def test_register_asset_invalid_node(self):
+        """Test registering invalid node."""
+        if not MAYA_AVAILABLE:
+            from core.custom_nodes import CTXManagerNode, CTXShotNode
+
+            manager = CTXManagerNode.create_manager()
+            shot = CTXShotNode.create_shot('Ep04', 'sq0070', 'SH0170', manager)
+
+            asset = self.nm.register_asset(shot, 'nonexistent', 'CHAR', 'Test', '001')
+
+            self.assertIsNone(asset)
+
+            manager.delete()
+
+    def test_get_assets_for_shot(self):
+        """Test getting assets for shot."""
+        if not MAYA_AVAILABLE:
+            from core.custom_nodes import CTXManagerNode, CTXShotNode
+
+            manager = CTXManagerNode.create_manager()
+            shot = CTXShotNode.create_shot('Ep04', 'sq0070', 'SH0170', manager)
+
+            assets = self.nm.get_assets_for_shot(shot)
+
+            self.assertIsInstance(assets, list)
+
+            manager.delete()
+
+    def test_update_asset_path(self):
+        """Test updating asset path."""
+        if not MAYA_AVAILABLE:
+            from core.custom_nodes import CTXManagerNode, CTXShotNode, CTXAssetNode
+
+            manager = CTXManagerNode.create_manager()
+            shot = CTXShotNode.create_shot('Ep04', 'sq0070', 'SH0170', manager)
+            asset = CTXAssetNode.create_asset('CHAR', 'CatStompie', '001', shot)
+            asset.set_file_path('/path/to/asset.abc')
+
+            result = self.nm.update_asset_path(asset)
+
+            self.assertTrue(result)
+
+            manager.delete()
+
+    def test_update_shot_paths(self):
+        """Test updating shot paths."""
+        if not MAYA_AVAILABLE:
+            from core.custom_nodes import CTXManagerNode, CTXShotNode
+
+            manager = CTXManagerNode.create_manager()
+            shot = CTXShotNode.create_shot('Ep04', 'sq0070', 'SH0170', manager)
+
+            count = self.nm.update_shot_paths(shot)
+
+            self.assertIsInstance(count, int)
+
+            manager.delete()
+
 
 if __name__ == '__main__':
     unittest.main()

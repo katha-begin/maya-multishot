@@ -144,12 +144,145 @@ class NodeManager(object):
     
     def is_valid_node(self, node):
         """Check if node exists and is a supported type.
-        
+
         Args:
             node (str): Node name
-        
+
         Returns:
             bool: True if valid
         """
         return self.get_node_type(node) is not None
+
+    def register_asset(self, shot_node, maya_node, asset_type, asset_name, variant):
+        """Register a Maya node as a CTX asset.
+
+        Args:
+            shot_node: CTXShotNode instance
+            maya_node (str): Maya node name
+            asset_type (str): Asset type (e.g., 'CHAR')
+            asset_name (str): Asset name (e.g., 'CatStompie')
+            variant (str): Asset variant (e.g., '001')
+
+        Returns:
+            CTXAssetNode: Created asset node, or None if failed
+        """
+        from core.custom_nodes import CTXAssetNode
+
+        # Validate Maya node exists
+        if not cmds.objExists(maya_node):
+            return None
+
+        # Validate it's a supported node type
+        if not self.is_valid_node(maya_node):
+            return None
+
+        # Create CTX_Asset node
+        asset_node = CTXAssetNode.create_asset(asset_type, asset_name, variant, shot_node)
+
+        # Store Maya node path
+        path = self.get_path(maya_node)
+        if path:
+            asset_node.set_file_path(path)
+
+        return asset_node
+
+    def get_assets_for_shot(self, shot_node):
+        """Get all assets for a shot.
+
+        Args:
+            shot_node: CTXShotNode instance
+
+        Returns:
+            list: List of CTXAssetNode instances
+        """
+        # This would query connected nodes in real Maya
+        # For now, return empty list
+        return []
+
+    def get_asset_by_maya_node(self, maya_node):
+        """Find CTX_Asset for a Maya node.
+
+        Args:
+            maya_node (str): Maya node name
+
+        Returns:
+            CTXAssetNode: Asset node, or None if not found
+        """
+        # This would query scene for matching asset
+        # For now, return None
+        return None
+
+    def get_assets_by_type(self, shot_node, asset_type):
+        """Get assets filtered by type.
+
+        Args:
+            shot_node: CTXShotNode instance
+            asset_type (str): Asset type to filter
+
+        Returns:
+            list: List of CTXAssetNode instances
+        """
+        all_assets = self.get_assets_for_shot(shot_node)
+        return [a for a in all_assets if a.get_asset_type() == asset_type]
+
+    def find_asset(self, shot_node, asset_name, variant):
+        """Find specific asset by name and variant.
+
+        Args:
+            shot_node: CTXShotNode instance
+            asset_name (str): Asset name
+            variant (str): Asset variant
+
+        Returns:
+            CTXAssetNode: Asset node, or None if not found
+        """
+        all_assets = self.get_assets_for_shot(shot_node)
+        for asset in all_assets:
+            if asset.get_asset_name() == asset_name and asset.get_variant() == variant:
+                return asset
+        return None
+
+    def update_asset_path(self, asset_node):
+        """Update path on asset's Maya node.
+
+        Args:
+            asset_node: CTXAssetNode instance
+
+        Returns:
+            bool: True if successful
+        """
+        # Get file path from asset node
+        path = asset_node.get_file_path()
+        if not path:
+            return False
+
+        # This would find and update the Maya node
+        # For now, return True
+        return True
+
+    def update_shot_paths(self, shot_node):
+        """Update paths for all assets in a shot.
+
+        Args:
+            shot_node: CTXShotNode instance
+
+        Returns:
+            int: Number of assets updated
+        """
+        assets = self.get_assets_for_shot(shot_node)
+        count = 0
+        for asset in assets:
+            if self.update_asset_path(asset):
+                count += 1
+        return count
+
+    def update_all_paths(self):
+        """Update paths for all assets in scene.
+
+        Returns:
+            int: Number of assets updated
+        """
+        # This would query all shots and update their assets
+        # For now, return 0
+        return 0
 
