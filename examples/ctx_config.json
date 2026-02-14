@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "SWA",
+    "code": "SWA",
+    "description": "Sample project configuration for Context Variables Pipeline"
+  },
+  "roots": {
+    "PROJ_ROOT": "V:/"
+  },
+  "static_paths": {
+    "scene_base": "all/scene"
+  },
+  "templates": {
+    "publish_path": "$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish",
+    "cache_path": "$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish/$ver",
+    "full_filename": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
+    "namespace": "$assetType_$assetName_$variant"
+  },
+  "patterns": {
+    "full_format": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
+    "namespace_format": "$assetType_$assetName_$variant",
+    "shot_context": "$ep_$seq_$shot",
+    "version": "v###"
+  },
+  "extensions": [
+    ".abc",
+    ".vdb",
+    ".ass",
+    ".rs",
+    ".ma",
+    ".mb"
+  ],
+  "tokens": {
+    "ep": {
+      "description": "Episode code",
+      "example": "Ep04",
+      "pattern": "Ep\\d+"
+    },
+    "seq": {
+      "description": "Sequence code",
+      "example": "sq0070",
+      "pattern": "sq\\d+"
+    },
+    "shot": {
+      "description": "Shot code",
+      "example": "SH0170",
+      "pattern": "SH\\d+"
+    },
+    "dept": {
+      "description": "Department",
+      "example": "anim",
+      "values": ["anim", "layout", "fx", "lighting"]
+    },
+    "ver": {
+      "description": "Version",
+      "example": "v003",
+      "pattern": "v\\d{3}"
+    },
+    "assetType": {
+      "description": "Asset type",
+      "example": "CHAR",
+      "values": ["CHAR", "PROP", "SET", "VEH"]
+    },
+    "assetName": {
+      "description": "Asset name",
+      "example": "CatStompie"
+    },
+    "variant": {
+      "description": "Asset variant",
+      "example": "001",
+      "pattern": "\\d{3}"
+    }
+  },
+  "platform_mapping": {
+    "windows": {
+      "PROJ_ROOT": "V:/"
+    },
+    "linux": {
+      "PROJ_ROOT": "/mnt/igloo_swa_v/"
+    }
+  },
+  "cache": {
+    "last_updated": null,
+    "episodes": [],
+    "sequences": {},
+    "shots": {},
+    "departments": {},
+    "assets": {
+      "CHAR": [],
+      "PROP": [],
+      "SET": [],
+      "VEH": []
+    },
+    "versions": {}
+  }
+}
+
