@@ -6,14 +6,14 @@
     "description": "Sample project configuration for Context Variables Pipeline"
   },
   "roots": {
-    "PROJ_ROOT": "V:/"
+    "projRoot": "V:/"
   },
   "static_paths": {
-    "scene_base": "all/scene"
+    "sceneBase": "all/scene"
   },
   "templates": {
-    "publish_path": "$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish",
-    "cache_path": "$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish/$ver",
+    "publish_path": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
+    "cache_path": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver",
     "full_filename": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
     "namespace": "$assetType_$assetName_$variant"
   },
@@ -74,10 +74,10 @@
   },
   "platform_mapping": {
     "windows": {
-      "PROJ_ROOT": "V:/"
+      "projRoot": "V:/"
     },
     "linux": {
-      "PROJ_ROOT": "/mnt/igloo_swa_v/"
+      "projRoot": "/mnt/igloo_swa_v/"
     }
   },
   "cache": {
