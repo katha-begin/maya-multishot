@@ -409,6 +409,131 @@ class PathResolver(object):
 
         return results
 
+    def validate_path(self, path, check_readable=True):
+        """Validate that a path exists and is accessible.
+
+        Args:
+            path (str): Path to validate
+            check_readable (bool): Whether to check if path is readable
+
+        Returns:
+            dict: Validation result with keys:
+                  - 'valid' (bool): Whether path is valid
+                  - 'exists' (bool): Whether path exists
+                  - 'readable' (bool): Whether path is readable (if check_readable=True)
+                  - 'is_file' (bool): Whether path is a file
+                  - 'is_dir' (bool): Whether path is a directory
+                  - 'error' (str): Error message if validation failed, None otherwise
+
+        Example:
+            >>> result = resolver.validate_path('/path/to/file.abc')
+            >>> if result['valid']:
+            ...     print("Path is valid")
+            ... else:
+            ...     print("Error: {}".format(result['error']))
+        """
+        result = {
+            'valid': False,
+            'exists': False,
+            'readable': False,
+            'is_file': False,
+            'is_dir': False,
+            'error': None
+        }
+
+        try:
+            # Check if path exists
+            if not os.path.exists(path):
+                result['error'] = "Path does not exist"
+                logger.debug("Path validation failed: {} does not exist".format(path))
+                return result
+
+            result['exists'] = True
+            result['is_file'] = os.path.isfile(path)
+            result['is_dir'] = os.path.isdir(path)
+
+            # Check if readable
+            if check_readable:
+                if result['is_file']:
+                    # Try to open file for reading
+                    try:
+                        with open(path, 'r') as f:
+                            f.read(1)  # Read one byte to test
+                        result['readable'] = True
+                    except (IOError, OSError) as e:
+                        result['error'] = "Path is not readable: {}".format(e)
+                        logger.debug("Path validation failed: {} is not readable".format(path))
+                        return result
+                elif result['is_dir']:
+                    # Try to list directory
+                    try:
+                        os.listdir(path)
+                        result['readable'] = True
+                    except (IOError, OSError) as e:
+                        result['error'] = "Directory is not readable: {}".format(e)
+                        logger.debug("Path validation failed: {} is not readable".format(path))
+                        return result
+            else:
+                result['readable'] = True  # Skip check
+
+            # All checks passed
+            result['valid'] = True
+            logger.debug("Path validation succeeded: {}".format(path))
+
+        except Exception as e:
+            result['error'] = "Validation error: {}".format(e)
+            logger.error("Path validation error for {}: {}".format(path, e))
+
+        return result
+
+    def validate_paths_batch(self, paths, check_readable=True, stop_on_error=False):
+        """Validate multiple paths in batch.
+
+        Args:
+            paths (list): List of paths to validate
+            check_readable (bool): Whether to check if paths are readable
+            stop_on_error (bool): If True, stop on first validation failure
+
+        Returns:
+            dict: Mapping of path to validation result dict
+
+        Example:
+            >>> paths = ['/path/to/file1.abc', '/path/to/file2.abc']
+            >>> results = resolver.validate_paths_batch(paths)
+            >>> for path, result in results.items():
+            ...     if result['valid']:
+            ...         print("{}: OK".format(path))
+            ...     else:
+            ...         print("{}: {}".format(path, result['error']))
+        """
+        import time
+        start_time = time.time()
+
+        results = {}
+        valid_count = 0
+        invalid_count = 0
+
+        logger.info("Validating {} paths".format(len(paths)))
+
+        for path in paths:
+            result = self.validate_path(path, check_readable)
+            results[path] = result
+
+            if result['valid']:
+                valid_count += 1
+            else:
+                invalid_count += 1
+                if stop_on_error:
+                    logger.warning("Stopping validation due to error: {}".format(result['error']))
+                    break
+
+        # Log statistics
+        elapsed_time = time.time() - start_time
+        logger.info("Path validation complete: {} valid, {} invalid in {:.3f}s".format(
+            valid_count, invalid_count, elapsed_time))
+
+        return results
+
     def _build_full_context(self, context, version=None):
         """Build full context with roots, static paths, and user context.
         

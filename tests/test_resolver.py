@@ -508,6 +508,158 @@ class TestBatchPathResolution(unittest.TestCase):
             self.assertIsNone(error)
 
 
+class TestPathValidation(unittest.TestCase):
+    """Test path validation functionality."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create temporary config file
+        self.config_data = {
+            "version": "1.0",
+            "project": {
+                "name": "TestProject",
+                "code": "TST"
+            },
+            "roots": {
+                "projRoot": "V:/"
+            },
+            "staticPaths": {
+                "sceneBase": "all/scene"
+            },
+            "templates": {
+                "publishPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish"
+            },
+            "patterns": {},
+            "platformMapping": {
+                "windows": {
+                    "projRoot": "V:/"
+                },
+                "linux": {
+                    "projRoot": "/mnt/projects/"
+                }
+            }
+        }
+
+        self.temp_dir = tempfile.mkdtemp()
+        self.config_file = os.path.join(self.temp_dir, 'config.json')
+
+        with open(self.config_file, 'w') as f:
+            json.dump(self.config_data, f)
+
+        self.config = ProjectConfig(self.config_file)
+        self.platform_config = PlatformConfig(self.config)
+        self.resolver = PathResolver(self.config, self.platform_config)
+
+        # Create test files
+        self.test_file = os.path.join(self.temp_dir, 'test.txt')
+        with open(self.test_file, 'w') as f:
+            f.write('test content')
+
+        self.test_dir = os.path.join(self.temp_dir, 'test_dir')
+        os.makedirs(self.test_dir)
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        import shutil
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    def test_validate_path_file_exists(self):
+        """Test validating an existing file."""
+        result = self.resolver.validate_path(self.test_file)
+
+        self.assertTrue(result['valid'])
+        self.assertTrue(result['exists'])
+        self.assertTrue(result['readable'])
+        self.assertTrue(result['is_file'])
+        self.assertFalse(result['is_dir'])
+        self.assertIsNone(result['error'])
+
+    def test_validate_path_dir_exists(self):
+        """Test validating an existing directory."""
+        result = self.resolver.validate_path(self.test_dir)
+
+        self.assertTrue(result['valid'])
+        self.assertTrue(result['exists'])
+        self.assertTrue(result['readable'])
+        self.assertFalse(result['is_file'])
+        self.assertTrue(result['is_dir'])
+        self.assertIsNone(result['error'])
+
+    def test_validate_path_not_exists(self):
+        """Test validating a non-existent path."""
+        result = self.resolver.validate_path('/nonexistent/path/file.txt')
+
+        self.assertFalse(result['valid'])
+        self.assertFalse(result['exists'])
+        self.assertFalse(result['readable'])
+        self.assertFalse(result['is_file'])
+        self.assertFalse(result['is_dir'])
+        self.assertEqual(result['error'], "Path does not exist")
+
+    def test_validate_path_skip_readable_check(self):
+        """Test validating path without readable check."""
+        result = self.resolver.validate_path(self.test_file, check_readable=False)
+
+        self.assertTrue(result['valid'])
+        self.assertTrue(result['exists'])
+        self.assertTrue(result['readable'])  # Set to True when skipped
+
+    def test_validate_paths_batch_all_valid(self):
+        """Test batch validation with all valid paths."""
+        paths = [self.test_file, self.test_dir, self.config_file]
+
+        results = self.resolver.validate_paths_batch(paths)
+
+        self.assertEqual(len(results), 3)
+        for path, result in results.items():
+            self.assertTrue(result['valid'])
+            self.assertIsNone(result['error'])
+
+    def test_validate_paths_batch_with_invalid(self):
+        """Test batch validation with some invalid paths."""
+        paths = [
+            self.test_file,
+            '/nonexistent/path1.txt',
+            self.test_dir,
+            '/nonexistent/path2.txt'
+        ]
+
+        results = self.resolver.validate_paths_batch(paths)
+
+        self.assertEqual(len(results), 4)
+
+        # Check valid paths
+        self.assertTrue(results[self.test_file]['valid'])
+        self.assertTrue(results[self.test_dir]['valid'])
+
+        # Check invalid paths
+        self.assertFalse(results['/nonexistent/path1.txt']['valid'])
+        self.assertFalse(results['/nonexistent/path2.txt']['valid'])
+
+    def test_validate_paths_batch_stop_on_error(self):
+        """Test batch validation stops on first error."""
+        paths = [
+            self.test_file,
+            '/nonexistent/path.txt',  # This should stop validation
+            self.test_dir
+        ]
+
+        results = self.resolver.validate_paths_batch(paths, stop_on_error=True)
+
+        # Should only have 2 results (stopped after error)
+        self.assertEqual(len(results), 2)
+        self.assertIn(self.test_file, results)
+        self.assertIn('/nonexistent/path.txt', results)
+        self.assertNotIn(self.test_dir, results)
+
+    def test_validate_paths_batch_empty_list(self):
+        """Test batch validation with empty list."""
+        results = self.resolver.validate_paths_batch([])
+
+        self.assertEqual(len(results), 0)
+
+
 if __name__ == '__main__':
     unittest.main()
 
