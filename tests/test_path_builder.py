@@ -17,6 +17,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.path_builder import PathBuilder
 from config.project_config import ProjectConfig
 from config.pattern_manager import PatternManager
+from config.platform_config import PlatformConfig
+from core.resolver import PathResolver
+from core.cache import VersionCache
 
 
 class TestPathBuilder(unittest.TestCase):
@@ -160,6 +163,145 @@ class TestPathBuilder(unittest.TestCase):
         self.assertEqual(context['assetType'], 'CHAR')
         self.assertEqual(context['assetName'], 'CatStompie')
         self.assertEqual(context['variant'], '002')
+
+
+class TestPathBuilderIntegration(unittest.TestCase):
+    """Test PathBuilder integration with resolver and cache."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create temporary config file
+        self.config_data = {
+            "version": "1.0",
+            "project": {
+                "name": "TestProject",
+                "code": "TST"
+            },
+            "roots": {
+                "projRoot": "V:/"
+            },
+            "staticPaths": {
+                "sceneBase": "all/scene"
+            },
+            "templates": {
+                "publishPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
+                "assetPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$assetType/$assetName/$variant",
+                "assetPathNoDept": "$projRoot$project/$sceneBase/$ep/$seq/$shot/publish/$assetType/$assetName/$variant"
+            },
+            "patterns": {},
+            "platformMapping": {
+                "windows": {
+                    "projRoot": "V:/"
+                },
+                "linux": {
+                    "projRoot": "/mnt/projects/"
+                }
+            }
+        }
+
+        # Write config to temp file
+        self.temp_dir = tempfile.mkdtemp()
+        self.config_file = os.path.join(self.temp_dir, 'config.json')
+
+        with open(self.config_file, 'w') as f:
+            json.dump(self.config_data, f)
+
+        # Create config objects
+        self.config = ProjectConfig(self.config_file)
+        self.pattern_mgr = PatternManager(self.config)
+        self.platform_config = PlatformConfig(self.config)
+        self.resolver = PathResolver(self.config, self.platform_config)
+        self.cache = VersionCache()
+
+        # Create path builder with integration
+        self.builder = PathBuilder(self.pattern_mgr, self.resolver, self.cache)
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        import shutil
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    def test_build_path_from_filename(self):
+        """Test building path from full filename."""
+        filename = 'Ep04_sq0070_SH0170__CHAR_CatStompie_002.abc'
+
+        path = self.builder.build_path(filename, template_name='assetPathNoDept')
+
+        self.assertIsNotNone(path)
+        self.assertIn('Ep04', path)
+        self.assertIn('sq0070', path)
+        self.assertIn('SH0170', path)
+        self.assertIn('CHAR', path)
+        self.assertIn('CatStompie', path)
+        self.assertIn('002', path)
+
+    def test_build_path_from_namespace(self):
+        """Test building path from namespace with context."""
+        namespace = 'CHAR_CatStompie_002'
+        context = {
+            'ep': 'Ep04',
+            'seq': 'sq0070',
+            'shot': 'SH0170',
+            'dept': 'anim'
+        }
+
+        path = self.builder.build_path(namespace, context=context)
+
+        self.assertIsNotNone(path)
+        self.assertIn('Ep04', path)
+        self.assertIn('sq0070', path)
+        self.assertIn('SH0170', path)
+        self.assertIn('CHAR', path)
+        self.assertIn('CatStompie', path)
+        self.assertIn('002', path)
+
+    def test_build_path_namespace_without_context(self):
+        """Test building path from namespace without context fails."""
+        namespace = 'CHAR_CatStompie_002'
+
+        path = self.builder.build_path(namespace)
+
+        self.assertIsNone(path)
+
+    def test_build_path_invalid_input(self):
+        """Test building path with invalid input."""
+        path = self.builder.build_path('invalid_input_format')
+
+        self.assertIsNone(path)
+
+    def test_build_path_empty_input(self):
+        """Test building path with empty input."""
+        path = self.builder.build_path('')
+
+        self.assertIsNone(path)
+
+    def test_build_path_with_specific_version(self):
+        """Test building path with specific version."""
+        filename = 'Ep04_sq0070_SH0170__CHAR_CatStompie_002.abc'
+
+        path = self.builder.build_path(filename, version='v003', template_name='assetPathNoDept')
+
+        self.assertIsNotNone(path)
+
+    def test_build_path_with_custom_template(self):
+        """Test building path with custom template."""
+        filename = 'Ep04_sq0070_SH0170__CHAR_CatStompie_002.abc'
+
+        # Use assetPathNoDept since filename doesn't include dept
+        path = self.builder.build_path(filename, template_name='assetPathNoDept')
+
+        self.assertIsNotNone(path)
+        self.assertIn('publish', path)
+
+    def test_build_path_without_resolver(self):
+        """Test building path without resolver fails."""
+        builder = PathBuilder(self.pattern_mgr)  # No resolver
+        filename = 'Ep04_sq0070_SH0170__CHAR_CatStompie_002.abc'
+
+        path = builder.build_path(filename)
+
+        self.assertIsNone(path)
 
 
 if __name__ == '__main__':
