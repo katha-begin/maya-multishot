@@ -2,7 +2,7 @@
 """Platform detection and path mapping for cross-platform compatibility.
 
 This module provides utilities to detect the current platform (Windows/Linux)
-and map paths between platforms using the platform_mapping configuration.
+and map paths between platforms using the platformMapping configuration.
 
 Author: Context Variables Pipeline
 Date: 2026-02-14
@@ -71,7 +71,7 @@ class PlatformConfig(object):
         Returns:
             dict: Platform mapping dictionary
         """
-        return self.project_config.data.get('platform_mapping', {})
+        return self.project_config.data.get('platformMapping', {})
     
     def get_platform(self):
         """Get the current platform.

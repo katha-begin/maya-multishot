@@ -42,10 +42,10 @@ class PatternManager(object):
     
     # Default patterns based on POC reference
     DEFAULT_PATTERNS = {
-        'full_filename': r'^(Ep\d+)_(sq\d+)_(SH\d+)__([A-Z]+)_(.+)_(\d+)\.(abc|ma|mb|vdb|ass|rs)$',
+        'fullFilename': r'^(Ep\d+)_(sq\d+)_(SH\d+)__([A-Z]+)_(.+)_(\d+)\.(abc|ma|mb|vdb|ass|rs)$',
         'namespace': r'^([A-Z]+)_(.+)_(\d+)$',
         'version': r'v(\d{3})',
-        'shot_context': r'(Ep\d+)_(sq\d+)_(SH\d+)'
+        'shotContext': r'(Ep\d+)_(sq\d+)_(SH\d+)'
     }
     
     def __init__(self, project_config):
@@ -150,7 +150,7 @@ class PatternManager(object):
         return list(self.patterns.keys())
 
     def parse_filename(self, filename):
-        """Parse full filename using the 'full_filename' pattern.
+        """Parse full filename using the 'fullFilename' pattern.
 
         Args:
             filename (str): Filename to parse
@@ -164,7 +164,7 @@ class PatternManager(object):
             >>> #           'assetType': 'CHAR', 'assetName': 'CatStompie',
             >>> #           'variant': '001', 'ext': 'abc'}
         """
-        pattern = self.get_compiled_pattern('full_filename')
+        pattern = self.get_compiled_pattern('fullFilename')
         if pattern is None:
             return None
 
@@ -244,7 +244,7 @@ class PatternManager(object):
             return None
 
     def parse_shot_context(self, text):
-        """Parse shot context using the 'shot_context' pattern.
+        """Parse shot context using the 'shotContext' pattern.
 
         Args:
             text (str): Text to parse (filename, path, etc.)
@@ -256,7 +256,7 @@ class PatternManager(object):
             >>> result = pattern_mgr.parse_shot_context('Ep04_sq0070_SH0170_lighting_v001.ma')
             >>> # Returns: {'ep': 'Ep04', 'seq': 'sq0070', 'shot': 'SH0170'}
         """
-        pattern = self.get_compiled_pattern('shot_context')
+        pattern = self.get_compiled_pattern('shotContext')
         if pattern is None:
             return None
 

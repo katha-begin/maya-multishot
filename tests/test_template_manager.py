@@ -39,20 +39,20 @@ class TestTemplateManager(unittest.TestCase):
                 'code': 'TST'
             },
             'roots': {
-                'PROJ_ROOT': 'V:/'
+                'projRoot': 'V:/'
             },
-            'static_paths': {
-                'scene_base': 'all/scene'
+            'staticPaths': {
+                'sceneBase': 'all/scene'
             },
             'templates': {
-                'publish_path': '$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish',
-                'cache_path': '$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish/$ver',
-                'full_filename': '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
+                'publishPath': '$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish',
+                'cachePath': '$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver',
+                'fullFilename': '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
                 'namespace': '$assetType_$assetName_$variant',
                 'simple': '$ep/$seq'
             },
             'patterns': {
-                'full_format': '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext'
+                'fullFormat': '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext'
             }
         }
         
@@ -80,19 +80,19 @@ class TestTemplateManager(unittest.TestCase):
         template_mgr = TemplateManager(config)
         
         templates = template_mgr.get_all_templates()
-        self.assertIn('publish_path', templates)
-        self.assertIn('cache_path', templates)
-        self.assertIn('full_filename', templates)
+        self.assertIn('publishPath', templates)
+        self.assertIn('cachePath', templates)
+        self.assertIn('fullFilename', templates)
     
     def test_get_template(self):
         """Test getting specific template."""
         config = ProjectConfig(self.temp_config_path)
         template_mgr = TemplateManager(config)
-        
-        template = template_mgr.get_template('publish_path')
+
+        template = template_mgr.get_template('publishPath')
         self.assertEqual(
             template,
-            '$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish'
+            '$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish'
         )
     
     def test_get_template_nonexistent(self):
@@ -107,17 +107,17 @@ class TestTemplateManager(unittest.TestCase):
         """Test checking if template exists."""
         config = ProjectConfig(self.temp_config_path)
         template_mgr = TemplateManager(config)
-        
-        self.assertTrue(template_mgr.has_template('publish_path'))
+
+        self.assertTrue(template_mgr.has_template('publishPath'))
         self.assertFalse(template_mgr.has_template('nonexistent'))
-    
+
     def test_get_template_tokens(self):
         """Test extracting tokens from template."""
         config = ProjectConfig(self.temp_config_path)
         template_mgr = TemplateManager(config)
-        
-        tokens = template_mgr.get_template_tokens('publish_path')
-        expected = ['PROJ_ROOT', 'project', 'scene_base', 'ep', 'seq', 'shot', 'dept']
+
+        tokens = template_mgr.get_template_tokens('publishPath')
+        expected = ['projRoot', 'project', 'sceneBase', 'ep', 'seq', 'shot', 'dept']
         self.assertEqual(tokens, expected)
     
     def test_get_template_tokens_nonexistent(self):
@@ -149,7 +149,7 @@ class TestTemplateManager(unittest.TestCase):
         template_mgr = TemplateManager(config)
 
         is_valid, missing = template_mgr.validate_template_tokens(
-            'publish_path', ['ep', 'seq', 'shot']
+            'publishPath', ['ep', 'seq', 'shot']
         )
         self.assertTrue(is_valid)
         self.assertEqual(missing, [])
@@ -170,7 +170,7 @@ class TestTemplateManager(unittest.TestCase):
         config = ProjectConfig(self.temp_config_path)
         template_mgr = TemplateManager(config)
 
-        is_valid, missing = template_mgr.validate_template_tokens('publish_path')
+        is_valid, missing = template_mgr.validate_template_tokens('publishPath')
         self.assertTrue(is_valid)
         self.assertEqual(missing, [])
 
@@ -180,8 +180,8 @@ class TestTemplateManager(unittest.TestCase):
         template_mgr = TemplateManager(config)
 
         names = template_mgr.get_template_names()
-        self.assertIn('publish_path', names)
-        self.assertIn('cache_path', names)
+        self.assertIn('publishPath', names)
+        self.assertIn('cachePath', names)
         self.assertEqual(len(names), 5)
 
     def test_repr(self):
@@ -199,8 +199,8 @@ class TestTemplateManager(unittest.TestCase):
         test_config = {
             'version': '1.0',
             'project': {'name': 'Test', 'code': 'TST'},
-            'roots': {'PROJ_ROOT': 'V:/'},
-            'static_paths': {'scene_base': 'all/scene'},
+            'roots': {'projRoot': 'V:/'},
+            'staticPaths': {'sceneBase': 'all/scene'},
             'templates': {'empty': '   '},
             'patterns': {}
         }
@@ -221,8 +221,8 @@ class TestTemplateManager(unittest.TestCase):
         test_config = {
             'version': '1.0',
             'project': {'name': 'Test', 'code': 'TST'},
-            'roots': {'PROJ_ROOT': 'V:/'},
-            'static_paths': {'scene_base': 'all/scene'},
+            'roots': {'projRoot': 'V:/'},
+            'staticPaths': {'sceneBase': 'all/scene'},
             'templates': {'invalid': 123},
             'patterns': {}
         }

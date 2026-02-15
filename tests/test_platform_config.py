@@ -39,23 +39,23 @@ class TestPlatformConfig(unittest.TestCase):
                 'code': 'TST'
             },
             'roots': {
-                'PROJ_ROOT': 'V:/'
+                'projRoot': 'V:/'
             },
-            'static_paths': {
-                'scene_base': 'all/scene'
+            'staticPaths': {
+                'sceneBase': 'all/scene'
             },
             'templates': {
-                'publish_path': '$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish'
+                'publishPath': '$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish'
             },
             'patterns': {
-                'full_format': '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext'
+                'fullFormat': '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext'
             },
-            'platform_mapping': {
+            'platformMapping': {
                 'windows': {
-                    'PROJ_ROOT': 'V:/'
+                    'projRoot': 'V:/'
                 },
                 'linux': {
-                    'PROJ_ROOT': '/mnt/igloo_swa_v/'
+                    'projRoot': '/mnt/igloo_swa_v/'
                 }
             }
         }
@@ -91,23 +91,23 @@ class TestPlatformConfig(unittest.TestCase):
         config = ProjectConfig(self.temp_config_path)
         platform_config = PlatformConfig(config)
         
-        root = platform_config.get_root_for_platform('PROJ_ROOT', 'windows')
+        root = platform_config.get_root_for_platform('projRoot', 'windows')
         self.assertEqual(root, 'V:/')
-    
+
     def test_get_root_for_platform_linux(self):
         """Test getting root for Linux platform."""
         config = ProjectConfig(self.temp_config_path)
         platform_config = PlatformConfig(config)
-        
-        root = platform_config.get_root_for_platform('PROJ_ROOT', 'linux')
+
+        root = platform_config.get_root_for_platform('projRoot', 'linux')
         self.assertEqual(root, '/mnt/igloo_swa_v/')
-    
+
     def test_get_root_for_platform_default(self):
         """Test getting root for current platform (default)."""
         config = ProjectConfig(self.temp_config_path)
         platform_config = PlatformConfig(config)
-        
-        root = platform_config.get_root_for_platform('PROJ_ROOT')
+
+        root = platform_config.get_root_for_platform('projRoot')
         self.assertIsNotNone(root)
     
     def test_get_root_for_platform_nonexistent(self):

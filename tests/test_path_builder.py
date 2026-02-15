@@ -34,7 +34,7 @@ class TestPathBuilder(unittest.TestCase):
             "roots": {
                 "projRoot": "V:/"
             },
-            "static_paths": {
+            "staticPaths": {
                 "sceneBase": "all/scene"
             },
             "templates": {},

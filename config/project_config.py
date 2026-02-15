@@ -29,7 +29,7 @@ class ProjectConfig(object):
         version (str): Configuration schema version
     """
     
-    REQUIRED_KEYS = ['version', 'project', 'roots', 'static_paths', 'templates', 'patterns']
+    REQUIRED_KEYS = ['version', 'project', 'roots', 'staticPaths', 'templates', 'patterns']
     SUPPORTED_VERSIONS = ['1.0', '1.1']
     
     def __init__(self, config_path=None):
@@ -107,9 +107,9 @@ class ProjectConfig(object):
         if not isinstance(self.data.get('roots'), dict):
             raise ValueError("'roots' must be a dictionary")
 
-        # Validate static_paths section
-        if not isinstance(self.data.get('static_paths'), dict):
-            raise ValueError("'static_paths' must be a dictionary")
+        # Validate staticPaths section
+        if not isinstance(self.data.get('staticPaths'), dict):
+            raise ValueError("'staticPaths' must be a dictionary")
 
         # Validate templates section
         if not isinstance(self.data.get('templates'), dict):
@@ -153,21 +153,21 @@ class ProjectConfig(object):
         Get all static paths.
 
         Returns:
-            dict: Dictionary of static paths (e.g., {'scene_base': 'all/scene'})
+            dict: Dictionary of static paths (e.g., {'sceneBase': 'all/scene'})
         """
-        return self.data.get('static_paths', {})
+        return self.data.get('staticPaths', {})
 
     def get_static_path(self, path_name):
         """
         Get specific static path.
 
         Args:
-            path_name (str): Name of the static path (e.g., 'scene_base')
+            path_name (str): Name of the static path (e.g., 'sceneBase')
 
         Returns:
             str: Static path or None if not found
         """
-        return self.data.get('static_paths', {}).get(path_name)
+        return self.data.get('staticPaths', {}).get(path_name)
 
     def get_templates(self):
         """

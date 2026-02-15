@@ -34,16 +34,16 @@ class TestPathResolver(unittest.TestCase):
             "roots": {
                 "projRoot": "V:/"
             },
-            "static_paths": {
+            "staticPaths": {
                 "sceneBase": "all/scene"
             },
             "templates": {
-                "publish_path": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
-                "cache_path": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver",
-                "asset_path": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$assetType/$assetName/$variant"
+                "publishPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
+                "cachePath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver",
+                "assetPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$assetType/$assetName/$variant"
             },
             "patterns": {},
-            "platform_mapping": {
+            "platformMapping": {
                 "windows": {
                     "projRoot": "V:/"
                 },
@@ -79,14 +79,14 @@ class TestPathResolver(unittest.TestCase):
     
     def test_resolve_path_simple(self):
         """Test resolving simple path."""
-        path = self.resolver.resolve_path('publish_path', self.context)
-        
+        path = self.resolver.resolve_path('publishPath', self.context)
+
         expected = os.path.normpath('V:/TST/all/scene/Ep01/sq0010/SH0010/anim/publish')
         self.assertEqual(path, expected)
-    
+
     def test_resolve_path_with_version(self):
         """Test resolving path with version."""
-        path = self.resolver.resolve_path('cache_path', self.context, version='v003')
+        path = self.resolver.resolve_path('cachePath', self.context, version='v003')
         
         expected = os.path.normpath('V:/TST/all/scene/Ep01/sq0010/SH0010/anim/publish/v003')
         self.assertEqual(path, expected)
@@ -100,7 +100,7 @@ class TestPathResolver(unittest.TestCase):
             'variant': '001'
         })
         
-        path = self.resolver.resolve_path('asset_path', context)
+        path = self.resolver.resolve_path('assetPath', context)
         
         expected = os.path.normpath('V:/TST/all/scene/Ep01/sq0010/SH0010/anim/publish/CHAR/Hero/001')
         self.assertEqual(path, expected)
@@ -115,8 +115,8 @@ class TestPathResolver(unittest.TestCase):
         incomplete_context = {'ep': 'Ep01'}
         
         with self.assertRaises(ValueError):
-            self.resolver.resolve_path('publish_path', incomplete_context)
-    
+            self.resolver.resolve_path('publishPath', incomplete_context)
+
     def test_resolve_batch(self):
         """Test batch resolution."""
         contexts = [
@@ -124,8 +124,8 @@ class TestPathResolver(unittest.TestCase):
             {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0020', 'dept': 'anim'},
             {'ep': 'Ep01', 'seq': 'sq0020', 'shot': 'SH0030', 'dept': 'layout'}
         ]
-        
-        paths = self.resolver.resolve_batch('publish_path', contexts)
+
+        paths = self.resolver.resolve_batch('publishPath', contexts)
         
         self.assertEqual(len(paths), 3)
         self.assertIn('SH0010', paths[0])
@@ -141,8 +141,8 @@ class TestPathResolver(unittest.TestCase):
             {'ep': 'Ep01', 'seq': 'sq0020', 'shot': 'SH0030', 'dept': 'layout'}
         ]
         
-        paths = self.resolver.resolve_batch('publish_path', contexts)
-        
+        paths = self.resolver.resolve_batch('publishPath', contexts)
+
         self.assertEqual(len(paths), 3)
         self.assertIsNotNone(paths[0])
         self.assertIsNone(paths[1])  # Error case

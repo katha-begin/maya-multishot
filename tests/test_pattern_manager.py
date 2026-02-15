@@ -39,19 +39,19 @@ class TestPatternManager(unittest.TestCase):
                 'code': 'TST'
             },
             'roots': {
-                'PROJ_ROOT': 'V:/'
+                'projRoot': 'V:/'
             },
-            'static_paths': {
-                'scene_base': 'all/scene'
+            'staticPaths': {
+                'sceneBase': 'all/scene'
             },
             'templates': {
-                'publish_path': '$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish'
+                'publishPath': '$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish'
             },
             'patterns': {
-                'full_filename': r'^(Ep\d+)_(sq\d+)_(SH\d+)__([A-Z]+)_(.+)_(\d+)\.(abc|ma|mb)$',
+                'fullFilename': r'^(Ep\d+)_(sq\d+)_(SH\d+)__([A-Z]+)_(.+)_(\d+)\.(abc|ma|mb)$',
                 'namespace': r'^([A-Z]+)_(.+)_(\d+)$',
                 'version': r'v(\d{3})',
-                'shot_context': r'(Ep\d+)_(sq\d+)_(SH\d+)'
+                'shotContext': r'(Ep\d+)_(sq\d+)_(SH\d+)'
             }
         }
         
@@ -79,7 +79,7 @@ class TestPatternManager(unittest.TestCase):
         pattern_mgr = PatternManager(config)
         
         patterns = pattern_mgr.get_all_patterns()
-        self.assertIn('full_filename', patterns)
+        self.assertIn('fullFilename', patterns)
         self.assertIn('namespace', patterns)
         self.assertIn('version', patterns)
     
@@ -228,7 +228,7 @@ class TestPatternManager(unittest.TestCase):
         pattern_mgr = PatternManager(config)
 
         names = pattern_mgr.get_pattern_names()
-        self.assertIn('full_filename', names)
+        self.assertIn('fullFilename', names)
         self.assertIn('namespace', names)
         self.assertIn('version', names)
 
@@ -246,8 +246,8 @@ class TestPatternManager(unittest.TestCase):
         test_config = {
             'version': '1.0',
             'project': {'name': 'Test', 'code': 'TST'},
-            'roots': {'PROJ_ROOT': 'V:/'},
-            'static_paths': {'scene_base': 'all/scene'},
+            'roots': {'projRoot': 'V:/'},
+            'staticPaths': {'sceneBase': 'all/scene'},
             'templates': {},
             'patterns': {'invalid': '[unclosed'}
         }
@@ -268,8 +268,8 @@ class TestPatternManager(unittest.TestCase):
         test_config = {
             'version': '1.0',
             'project': {'name': 'Test', 'code': 'TST'},
-            'roots': {'PROJ_ROOT': 'V:/'},
-            'static_paths': {'scene_base': 'all/scene'},
+            'roots': {'projRoot': 'V:/'},
+            'staticPaths': {'sceneBase': 'all/scene'},
             'templates': {},
             'patterns': {'empty': '   '}
         }
@@ -290,8 +290,8 @@ class TestPatternManager(unittest.TestCase):
         test_config = {
             'version': '1.0',
             'project': {'name': 'Test', 'code': 'TST'},
-            'roots': {'PROJ_ROOT': 'V:/'},
-            'static_paths': {'scene_base': 'all/scene'},
+            'roots': {'projRoot': 'V:/'},
+            'staticPaths': {'sceneBase': 'all/scene'},
             'templates': {},
             'patterns': {'invalid': 123}
         }
@@ -312,8 +312,8 @@ class TestPatternManager(unittest.TestCase):
         test_config = {
             'version': '1.0',
             'project': {'name': 'Test', 'code': 'TST'},
-            'roots': {'PROJ_ROOT': 'V:/'},
-            'static_paths': {'scene_base': 'all/scene'},
+            'roots': {'projRoot': 'V:/'},
+            'staticPaths': {'sceneBase': 'all/scene'},
             'templates': {},
             'patterns': {}
         }
@@ -326,7 +326,7 @@ class TestPatternManager(unittest.TestCase):
         pattern_mgr = PatternManager(config)
 
         # Should have default patterns
-        self.assertTrue(pattern_mgr.has_pattern('full_filename'))
+        self.assertTrue(pattern_mgr.has_pattern('fullFilename'))
         self.assertTrue(pattern_mgr.has_pattern('namespace'))
         self.assertTrue(pattern_mgr.has_pattern('version'))
 

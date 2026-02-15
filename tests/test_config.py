@@ -34,18 +34,18 @@ class TestProjectConfig(unittest.TestCase):
                 'code': 'TST'
             },
             'roots': {
-                'PROJ_ROOT': 'V:/'
+                'projRoot': 'V:/'
             },
-            'static_paths': {
-                'scene_base': 'all/scene'
+            'staticPaths': {
+                'sceneBase': 'all/scene'
             },
             'templates': {
-                'publish_path': '$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish',
-                'cache_path': '$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish/$ver'
+                'publishPath': '$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish',
+                'cachePath': '$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver'
             },
             'patterns': {
-                'full_format': '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
-                'namespace_format': '$assetType_$assetName_$variant'
+                'fullFormat': '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
+                'namespaceFormat': '$assetType_$assetName_$variant'
             },
             'extensions': ['.abc', '.vdb']
         }
@@ -160,12 +160,12 @@ class TestProjectConfig(unittest.TestCase):
         config = ProjectConfig(self.temp_config_path)
         roots = config.get_roots()
         self.assertIsInstance(roots, dict)
-        self.assertEqual(roots['PROJ_ROOT'], 'V:/')
+        self.assertEqual(roots['projRoot'], 'V:/')
 
     def test_get_root(self):
         """Test getting specific root."""
         config = ProjectConfig(self.temp_config_path)
-        self.assertEqual(config.get_root('PROJ_ROOT'), 'V:/')
+        self.assertEqual(config.get_root('projRoot'), 'V:/')
         self.assertIsNone(config.get_root('nonexistent'))
 
     def test_get_static_paths(self):
@@ -173,12 +173,12 @@ class TestProjectConfig(unittest.TestCase):
         config = ProjectConfig(self.temp_config_path)
         static_paths = config.get_static_paths()
         self.assertIsInstance(static_paths, dict)
-        self.assertEqual(static_paths['scene_base'], 'all/scene')
+        self.assertEqual(static_paths['sceneBase'], 'all/scene')
 
     def test_get_static_path(self):
         """Test getting specific static path."""
         config = ProjectConfig(self.temp_config_path)
-        self.assertEqual(config.get_static_path('scene_base'), 'all/scene')
+        self.assertEqual(config.get_static_path('sceneBase'), 'all/scene')
         self.assertIsNone(config.get_static_path('nonexistent'))
 
     def test_get_templates(self):
@@ -186,15 +186,15 @@ class TestProjectConfig(unittest.TestCase):
         config = ProjectConfig(self.temp_config_path)
         templates = config.get_templates()
         self.assertIsInstance(templates, dict)
-        self.assertIn('publish_path', templates)
-        self.assertIn('cache_path', templates)
+        self.assertIn('publishPath', templates)
+        self.assertIn('cachePath', templates)
 
     def test_get_template(self):
         """Test getting specific template."""
         config = ProjectConfig(self.temp_config_path)
         self.assertEqual(
-            config.get_template('publish_path'),
-            '$PROJ_ROOT/$project/$scene_base/$ep/$seq/$shot/$dept/publish'
+            config.get_template('publishPath'),
+            '$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish'
         )
         self.assertIsNone(config.get_template('nonexistent'))
 
@@ -203,12 +203,12 @@ class TestProjectConfig(unittest.TestCase):
         config = ProjectConfig(self.temp_config_path)
         patterns = config.get_patterns()
         self.assertIsInstance(patterns, dict)
-        self.assertIn('full_format', patterns)
+        self.assertIn('fullFormat', patterns)
 
     def test_get_pattern(self):
         """Test getting specific pattern."""
         config = ProjectConfig(self.temp_config_path)
-        pattern = config.get_pattern('full_format')
+        pattern = config.get_pattern('fullFormat')
         self.assertEqual(
             pattern,
             '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext'

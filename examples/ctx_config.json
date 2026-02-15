@@ -8,19 +8,19 @@
   "roots": {
     "projRoot": "V:/"
   },
-  "static_paths": {
+  "staticPaths": {
     "sceneBase": "all/scene"
   },
   "templates": {
-    "publish_path": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
-    "cache_path": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver",
-    "full_filename": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
+    "publishPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
+    "cachePath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver",
+    "fullFilename": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
     "namespace": "$assetType_$assetName_$variant"
   },
   "patterns": {
-    "full_format": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
-    "namespace_format": "$assetType_$assetName_$variant",
-    "shot_context": "$ep_$seq_$shot",
+    "fullFormat": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
+    "namespaceFormat": "$assetType_$assetName_$variant",
+    "shotContext": "$ep_$seq_$shot",
     "version": "v###"
   },
   "extensions": [
@@ -72,7 +72,7 @@
       "pattern": "\\d{3}"
     }
   },
-  "platform_mapping": {
+  "platformMapping": {
     "windows": {
       "projRoot": "V:/"
     },
@@ -81,7 +81,7 @@
     }
   },
   "cache": {
-    "last_updated": null,
+    "lastUpdated": null,
     "episodes": [],
     "sequences": {},
     "shots": {},
