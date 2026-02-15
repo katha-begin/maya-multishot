@@ -14,7 +14,13 @@ import json
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.resolver import PathResolver
+from core.resolver import (
+    PathResolver,
+    TemplateNotFoundError,
+    TokenExpansionError,
+    PathValidationError,
+    ResolverError
+)
 from config.project_config import ProjectConfig
 from config.platform_config import PlatformConfig
 
@@ -107,14 +113,14 @@ class TestPathResolver(unittest.TestCase):
     
     def test_resolve_path_missing_template(self):
         """Test resolving with missing template."""
-        with self.assertRaises(KeyError):
+        with self.assertRaises(TemplateNotFoundError):
             self.resolver.resolve_path('nonexistent_template', self.context)
-    
+
     def test_resolve_path_missing_token(self):
         """Test resolving with missing token value."""
         incomplete_context = {'ep': 'Ep01'}
-        
-        with self.assertRaises(ValueError):
+
+        with self.assertRaises(TokenExpansionError):
             self.resolver.resolve_path('publishPath', incomplete_context)
 
     def test_resolve_batch(self):
@@ -125,13 +131,17 @@ class TestPathResolver(unittest.TestCase):
             {'ep': 'Ep01', 'seq': 'sq0020', 'shot': 'SH0030', 'dept': 'layout'}
         ]
 
-        paths = self.resolver.resolve_batch('publishPath', contexts)
-        
-        self.assertEqual(len(paths), 3)
-        self.assertIn('SH0010', paths[0])
-        self.assertIn('SH0020', paths[1])
-        self.assertIn('SH0030', paths[2])
-        self.assertIn('layout', paths[2])
+        results = self.resolver.resolve_batch('publishPath', contexts)
+
+        self.assertEqual(len(results), 3)
+        # Check each result is a tuple (path, error)
+        self.assertIn('SH0010', results[0][0])
+        self.assertIsNone(results[0][1])
+        self.assertIn('SH0020', results[1][0])
+        self.assertIsNone(results[1][1])
+        self.assertIn('SH0030', results[2][0])
+        self.assertIn('layout', results[2][0])
+        self.assertIsNone(results[2][1])
     
     def test_resolve_batch_with_errors(self):
         """Test batch resolution with some errors."""
@@ -140,13 +150,183 @@ class TestPathResolver(unittest.TestCase):
             {'ep': 'Ep01'},  # Missing tokens
             {'ep': 'Ep01', 'seq': 'sq0020', 'shot': 'SH0030', 'dept': 'layout'}
         ]
-        
-        paths = self.resolver.resolve_batch('publishPath', contexts)
 
-        self.assertEqual(len(paths), 3)
-        self.assertIsNotNone(paths[0])
-        self.assertIsNone(paths[1])  # Error case
-        self.assertIsNotNone(paths[2])
+        results = self.resolver.resolve_batch('publishPath', contexts)
+
+        self.assertEqual(len(results), 3)
+        # First should succeed
+        self.assertIsNotNone(results[0][0])
+        self.assertIsNone(results[0][1])
+        # Second should fail
+        self.assertIsNone(results[1][0])
+        self.assertIsNotNone(results[1][1])
+        # Third should succeed
+        self.assertIsNotNone(results[2][0])
+        self.assertIsNone(results[2][1])
+
+
+class TestResolverErrorHandling(unittest.TestCase):
+    """Test error handling in PathResolver."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create temporary config file
+        self.config_data = {
+            "version": "1.0",
+            "project": {
+                "name": "TestProject",
+                "code": "TST"
+            },
+            "roots": {
+                "projRoot": "V:/"
+            },
+            "staticPaths": {
+                "sceneBase": "all/scene"
+            },
+            "templates": {
+                "publishPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
+                "cachePath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver"
+            },
+            "patterns": {},
+            "platformMapping": {
+                "windows": {
+                    "projRoot": "V:/"
+                },
+                "linux": {
+                    "projRoot": "/mnt/projects/"
+                }
+            }
+        }
+
+        self.temp_dir = tempfile.mkdtemp()
+        self.config_file = os.path.join(self.temp_dir, 'config.json')
+
+        with open(self.config_file, 'w') as f:
+            json.dump(self.config_data, f)
+
+        self.config = ProjectConfig(self.config_file)
+        self.platform_config = PlatformConfig(self.config)
+        self.resolver = PathResolver(self.config, self.platform_config)
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        import shutil
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    def test_template_not_found_error(self):
+        """Test TemplateNotFoundError is raised for missing template."""
+        context = {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'}
+
+        with self.assertRaises(TemplateNotFoundError) as cm:
+            self.resolver.resolve_path('nonexistentTemplate', context)
+
+        error = cm.exception
+        self.assertEqual(error.template_name, 'nonexistentTemplate')
+        self.assertIn('publishPath', error.available_templates)
+        self.assertIn('cachePath', error.available_templates)
+
+    def test_token_expansion_error(self):
+        """Test TokenExpansionError is raised for missing tokens."""
+        context = {'ep': 'Ep01'}  # Missing seq, shot, dept
+
+        with self.assertRaises(TokenExpansionError) as cm:
+            self.resolver.resolve_path('publishPath', context)
+
+        error = cm.exception
+        self.assertIn('seq', error.unexpanded_tokens)
+        self.assertIn('shot', error.unexpanded_tokens)
+        self.assertIn('dept', error.unexpanded_tokens)
+
+    def test_path_validation_error(self):
+        """Test PathValidationError is raised when path doesn't exist."""
+        context = {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'}
+
+        with self.assertRaises(PathValidationError) as cm:
+            self.resolver.resolve_path('publishPath', context, validate_exists=True)
+
+        error = cm.exception
+        self.assertIn('V:', error.path)
+        self.assertEqual(error.reason, "Path does not exist")
+
+    def test_fallback_strategy_success(self):
+        """Test fallback strategy is called on error."""
+        context = {'ep': 'Ep01'}  # Missing tokens
+
+        def fallback(template_name, ctx, error):
+            # Return a fallback path (already normalized)
+            return os.path.normpath("V:/TST/fallback/path")
+
+        path = self.resolver.resolve_path('publishPath', context, fallback_strategy=fallback)
+
+        self.assertEqual(path, os.path.normpath("V:/TST/fallback/path"))
+
+    def test_fallback_strategy_failure(self):
+        """Test original error is raised when fallback fails."""
+        context = {'ep': 'Ep01'}  # Missing tokens
+
+        def fallback(template_name, ctx, error):
+            # Fallback also fails
+            raise ValueError("Fallback failed")
+
+        with self.assertRaises(TokenExpansionError):
+            self.resolver.resolve_path('publishPath', context, fallback_strategy=fallback)
+
+    def test_fallback_strategy_returns_none(self):
+        """Test original error is raised when fallback returns None."""
+        context = {'ep': 'Ep01'}  # Missing tokens
+
+        def fallback(template_name, ctx, error):
+            return None
+
+        with self.assertRaises(TokenExpansionError):
+            self.resolver.resolve_path('publishPath', context, fallback_strategy=fallback)
+
+    def test_batch_stop_on_error(self):
+        """Test batch resolution stops on first error when stop_on_error=True."""
+        contexts = [
+            {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'},
+            {'ep': 'Ep01'},  # Missing tokens - should stop here
+            {'ep': 'Ep01', 'seq': 'sq0020', 'shot': 'SH0030', 'dept': 'layout'}
+        ]
+
+        with self.assertRaises(TokenExpansionError):
+            self.resolver.resolve_batch('publishPath', contexts, stop_on_error=True)
+
+    def test_batch_continue_on_error(self):
+        """Test batch resolution continues on error when stop_on_error=False."""
+        contexts = [
+            {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'},
+            {'ep': 'Ep01'},  # Missing tokens
+            {'ep': 'Ep01', 'seq': 'sq0020', 'shot': 'SH0030', 'dept': 'layout'}
+        ]
+
+        results = self.resolver.resolve_batch('publishPath', contexts, stop_on_error=False)
+
+        self.assertEqual(len(results), 3)
+        # First should succeed
+        self.assertIsNotNone(results[0][0])
+        self.assertIsNone(results[0][1])
+        # Second should fail
+        self.assertIsNone(results[1][0])
+        self.assertIsInstance(results[1][1], TokenExpansionError)
+        # Third should succeed
+        self.assertIsNotNone(results[2][0])
+        self.assertIsNone(results[2][1])
+
+    def test_error_message_details(self):
+        """Test error messages contain helpful details."""
+        context = {'ep': 'Ep01'}
+
+        try:
+            self.resolver.resolve_path('publishPath', context)
+        except TokenExpansionError as e:
+            # Check error message contains helpful info
+            error_msg = str(e)
+            self.assertIn('seq', error_msg)
+            self.assertIn('shot', error_msg)
+            self.assertIn('dept', error_msg)
+            self.assertIn('Available context keys', error_msg)
 
 
 if __name__ == '__main__':
