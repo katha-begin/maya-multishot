@@ -275,7 +275,140 @@ class PathResolver(object):
             success_count, error_count))
 
         return results
-    
+
+    def resolve_paths_batch(self, assets, context, template_name='assetPath', version=None,
+                           validate_exists=False, fallback_strategy=None):
+        """Resolve paths for multiple assets with the same context.
+
+        This method is optimized for resolving many assets in the same shot/context
+        by caching template lookups and reusing the full context.
+
+        Args:
+            assets (list): List of asset dicts, each containing:
+                          {'assetType': 'CHAR', 'assetName': 'Hero', 'variant': '001'}
+            context (dict): Shared context for all assets (ep, seq, shot, dept, etc.)
+            template_name (str): Template to use (default: 'assetPath')
+            version (str, optional): Version string for all assets
+            validate_exists (bool): Whether to validate paths exist
+            fallback_strategy (callable, optional): Fallback function for failed resolutions
+
+        Returns:
+            dict: Mapping of asset identifier to (path, error) tuple
+                  Asset identifier format: "TYPE_Name_variant"
+
+        Example:
+            >>> assets = [
+            ...     {'assetType': 'CHAR', 'assetName': 'Hero', 'variant': '001'},
+            ...     {'assetType': 'PROP', 'assetName': 'Table', 'variant': '001'},
+            ... ]
+            >>> context = {'ep': 'Ep04', 'seq': 'sq0070', 'shot': 'SH0170', 'dept': 'anim'}
+            >>> results = resolver.resolve_paths_batch(assets, context)
+            >>> for asset_id, (path, error) in results.items():
+            ...     if error:
+            ...         print("Error for {}: {}".format(asset_id, error))
+            ...     else:
+            ...         print("{}: {}".format(asset_id, path))
+        """
+        import time
+        start_time = time.time()
+
+        results = {}
+        success_count = 0
+        error_count = 0
+
+        logger.info("Batch resolving {} assets for template '{}' with context: {}".format(
+            len(assets), template_name, context))
+
+        # Cache template lookup (only load once)
+        try:
+            template = self.config.get_template(template_name)
+            if not template:
+                available = list(self.config.get_templates().keys())
+                error = TemplateNotFoundError(template_name, available)
+                logger.error("Template '{}' not found".format(template_name))
+                # Return error for all assets
+                for asset in assets:
+                    asset_id = "{}_{}_{}" .format(
+                        asset.get('assetType', 'UNKNOWN'),
+                        asset.get('assetName', 'UNKNOWN'),
+                        asset.get('variant', '000')
+                    )
+                    results[asset_id] = (None, error)
+                return results
+        except Exception as e:
+            logger.error("Failed to load template '{}': {}".format(template_name, e))
+            # Return error for all assets
+            for asset in assets:
+                asset_id = "{}_{}_{}" .format(
+                    asset.get('assetType', 'UNKNOWN'),
+                    asset.get('assetName', 'UNKNOWN'),
+                    asset.get('variant', '000')
+                )
+                results[asset_id] = (None, e)
+            return results
+
+        # Build full context once (reused for all assets)
+        base_context = self._build_full_context(context, version)
+
+        # Resolve each asset
+        for asset in assets:
+            # Create asset identifier
+            asset_id = "{}_{}_{}" .format(
+                asset.get('assetType', 'UNKNOWN'),
+                asset.get('assetName', 'UNKNOWN'),
+                asset.get('variant', '000')
+            )
+
+            try:
+                # Merge asset data into context
+                asset_context = base_context.copy()
+                asset_context.update(asset)
+
+                # Expand tokens
+                expanded = self.token_expander.expand_tokens(template, asset_context, version_override=version)
+
+                # Check for unexpanded tokens
+                remaining_tokens = self.token_expander.extract_tokens(expanded)
+                if remaining_tokens:
+                    raise TokenExpansionError(template, remaining_tokens, asset_context)
+
+                # Normalize path
+                resolved_path = os.path.normpath(expanded)
+
+                # Validate exists if requested
+                if validate_exists and not os.path.exists(resolved_path):
+                    raise PathValidationError(resolved_path, "Path does not exist")
+
+                results[asset_id] = (resolved_path, None)
+                success_count += 1
+
+            except ResolverError as e:
+                error_count += 1
+                logger.debug("Failed to resolve asset {}: {}".format(asset_id, e))
+
+                # Try fallback strategy if provided
+                if fallback_strategy:
+                    try:
+                        fallback_path = fallback_strategy(template_name, asset_context, e)
+                        if fallback_path:
+                            results[asset_id] = (fallback_path, None)
+                            success_count += 1
+                            error_count -= 1
+                            continue
+                    except Exception as fallback_error:
+                        logger.debug("Fallback strategy failed for {}: {}".format(
+                            asset_id, fallback_error))
+
+                results[asset_id] = (None, e)
+
+        # Log statistics
+        elapsed_time = time.time() - start_time
+        logger.info("Batch resolution complete: {} succeeded, {} failed in {:.3f}s ({:.1f} assets/sec)".format(
+            success_count, error_count, elapsed_time,
+            len(assets) / elapsed_time if elapsed_time > 0 else 0))
+
+        return results
+
     def _build_full_context(self, context, version=None):
         """Build full context with roots, static paths, and user context.
         

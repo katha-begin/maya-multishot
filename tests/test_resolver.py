@@ -329,6 +329,185 @@ class TestResolverErrorHandling(unittest.TestCase):
             self.assertIn('Available context keys', error_msg)
 
 
+class TestBatchPathResolution(unittest.TestCase):
+    """Test batch path resolution for multiple assets."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create temporary config file
+        self.config_data = {
+            "version": "1.0",
+            "project": {
+                "name": "TestProject",
+                "code": "TST"
+            },
+            "roots": {
+                "projRoot": "V:/"
+            },
+            "staticPaths": {
+                "sceneBase": "all/scene"
+            },
+            "templates": {
+                "publishPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
+                "assetPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$assetType/$assetName/$variant"
+            },
+            "patterns": {},
+            "platformMapping": {
+                "windows": {
+                    "projRoot": "V:/"
+                },
+                "linux": {
+                    "projRoot": "/mnt/projects/"
+                }
+            }
+        }
+
+        self.temp_dir = tempfile.mkdtemp()
+        self.config_file = os.path.join(self.temp_dir, 'config.json')
+
+        with open(self.config_file, 'w') as f:
+            json.dump(self.config_data, f)
+
+        self.config = ProjectConfig(self.config_file)
+        self.platform_config = PlatformConfig(self.config)
+        self.resolver = PathResolver(self.config, self.platform_config)
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        import shutil
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    def test_resolve_paths_batch_success(self):
+        """Test batch resolution of multiple assets."""
+        assets = [
+            {'assetType': 'CHAR', 'assetName': 'Hero', 'variant': '001'},
+            {'assetType': 'PROP', 'assetName': 'Table', 'variant': '001'},
+            {'assetType': 'CHAR', 'assetName': 'Villain', 'variant': '002'},
+        ]
+        context = {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'}
+
+        results = self.resolver.resolve_paths_batch(assets, context)
+
+        # Check all assets resolved
+        self.assertEqual(len(results), 3)
+
+        # Check CHAR_Hero_001
+        path, error = results['CHAR_Hero_001']
+        self.assertIsNotNone(path)
+        self.assertIsNone(error)
+        self.assertIn('CHAR', path)
+        self.assertIn('Hero', path)
+
+        # Check PROP_Table_001
+        path, error = results['PROP_Table_001']
+        self.assertIsNotNone(path)
+        self.assertIsNone(error)
+        self.assertIn('PROP', path)
+        self.assertIn('Table', path)
+
+        # Check CHAR_Villain_002
+        path, error = results['CHAR_Villain_002']
+        self.assertIsNotNone(path)
+        self.assertIsNone(error)
+        self.assertIn('Villain', path)
+
+    def test_resolve_paths_batch_with_errors(self):
+        """Test batch resolution with some invalid assets."""
+        assets = [
+            {'assetType': 'CHAR', 'assetName': 'Hero', 'variant': '001'},
+            {'assetName': 'Table', 'variant': '001'},  # Missing assetType
+            {'assetType': 'CHAR', 'assetName': 'Villain', 'variant': '002'},
+        ]
+        context = {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'}
+
+        results = self.resolver.resolve_paths_batch(assets, context)
+
+        # Check all assets processed
+        self.assertEqual(len(results), 3)
+
+        # First should succeed
+        path, error = results['CHAR_Hero_001']
+        self.assertIsNotNone(path)
+        self.assertIsNone(error)
+
+        # Second should fail (missing assetType)
+        path, error = results['UNKNOWN_Table_001']
+        self.assertIsNone(path)
+        self.assertIsNotNone(error)
+
+        # Third should succeed
+        path, error = results['CHAR_Villain_002']
+        self.assertIsNotNone(path)
+        self.assertIsNone(error)
+
+    def test_resolve_paths_batch_template_not_found(self):
+        """Test batch resolution with invalid template."""
+        assets = [
+            {'assetType': 'CHAR', 'assetName': 'Hero', 'variant': '001'},
+        ]
+        context = {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'}
+
+        results = self.resolver.resolve_paths_batch(assets, context, template_name='nonexistent')
+
+        # All assets should have same error
+        self.assertEqual(len(results), 1)
+        path, error = results['CHAR_Hero_001']
+        self.assertIsNone(path)
+        self.assertIsInstance(error, TemplateNotFoundError)
+
+    def test_resolve_paths_batch_empty_list(self):
+        """Test batch resolution with empty asset list."""
+        assets = []
+        context = {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'}
+
+        results = self.resolver.resolve_paths_batch(assets, context)
+
+        self.assertEqual(len(results), 0)
+
+    def test_resolve_paths_batch_with_version(self):
+        """Test batch resolution with version override."""
+        assets = [
+            {'assetType': 'CHAR', 'assetName': 'Hero', 'variant': '001'},
+        ]
+        context = {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'}
+
+        results = self.resolver.resolve_paths_batch(assets, context, version='v003')
+
+        path, error = results['CHAR_Hero_001']
+        self.assertIsNotNone(path)
+        self.assertIsNone(error)
+
+    def test_resolve_paths_batch_performance(self):
+        """Test batch resolution performance with many assets."""
+        # Create 100 assets
+        assets = []
+        for i in range(100):
+            assets.append({
+                'assetType': 'CHAR',
+                'assetName': 'Asset{:03d}'.format(i),
+                'variant': '001'
+            })
+
+        context = {'ep': 'Ep01', 'seq': 'sq0010', 'shot': 'SH0010', 'dept': 'anim'}
+
+        import time
+        start = time.time()
+        results = self.resolver.resolve_paths_batch(assets, context)
+        elapsed = time.time() - start
+
+        # Check all resolved
+        self.assertEqual(len(results), 100)
+
+        # Should be fast (< 1 second for 100 assets)
+        self.assertLess(elapsed, 1.0)
+
+        # Check all succeeded
+        for asset_id, (path, error) in results.items():
+            self.assertIsNotNone(path)
+            self.assertIsNone(error)
+
+
 if __name__ == '__main__':
     unittest.main()
 
