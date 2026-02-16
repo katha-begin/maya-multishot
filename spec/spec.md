@@ -619,9 +619,46 @@ CTX_Manager (network node)
 | template | string | Path template with tokens |
 | extension | string | File extension (e.g., abc) |
 | nodeType | string | Target node type (aiStandIn, RedshiftProxyMesh, reference) |
-| targetNode | message | Connection to actual Maya node |
+| targetNode | message | **Bidirectional connection** to actual Maya node |
+| targetNodeStr | string | **Fallback** string reference for locked nodes (references) |
 | parentShot | message | Connection to CTX_Shot |
 | enabled | bool | Whether asset is active |
+
+#### 3.4.1 Message Attribute Linking Strategy
+
+**Primary Method: Message Attributes (Bidirectional)**
+
+CTX_Asset nodes link to Maya asset nodes using **message attributes** for bidirectional connections:
+
+```python
+# CTX_Asset side
+CTX_Asset.targetNode (message) ← connected to → Maya_Node.message
+
+# Maya node side (optional, for reverse lookup)
+Maya_Node.ctx_metadata (message) ← connected to → CTX_Asset.message
+```
+
+**Benefits:**
+- ✅ Bidirectional link (can query from either direction)
+- ✅ Automatic cleanup when nodes are deleted
+- ✅ Survives node renames
+- ✅ Maya dependency graph aware
+- ✅ Supports multi-shot workflow (one Maya node → multiple CTX_Assets)
+
+**Fallback Method: String Attribute (Locked References)**
+
+For locked reference nodes that cannot accept new attributes:
+
+```python
+# CTX_Asset side only
+CTX_Asset.targetNodeStr (string) = "reference_node_name"
+```
+
+**Implementation Rules:**
+1. **Always try message connection first**
+2. **Fall back to string attribute** if node is locked (references)
+3. **Query order:** Check message connection first, then string fallback
+4. **Cleanup:** Message connections auto-cleanup; string attributes need manual validation
 
 ### 3.5 Node Relationship Diagram
 
@@ -676,6 +713,73 @@ When switching from SH0170 to SH0180:
 2. Get version (v004) and template
 3. Resolve path with SH0180 context
 4. Apply resolved path to CatStompie_001_AIS node
+
+### 3.7 Message Attribute Implementation Details
+
+#### 3.7.1 Creating Bidirectional Links
+
+**For StandIns and Proxies (Unlocked Nodes):**
+
+```python
+# 1. Add message attribute to CTX_Asset
+cmds.addAttr(ctx_asset_node, longName='targetNode', attributeType='message')
+
+# 2. Add message attribute to Maya node
+cmds.addAttr(maya_node, longName='ctx_metadata', attributeType='message')
+
+# 3. Create connection: Maya node → CTX_Asset
+cmds.connectAttr('{}.message'.format(maya_node),
+                 '{}.targetNode'.format(ctx_asset_node))
+```
+
+**For References (Potentially Locked Nodes):**
+
+```python
+try:
+    # Try to get reference node
+    ref_node = cmds.referenceQuery(maya_node, referenceNode=True)
+
+    # Try message connection
+    cmds.addAttr(ref_node, longName='ctx_metadata', attributeType='message')
+    cmds.connectAttr('{}.message'.format(ref_node),
+                     '{}.targetNode'.format(ctx_asset_node))
+except RuntimeError:
+    # Fallback to string attribute
+    cmds.addAttr(ctx_asset_node, longName='targetNodeStr', dataType='string')
+    cmds.setAttr('{}.targetNodeStr'.format(ctx_asset_node), maya_node, type='string')
+```
+
+#### 3.7.2 Querying Linked Nodes
+
+**Find Maya node from CTX_Asset:**
+
+```python
+# Try message connection first
+maya_nodes = cmds.listConnections('{}.targetNode'.format(ctx_asset_node))
+if maya_nodes:
+    maya_node = maya_nodes[0]
+else:
+    # Fallback to string attribute
+    if cmds.attributeQuery('targetNodeStr', node=ctx_asset_node, exists=True):
+        maya_node = cmds.getAttr('{}.targetNodeStr'.format(ctx_asset_node))
+```
+
+**Find all CTX_Assets linked to a Maya node:**
+
+```python
+# Query reverse connection
+ctx_assets = cmds.listConnections('{}.ctx_metadata'.format(maya_node))
+```
+
+#### 3.7.3 Special Handling Notes
+
+1. **Locked References:** Some reference nodes are locked and cannot accept new attributes. Always use try/except and fall back to string attributes.
+
+2. **Multiple CTX_Assets:** One Maya node can have multiple CTX_Asset nodes (multi-shot workflow). Use `cmds.listConnections()` to get all connections.
+
+3. **Cleanup:** Message connections automatically break when nodes are deleted. String attributes need manual validation.
+
+4. **Node Renames:** Message connections survive renames. String attributes become invalid and need updating.
 
 ---
 

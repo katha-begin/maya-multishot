@@ -149,15 +149,18 @@ class CTXManagerNode(object):
         # Add custom attributes
         cmds.addAttr(node_name, longName='ctx_type', dataType='string')
         cmds.setAttr(node_name + '.ctx_type', 'CTX_Manager', type='string')
-        
+
         cmds.addAttr(node_name, longName='config_path', dataType='string')
         cmds.addAttr(node_name, longName='project_root', dataType='string')
         cmds.addAttr(node_name, longName='active_shot_id', dataType='string')
-        
+
+        # Add message attribute for shot connections (multi-attribute)
+        cmds.addAttr(node_name, longName='shots', attributeType='message', multi=True)
+
         # Set config path if provided
         if config_path:
             cmds.setAttr(node_name + '.config_path', config_path, type='string')
-        
+
         return cls(node_name)
     
     @classmethod
@@ -235,9 +238,27 @@ class CTXManagerNode(object):
         Returns:
             list: List of CTXShotNode instances
         """
-        # This will be implemented after CTXShotNode is defined
-        # For now, return empty list
-        return []
+        # Check if shots attribute exists (for backward compatibility)
+        if not cmds.objExists(self.node_name + '.shots'):
+            # Add it if missing
+            cmds.addAttr(self.node_name, longName='shots', attributeType='message', multi=True)
+            return []
+
+        # Get all connected shot nodes via the 'shots' attribute
+        connections = cmds.listConnections(
+            self.node_name + '.shots',
+            source=True,
+            destination=False
+        ) or []
+
+        # Wrap each node in CTXShotNode
+        shot_nodes = []
+        for node_name in connections:
+            # Verify it's a CTX_Shot node
+            if node_name.startswith(CTX_SHOT_PREFIX):
+                shot_nodes.append(CTXShotNode(node_name))
+
+        return shot_nodes
 
     def delete(self):
         """Delete this manager node."""
@@ -404,11 +425,25 @@ class CTXShotNode(object):
     def get_assets(self):
         """Get all asset nodes connected to this shot.
 
+        Uses the multi-message 'assets' attribute to find connected CTX_Asset nodes.
+
         Returns:
             list: List of CTXAssetNode instances
         """
-        # This will be implemented after CTXAssetNode is defined
-        return []
+        if not cmds.objExists(self.node_name + '.assets'):
+            return []
+
+        connections = cmds.listConnections(
+            self.node_name + '.assets', source=True, destination=False) or []
+
+        result = []
+        for conn in connections:
+            # Verify it's a CTX_Asset node by checking ctx_type attribute
+            if cmds.objExists(conn + '.ctx_type'):
+                ctx_type = cmds.getAttr(conn + '.ctx_type')
+                if ctx_type == 'CTX_Asset':
+                    result.append(CTXAssetNode(conn))
+        return result
 
     def delete(self):
         """Delete this shot node."""
@@ -473,9 +508,16 @@ class CTXAssetNode(object):
         Returns:
             CTXAssetNode: New asset node instance
         """
-        # Create node name
-        asset_id = "{}_{}_{}".format(asset_type, asset_name, variant)
-        node_name = cmds.createNode(CTX_ASSET_TYPE, name="{}_{}" .format(CTX_ASSET_PREFIX, asset_id))
+        # Create node name: CTX_Asset_TYPE_Name_SH#### (shot code, not variant!)
+        # Namespace is TYPE_Name_Variant (from filename)
+        if shot_node:
+            shot_code = shot_node.get_shot_code()
+            node_name = cmds.createNode(CTX_ASSET_TYPE, name="{}_{}_{}_{}".format(
+                CTX_ASSET_PREFIX, asset_type, asset_name, shot_code))
+        else:
+            # Fallback if no shot provided
+            node_name = cmds.createNode(CTX_ASSET_TYPE, name="{}_{}_{}".format(
+                CTX_ASSET_PREFIX, asset_type, asset_name))
 
         # Add custom attributes
         cmds.addAttr(node_name, longName='ctx_type', dataType='string')
@@ -490,25 +532,34 @@ class CTXAssetNode(object):
         cmds.addAttr(node_name, longName='variant', dataType='string')
         cmds.setAttr(node_name + '.variant', variant, type='string')
 
+        # Namespace: CHAR_CatStompie_001 (from filename, includes variant)
+        # Special case for cameras: namespace is just the asset name (no type prefix, no variant)
         cmds.addAttr(node_name, longName='namespace', dataType='string')
-        namespace = asset_id
+        if asset_type == 'CAM':
+            # For cameras: SWA_Ep04_SH0140_camera (shot-specific, no type prefix, no variant)
+            namespace = asset_name
+        else:
+            # Standard assets: TYPE_Name_Variant
+            namespace = "{}_{}_{}".format(asset_type, asset_name, variant)
         cmds.setAttr(node_name + '.namespace', namespace, type='string')
 
         cmds.addAttr(node_name, longName='file_path', dataType='string')
+        cmds.addAttr(node_name, longName='template', dataType='string')
+        cmds.addAttr(node_name, longName='extension', dataType='string')
         cmds.addAttr(node_name, longName='version', dataType='string')
 
         # Connect to shot if provided
         if shot_node and shot_node.exists():
-            # Add message attribute for connection if not exists
-            if not cmds.objExists(node_name + '.shot'):
-                cmds.addAttr(node_name, longName='shot', attributeType='message')
+            # Add message attributes for bidirectional connection
+            if not cmds.objExists(node_name + '.shot_node'):
+                cmds.addAttr(node_name, longName='shot_node', attributeType='message')
             if not cmds.objExists(shot_node.node_name + '.assets'):
                 cmds.addAttr(shot_node.node_name, longName='assets', attributeType='message', multi=True)
 
-            # Connect asset to shot
+            # Connect asset to shot (bidirectional)
             connections = cmds.listConnections(shot_node.node_name + '.assets', source=True, destination=False) or []
             next_index = len(connections)
-            cmds.connectAttr(node_name + '.shot', shot_node.node_name + '.assets[{}]'.format(next_index))
+            cmds.connectAttr(node_name + '.shot_node', shot_node.node_name + '.assets[{}]'.format(next_index))
 
         return cls(node_name)
 
@@ -561,12 +612,52 @@ class CTXAssetNode(object):
         return cmds.getAttr(self.node_name + '.file_path')
 
     def set_file_path(self, file_path):
-        """Set asset file path.
+        """Set asset file path (resolved/cached path).
 
         Args:
             file_path (str): File path
         """
         cmds.setAttr(self.node_name + '.file_path', file_path, type='string')
+
+    def get_template(self):
+        """Get path template with tokens.
+
+        Returns:
+            str: Template string (e.g., '$projRoot$project/$sceneBase/...')
+        """
+        if cmds.objExists(self.node_name + '.template'):
+            return cmds.getAttr(self.node_name + '.template') or ''
+        return ''
+
+    def set_template(self, template):
+        """Set path template with tokens.
+
+        Args:
+            template (str): Template string with $tokens
+        """
+        if not cmds.objExists(self.node_name + '.template'):
+            cmds.addAttr(self.node_name, longName='template', dataType='string')
+        cmds.setAttr(self.node_name + '.template', template, type='string')
+
+    def get_extension(self):
+        """Get file extension.
+
+        Returns:
+            str: File extension (e.g., 'abc', 'vdb')
+        """
+        if cmds.objExists(self.node_name + '.extension'):
+            return cmds.getAttr(self.node_name + '.extension') or ''
+        return ''
+
+    def set_extension(self, extension):
+        """Set file extension.
+
+        Args:
+            extension (str): File extension (e.g., 'abc')
+        """
+        if not cmds.objExists(self.node_name + '.extension'):
+            cmds.addAttr(self.node_name, longName='extension', dataType='string')
+        cmds.setAttr(self.node_name + '.extension', extension, type='string')
 
     def get_version(self):
         """Get asset version.
@@ -583,6 +674,64 @@ class CTXAssetNode(object):
             version (str): Version
         """
         cmds.setAttr(self.node_name + '.version', version, type='string')
+
+    def get_department(self):
+        """Get department.
+
+        Returns:
+            str: Department (e.g., 'anim', 'layout')
+        """
+        if cmds.objExists(self.node_name + '.department'):
+            return cmds.getAttr(self.node_name + '.department')
+        return ''
+
+    def set_department(self, department):
+        """Set department.
+
+        Args:
+            department (str): Department
+        """
+        if not cmds.objExists(self.node_name + '.department'):
+            cmds.addAttr(self.node_name, longName='department', dataType='string')
+        cmds.setAttr(self.node_name + '.department', department, type='string')
+
+    def get_maya_node(self):
+        """Get linked Maya node.
+
+        Returns:
+            str: Maya node name, or None if not linked
+        """
+        if cmds.objExists(self.node_name + '.maya_node'):
+            connections = cmds.listConnections(self.node_name + '.maya_node',
+                                              source=False, destination=True)
+            if connections:
+                return connections[0]
+        return None
+
+    def set_maya_node(self, maya_node):
+        """Link to Maya node using message attributes.
+
+        Uses the new message attribute linking system with fallback for locked nodes.
+
+        Args:
+            maya_node (str): Maya node name
+
+        Returns:
+            bool: True if message connection succeeded, False if fallback was used
+        """
+        from core.ctx_linker import link_to_maya_node as link_func
+        return link_func(self.node_name, maya_node)
+
+    def get_linked_maya_node(self):
+        """Get Maya node linked to this CTX_Asset.
+
+        Queries message connection first, then falls back to string attribute.
+
+        Returns:
+            str or None: Maya node name if found, None otherwise
+        """
+        from core.ctx_linker import get_linked_maya_node as get_func
+        return get_func(self.node_name)
 
     def delete(self):
         """Delete this asset node."""

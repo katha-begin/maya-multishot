@@ -61,7 +61,7 @@
     "assetType": {
       "description": "Asset type",
       "example": "CHAR",
-      "values": ["CHAR", "PROP", "SET", "VEH"]
+      "values": ["CHAR", "PROP", "SET", "VEH", "CAM"]
     },
     "assetName": {
       "description": "Asset name",

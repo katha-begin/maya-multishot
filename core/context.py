@@ -125,15 +125,41 @@ class ContextManager(object):
     
     def get_all_shots(self):
         """Get all shots in the scene.
-        
+
         Returns:
             list: List of CTXShotNode instances
         """
-        # This is a simplified implementation
-        # In a real Maya environment, we would query connected nodes
-        # For now, return empty list
+        manager = CTXManagerNode.get_manager()
+        if manager:
+            return manager.get_shots()
         return []
     
+    def delete_shot(self, shot_node):
+        """Delete a shot and all its assets.
+
+        Args:
+            shot_node (CTXShotNode): Shot node to delete
+
+        Raises:
+            ValueError: If shot node is invalid
+        """
+        if not isinstance(shot_node, CTXShotNode):
+            raise ValueError("Invalid shot node")
+
+        if not shot_node.exists():
+            raise ValueError("Shot node does not exist")
+
+        # Delete all assets first
+        assets = shot_node.get_assets()
+        for asset in assets:
+            asset.delete()
+
+        # Delete the shot node
+        shot_node.delete()
+
+        # Notify callbacks
+        self._notify_change('shot_deleted', {'shot_id': shot_node.get_shot_id()})
+
     def get_shot_context(self, shot_node):
         """Get shot context as dictionary.
 

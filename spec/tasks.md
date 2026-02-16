@@ -520,16 +520,77 @@ Create the `CTX_Asset` custom network node that stores asset-specific data (type
 
 **Acceptance Criteria:**
 - [ ] Define custom node type `CTX_Asset` with Maya API
-- [ ] Store attributes: `asset_type`, `asset_name`, `variant`, `version`, `template_path`, `resolved_path`, `node_type`, `maya_node`
+- [ ] Store attributes: `asset_type`, `asset_name`, `variant`, `version`, `template_path`, `resolved_path`, `node_type`
+- [ ] **NEW:** Add `targetNode` (message) attribute for bidirectional linking
+- [ ] **NEW:** Add `targetNodeStr` (string) attribute as fallback for locked references
 - [ ] Implement node creation: `create_asset(shot_node, asset_type, name, variant)`
-- [ ] Connect to parent CTX_Shot node
-- [ ] Link to actual Maya node (StandIn, Proxy, Reference)
+- [ ] Connect to parent CTX_Shot node using message attributes
+- [ ] **NEW:** Implement `link_to_maya_node()` method with message attribute connection
+- [ ] **NEW:** Implement fallback to string attribute for locked reference nodes
+- [ ] **NEW:** Implement `get_linked_maya_node()` method to query connections
 - [ ] Support version updates and path re-resolution
 
 **Implementation Notes:**
 - Asset node acts as metadata container for actual Maya nodes
 - Store both template path and resolved path for debugging
 - Support node types: `aiStandIn`, `RedshiftProxyMesh`, `reference`
+- **NEW:** Use message attributes for bidirectional linking (primary method)
+- **NEW:** Fall back to string attributes for locked references
+- **NEW:** Query message connections first, then string fallback
+- **NEW:** Message connections auto-cleanup when nodes deleted
+
+#### [P1-CORE-04] Implement Message Attribute Linking for CTX_Asset
+
+**Priority:** HIGH (Critical Path)
+**Complexity:** Medium (2-3 days)
+**Dependencies:** `[P1-CORE-03]`
+
+**Description:**
+Implement bidirectional message attribute linking between CTX_Asset nodes and Maya asset nodes (aiStandIn, RedshiftProxyMesh, reference). Includes fallback strategy for locked reference nodes.
+
+**Spec Reference:** [spec.md Section 3.4.1, 3.7](spec.md#341-message-attribute-linking-strategy)
+
+**Acceptance Criteria:**
+- [ ] Implement `link_to_maya_node(ctx_asset, maya_node)` helper function
+- [ ] Add `targetNode` (message) attribute to CTX_Asset nodes
+- [ ] Add `ctx_metadata` (message) attribute to Maya nodes (when possible)
+- [ ] Implement try/except for locked reference nodes
+- [ ] Add `targetNodeStr` (string) fallback for locked references
+- [ ] Implement `get_linked_maya_node(ctx_asset)` query function
+- [ ] Implement `get_linked_ctx_assets(maya_node)` reverse query function
+- [ ] Update `convert_to_ctx()` to use message attributes instead of string
+- [ ] Add validation to check if connection exists before creating
+- [ ] Add unit tests for message attribute linking
+
+**Implementation Notes:**
+- **Primary method:** Message attributes (bidirectional, auto-cleanup)
+- **Fallback method:** String attributes (for locked references only)
+- **Query order:** Always check message connection first, then string fallback
+- **Special handling:** Reference nodes may be locked - use `referenceQuery()` to get reference node
+- **Multi-shot support:** One Maya node can have multiple CTX_Asset connections
+- **Cleanup:** Message connections auto-break on node deletion; string attributes need manual validation
+
+**Code Structure:**
+```python
+# In core/ctx_converter.py or new core/ctx_linker.py
+
+def link_to_maya_node(ctx_asset_node, maya_node):
+    """Link CTX_Asset to Maya node using message attributes."""
+    # 1. Add targetNode message attribute to CTX_Asset
+    # 2. Try to add ctx_metadata message attribute to Maya node
+    # 3. Create connection
+    # 4. If locked, fall back to targetNodeStr string attribute
+
+def get_linked_maya_node(ctx_asset_node):
+    """Get Maya node linked to CTX_Asset."""
+    # 1. Try message connection first
+    # 2. Fall back to string attribute
+    # 3. Validate node exists
+
+def get_linked_ctx_assets(maya_node):
+    """Get all CTX_Assets linked to Maya node."""
+    # Query reverse connection via ctx_metadata attribute
+```
 
 ---
 
@@ -1519,7 +1580,35 @@ Optimize shot switching for scenes with many assets.
 **Duration:** 4-5 weeks
 **Focus:** Build user-facing tools, dialogs, and main UI
 
-### Phase 4 Summary
+### Phase 4A: UI with Filesystem Discovery (CURRENT FOCUS)
+
+**Duration:** 2-3 weeks
+**Focus:** Implement UI that works with filesystem discovery only (no CTX nodes yet)
+
+**Scope:**
+- ✅ Integrate with `config/project_config.py` only
+- ✅ Implement filesystem scanning for shots and assets
+- ❌ No CTX node integration (future phase)
+- ❌ No ShotManager/AssetManager integration (future phase)
+
+**Goal:** Create working "read-only" UI for browsing filesystem
+
+| Module | Tasks | Priority | Status |
+|--------|-------|----------|--------|
+| ui/filesystem_discovery.py | 1 | HIGH | ⏳ TODO |
+| ui/main_window.py | 1 | HIGH | ⏳ TODO |
+| ui/shot_widget.py | 1 | HIGH | ⏳ TODO |
+| ui/asset_widget.py | 1 | HIGH | ⏳ TODO |
+| tests/test_ui_integration.py | 1 | HIGH | ⏳ TODO |
+
+**Tasks:** [P4-UI-01] through [P4-UI-05] (5 tasks)
+
+---
+
+### Phase 4B: Tools & CTX Integration (FUTURE)
+
+**Duration:** 2-3 weeks
+**Focus:** Implement tools and integrate UI with CTX nodes
 
 | Module | Tasks | Priority | Complexity |
 |--------|-------|----------|------------|
@@ -1529,7 +1618,9 @@ Optimize shot switching for scenes with many assets.
 | tools/converter.py | 3 | MEDIUM | Complex |
 | tools/validator.py | 3 | MEDIUM | Medium |
 | tools/saver.py | 2 | LOW | Simple |
-| ui/main_window.py | 5 | HIGH | Complex |
+| ui/ (CTX integration) | 5 | HIGH | Complex |
+
+**Tasks:** [P4-SHOT-01] through [P4-UI-10] (30+ tasks)
 
 ---
 
@@ -2099,131 +2190,445 @@ Store CTX system metadata in scene file.
 
 ---
 
-### Module: ui/main_window.py
+### Module: ui/ (Filesystem Discovery Phase)
 
-#### [P4-UI-01] Implement Main Window UI
+**IMPORTANT:** This phase implements UI with filesystem discovery ONLY. No CTX node integration yet.
+
+**Integration Scope:**
+- ✅ Integrate with `config/project_config.py` (ProjectConfig class)
+- ✅ Implement filesystem scanning for shots and assets
+- ❌ Do NOT integrate with CTX custom nodes (not implemented yet)
+- ❌ Do NOT integrate with ShotManager/AssetManager (not implemented yet)
+
+**Goal:** Create a working "read-only" UI that can browse the filesystem and display shots and assets correctly.
+
+---
+
+#### [P4-UI-01] Implement Filesystem Discovery Module
+
+**Priority:** HIGH (Critical Path - Must complete first)
+**Complexity:** Medium (2-3 days)
+**Dependencies:** `[P1-CONFIG-01]` (ProjectConfig)
+
+**Description:**
+Create filesystem discovery module to scan directory structure and discover shots and assets without relying on CTX nodes.
+
+**Spec Reference:** [spec/ui.md Section 4.2](spec/ui.md#42-import-asset-flow-detailed)
+
+**New Module:** `ui/filesystem_discovery.py`
+
+**Acceptance Criteria:**
+- [ ] Implement `scan_shots_from_filesystem(base_path, ep, seq)` function
+  - Scans directory: `{base_path}/{ep}/{seq}/SH####/`
+  - Returns list of shot codes (e.g., ['SH0170', 'SH0180', 'SH0190'])
+  - Handles missing directories gracefully
+- [ ] Implement `scan_assets_from_filesystem(publish_path, pattern_manager)` function
+  - Scans directory: `{publish_path}/v###/`
+  - Parses filenames using pattern_manager
+  - Returns list of dicts: `[{type, name, variant, version, path, ext}, ...]`
+  - Handles invalid filenames gracefully
+- [ ] Implement `get_available_versions(publish_path, asset_id)` function
+  - Scans for version directories: `v001/`, `v002/`, `v003/`
+  - Returns sorted list: `['v003', 'v002', 'v001']` (descending)
+- [ ] Implement `get_shot_asset_count(shot_path)` function
+  - Counts assets in shot's publish directories
+  - Returns integer count
+- [ ] Add comprehensive error handling and logging
+- [ ] Write 10+ unit tests for discovery functions
+
+**Data Structures:**
+
+```python
+# Shot data structure
+{
+    'shot_code': 'SH0170',
+    'ep': 'Ep04',
+    'seq': 'sq0070',
+    'path': 'V:/SWA/all/scene/Ep04/sq0070/SH0170',
+    'asset_count': 12
+}
+
+# Asset data structure
+{
+    'asset_type': 'CHAR',
+    'asset_name': 'CatStompie',
+    'variant': '001',
+    'version': 'v003',
+    'dept': 'anim',
+    'path': 'V:/SWA/all/scene/Ep04/sq0070/SH0170/anim/publish/v003/Ep04_sq0070_SH0170__CHAR_CatStompie_001.abc',
+    'ext': 'abc',
+    'filename': 'Ep04_sq0070_SH0170__CHAR_CatStompie_001.abc'
+}
+```
+
+**Implementation Notes:**
+- Use `os.walk()` or `os.listdir()` for directory scanning
+- Use `PatternManager` from `config/pattern_manager.py` for filename parsing
+- Cache scan results to avoid repeated filesystem access
+- Support both Windows and Linux paths
+
+---
+
+#### [P4-UI-02] Implement Main Window UI (Filesystem Mode)
 
 **Priority:** HIGH (Critical Path)
-**Complexity:** Complex (1-2 weeks)
-**Dependencies:** `[P4-SHOT-01]`, `[P4-ASSET-01]`, `[P3-SWITCH-01]`
+**Complexity:** Medium (3-5 days)
+**Dependencies:** `[P4-UI-01]` (Filesystem Discovery)
 
 **Description:**
-Create main dockable UI window with shot list, asset list, and controls.
+Create main dockable UI window with header, shot list, and asset table. Uses filesystem discovery only.
 
-**Spec Reference:** [spec.md Section 10.1](spec.md#101-main-window)
+**Spec Reference:** [spec/ui.md Section 1](spec/ui.md#1-main-window-architecture)
 
-**POC Comparison:**
-✅ **Can Adapt POC Code** - POC's `ContextVariablesUI` provides good foundation.
+**New Module:** `ui/main_window.py`
 
 **Acceptance Criteria:**
-- [ ] Create dockable Maya window
-- [ ] Display shot list with active shot highlighted
-- [ ] Display asset list for active shot
-- [ ] Provide shot switching controls
-- [ ] Provide asset add/remove/update controls
+- [ ] Create dockable Maya window using `QMainWindow`
+- [ ] Implement header section with:
+  - Project selector (QComboBox) - loads from ProjectConfig
+  - Episode selector (QComboBox) - populated from config
+  - Sequence selector (QComboBox) - populated from config
+  - Settings button (QPushButton) - placeholder for now
+  - Help button (QPushButton) - placeholder for now
+- [ ] Integrate ShotWidget (from [P4-UI-03])
+- [ ] Integrate AssetWidget (from [P4-UI-04])
+- [ ] Implement status bar with message display
 - [ ] Support PySide2/PySide6 compatibility
+- [ ] Make window dockable in Maya workspace
+- [ ] Implement `refresh_ui()` method to reload data from filesystem
+
+**Data Flow:**
+```
+User selects Project/Episode/Sequence
+    ↓
+MainWindow calls scan_shots_from_filesystem()
+    ↓
+ShotWidget displays discovered shots
+    ↓
+User selects shot
+    ↓
+MainWindow calls scan_assets_from_filesystem()
+    ↓
+AssetWidget displays discovered assets
+```
 
 **Implementation Notes:**
-- Reuse POC's UI structure and Qt compatibility layer
-- Add multi-shot support (POC is single-shot)
-- Use patterns from `igl_shot_build.py` for dropdown navigation and table views
+- Window size: 800x600 pixels (initial)
+- Window title: "Context Manager (Filesystem Mode)"
+- Use QVBoxLayout for main layout
+- Store selected project/ep/seq in instance variables
+- Emit signals when selections change
 
 ---
 
-#### [P4-UI-02] Implement Shot Widget
+#### [P4-UI-03] Implement Shot Widget (Filesystem Mode)
+
+**Priority:** HIGH
+**Complexity:** Medium (2-3 days)
+**Dependencies:** `[P4-UI-01]` (Filesystem Discovery)
+
+**Description:**
+Create shot widget to display shots discovered from filesystem with radio button selection.
+
+**Spec Reference:** [spec/ui.md Section 1.3](spec/ui.md#13-shot-management-section)
+
+**New Module:** `ui/shot_widget.py`
+
+**Acceptance Criteria:**
+- [ ] Create custom QWidget with QListWidget
+- [ ] Display shot list with custom item widgets containing:
+  - Radio button for selection (only one active)
+  - Shot code label (e.g., "SH0170")
+  - Asset count label (e.g., "12 assets")
+  - Frame range label (placeholder: "[1001-1050]")
+- [ ] Implement `load_shots(shots_data)` method
+  - Takes list of shot dicts from filesystem discovery
+  - Populates list widget
+  - First shot selected by default
+- [ ] Implement `get_selected_shot()` method
+  - Returns selected shot code or None
+- [ ] Emit `shot_selected` signal when selection changes
+- [ ] Support double-click to select shot
+- [ ] Add "Add Shot" button (disabled for now - placeholder)
+
+**Widget Layout:**
+```
++-----------------------------------------------------------------------+
+|  SHOTS IN SCENE                                            [+ Add]    |
+|  +-------------------------------------------------------------------+|
+|  | (*) SH0170   12 assets    [1001-1050]                            ||
+|  | ( ) SH0180    8 assets    [1001-1062]                            ||
+|  | ( ) SH0190    5 assets    [1001-1045]                            ||
+|  +-------------------------------------------------------------------+|
++-----------------------------------------------------------------------+
+```
+
+**Implementation Notes:**
+- Use QListWidget with custom item widgets
+- Radio buttons implemented using QRadioButton in QButtonGroup
+- Frame range is placeholder (hardcoded or from config)
+- Asset count from `get_shot_asset_count()` function
+
+---
+
+#### [P4-UI-04] Implement Asset Widget (Filesystem Mode)
 
 **Priority:** HIGH
 **Complexity:** Medium (3-5 days)
-**Dependencies:** `[P4-UI-01]`, `[P4-SHOT-01]`
+**Dependencies:** `[P4-UI-01]` (Filesystem Discovery)
 
 **Description:**
-Create shot widget to display and manage shots.
+Create asset widget to display assets discovered from filesystem in a table with columns.
 
-**Spec Reference:** [spec.md Section 10.2](spec.md#102-shot-widget)
+**Spec Reference:** [spec/ui.md Section 1.4](spec/ui.md#14-asset-management-section)
 
-**POC Comparison:**
-⚠️ **POC Divergence** - POC has single context display; spec requires shot list.
+**New Module:** `ui/asset_widget.py`
 
 **Acceptance Criteria:**
-- [ ] Display shot list in tree/table view
-- [ ] Show shot metadata (ep, seq, shot, asset count)
-- [ ] Highlight active shot
-- [ ] Support shot selection and switching
-- [ ] Provide context menu (edit, delete, duplicate)
-- [ ] Support drag-and-drop reordering
+- [ ] Create custom QWidget with QTableWidget
+- [ ] Implement table with columns:
+  - Type (str): Asset type (CHAR, PROP, SET, etc.)
+  - Name (str): Asset name (CatStompie, DogBounce, etc.)
+  - Var (str): Variant (001, 002, etc.)
+  - Dept (str): Department (anim, model, rig, etc.)
+  - Ver (str): Version (v001, v002, v003, etc.)
+  - Status (widget): Color indicator (green/yellow/red)
+- [ ] Implement `load_assets(assets_data)` method
+  - Takes list of asset dicts from filesystem discovery
+  - Populates table rows
+  - Sets status colors based on file existence
+- [ ] Implement `get_selected_assets()` method
+  - Returns list of selected asset dicts
+- [ ] Support multi-row selection (Ctrl+Click, Shift+Click)
+- [ ] Support sortable columns (click header to sort)
+- [ ] Add "Import" button (disabled for now - placeholder)
+- [ ] Add "Convert Scene" button (disabled for now - placeholder)
+
+**Widget Layout:**
+```
++-----------------------------------------------------------------------+
+|  ASSETS IN SH0170                            [+ Import] [Convert]     |
+|  +-------------------------------------------------------------------+|
+|  | Type  | Name           | Var | Dept | Ver  | Status              ||
+|  |-------|----------------|-----|------|------|---------------------||
+|  | CHAR  | CatStompie     | 001 | anim | v003 | ● Valid             ||
+|  | CHAR  | DogBounce      | 001 | anim | v002 | ● Valid             ||
+|  | PROP  | TreeBig        | 001 | anim | v001 | ● Valid             ||
+|  +-------------------------------------------------------------------+|
++-----------------------------------------------------------------------+
+```
+
+**Status Colors:**
+- 🟢 Green: File exists at resolved path
+- 🟡 Yellow: Newer version available (future enhancement)
+- 🔴 Red: File not found at resolved path
+
+**Implementation Notes:**
+- Use QTableWidget with 6 columns
+- Status column uses QLabel with colored circle (●)
+- Validate file existence using `os.path.exists()`
+- Store full asset dict in row's UserRole data
 
 ---
 
-#### [P4-UI-03] Implement Asset Widget
+#### [P4-UI-05] Implement UI Integration Tests
 
 **Priority:** HIGH
-**Complexity:** Medium (3-5 days)
-**Dependencies:** `[P4-UI-01]`, `[P4-ASSET-01]`
+**Complexity:** Simple (1-2 days)
+**Dependencies:** `[P4-UI-02]`, `[P4-UI-03]`, `[P4-UI-04]`
 
 **Description:**
-Create asset widget to display and manage assets for active shot.
+Write integration tests to verify UI components work together correctly with filesystem discovery.
 
-**Spec Reference:** [spec.md Section 10.3](spec.md#103-asset-widget)
-
-**POC Comparison:**
-✅ **Can Adapt POC Code** - POC has node list; needs enhancement for asset metadata.
+**New Module:** `tests/test_ui_integration.py`
 
 **Acceptance Criteria:**
-- [ ] Display asset list in table view
-- [ ] Show asset metadata (type, name, variant, version, path)
-- [ ] Support asset selection
-- [ ] Provide context menu (update version, replace, remove)
-- [ ] Support multi-select for batch operations
-- [ ] Color-code by asset type
+- [ ] Test MainWindow initialization
+- [ ] Test project/episode/sequence selection flow
+- [ ] Test shot list population from filesystem
+- [ ] Test asset table population from filesystem
+- [ ] Test shot selection updates asset table
+- [ ] Test UI refresh after filesystem changes
+- [ ] Mock filesystem for consistent test results
+- [ ] Achieve 80%+ code coverage for UI modules
 
-**Implementation Notes:**
-- Use patterns from `igl_shot_build.py::_populate_assets_table()` for table population
-- Add columns: Type, Name, Variant, Version, Status, Actions
+**Test Scenarios:**
+```python
+def test_main_window_loads_projects():
+    """Test that main window loads projects from config."""
+
+def test_shot_widget_displays_discovered_shots():
+    """Test that shot widget displays shots from filesystem."""
+
+def test_asset_widget_displays_discovered_assets():
+    """Test that asset widget displays assets from filesystem."""
+
+def test_shot_selection_updates_asset_table():
+    """Test that selecting a shot updates the asset table."""
+
+def test_status_colors_reflect_file_existence():
+    """Test that status colors are correct based on file existence."""
+```
 
 ---
 
-#### [P4-UI-04] Implement Browser Dialog
+### UI Implementation Summary (Filesystem Discovery Phase)
 
-**Priority:** MEDIUM
-**Complexity:** Medium (3-5 days)
-**Dependencies:** `[P4-ASSET-02]`
+**Modules Created:**
+1. `ui/__init__.py` - Package initialization
+2. `ui/filesystem_discovery.py` - Filesystem scanning functions
+3. `ui/main_window.py` - Main dockable window
+4. `ui/shot_widget.py` - Shot list widget
+5. `ui/asset_widget.py` - Asset table widget
+6. `tests/test_ui_integration.py` - UI integration tests
 
-**Description:**
-Create asset browser dialog for discovering and selecting assets.
+**Total Tasks:** 5 tasks (P4-UI-01 through P4-UI-05)
+**Estimated Duration:** 2-3 weeks
+**Dependencies:** Only ProjectConfig and PatternManager
 
-**Spec Reference:** [spec.md Section 10.4](spec.md#104-browser-dialog)
+**Data Flow Diagram:**
+```
+Filesystem
+    ↓
+scan_shots_from_filesystem() → Shot Data
+    ↓
+ShotWidget displays shots
+    ↓
+User selects shot
+    ↓
+scan_assets_from_filesystem() → Asset Data
+    ↓
+AssetWidget displays assets
+```
 
-**POC Comparison:**
-🆕 **New Feature** - POC has no browser dialog.
+**Key Features:**
+- ✅ Browse filesystem without CTX nodes
+- ✅ Display shots discovered from directory structure
+- ✅ Display assets discovered from publish directories
+- ✅ Color-coded status based on file existence
+- ✅ Project/Episode/Sequence navigation
+- ✅ Shot selection with radio buttons
+- ✅ Asset table with sortable columns
+- ❌ No CTX node integration (future phase)
+- ❌ No import/export functionality (future phase)
+- ❌ No shot/asset creation (future phase)
 
-**Acceptance Criteria:**
-- [ ] Create modal dialog for asset browsing
-- [ ] Display directory tree navigation
-- [ ] Display asset table with filters
-- [ ] Support search/filter by name, type
-- [ ] Show asset preview (metadata, thumbnail if available)
-- [ ] Support multi-select and batch import
-
-**Implementation Notes:**
-- Use patterns from `igl_shot_build.py::ShotBuildTab` for navigation UI
-- Implement dropdown navigation: Episode → Sequence → Shot → Version
-- Display asset table similar to build system
+**Success Criteria:**
+- [ ] UI opens as dockable Maya window
+- [ ] Project selector loads from config
+- [ ] Shot list displays shots from filesystem
+- [ ] Asset table displays assets from filesystem
+- [ ] Selecting shot updates asset table
+- [ ] Status colors reflect file existence
+- [ ] All tests pass (80%+ coverage)
+- [ ] No errors in Maya script editor
 
 ---
 
-#### [P4-UI-05] Implement Settings Dialog
+### Module: ui/ (Future: CTX Node Integration Phase)
+
+**NOTE:** These tasks will be implemented AFTER the filesystem discovery phase is complete and CTX nodes are implemented.
+
+---
+
+#### [P4-UI-06] Integrate CTX Nodes with UI (FUTURE)
+
+**Priority:** HIGH (After CTX nodes implemented)
+**Complexity:** Complex (1 week)
+**Dependencies:** `[P4-SHOT-01]`, `[P4-ASSET-01]`, `[P3-SWITCH-01]`, `[P4-UI-02]`
+
+**Description:**
+Integrate UI with CTX custom nodes for full read/write functionality.
+
+**Spec Reference:** [spec/ui.md Section 4](spec/ui.md#4-data-flow)
+
+**Acceptance Criteria:**
+- [ ] Replace filesystem discovery with CTX node queries
+- [ ] Implement shot creation via ShotManager
+- [ ] Implement asset import via AssetManager
+- [ ] Implement shot switching via DisplayLayerManager
+- [ ] Update UI when CTX nodes change
+- [ ] Support Maya undo/redo for all operations
+- [ ] Add callbacks for node creation/deletion
+
+**Implementation Notes:**
+- This task bridges filesystem mode to full CTX mode
+- Keep filesystem discovery as fallback for scenes without CTX nodes
+- Use Maya callbacks to keep UI in sync with scene changes
+
+---
+
+#### [P4-UI-07] Implement Import Asset Dialog (FUTURE)
+
+**Priority:** HIGH (After CTX nodes implemented)
+**Complexity:** Medium (3-5 days)
+**Dependencies:** `[P4-UI-06]`, `[P4-ASSET-02]`
+
+**Description:**
+Create import asset dialog for adding assets to shots.
+
+**Spec Reference:** [spec/ui.md Section 2.2](spec/ui.md#22-import-asset-dialog)
+
+**Acceptance Criteria:**
+- [ ] Create modal dialog with department/type/asset selectors
+- [ ] Display available versions from filesystem
+- [ ] Show path preview and validation
+- [ ] Support StandIn/Reference import types
+- [ ] Call AssetManager.import_asset() on confirm
+- [ ] Update main window after import
+
+---
+
+#### [P4-UI-08] Implement Add Shot Dialog (FUTURE)
+
+**Priority:** HIGH (After CTX nodes implemented)
+**Complexity:** Simple (2-3 days)
+**Dependencies:** `[P4-UI-06]`, `[P4-SHOT-01]`
+
+**Description:**
+Create add shot dialog for adding shots to scene.
+
+**Spec Reference:** [spec/ui.md Section 2.1](spec/ui.md#21-add-shot-dialog)
+
+**Acceptance Criteria:**
+- [ ] Create modal dialog with shot code and frame range inputs
+- [ ] Validate shot code format (SH####)
+- [ ] Support "Copy assets from" option
+- [ ] Call ShotManager.create_shot() on confirm
+- [ ] Update main window after shot creation
+
+---
+
+#### [P4-UI-09] Implement Convert Scene Dialog (FUTURE)
+
+**Priority:** MEDIUM (After CTX nodes implemented)
+**Complexity:** Medium (3-5 days)
+**Dependencies:** `[P4-UI-06]`, `[P4-CONVERT-01]`
+
+**Description:**
+Create convert scene dialog for migrating existing scenes to CTX system.
+
+**Spec Reference:** [spec/ui.md Section 2.3](spec/ui.md#23-convert-scene-dialog)
+
+**Acceptance Criteria:**
+- [ ] Scan for existing aiStandIn/RSProxyMesh/reference nodes
+- [ ] Auto-detect context from paths
+- [ ] Allow user to select nodes to convert
+- [ ] Call Converter.convert_scene() on confirm
+- [ ] Show conversion report
+
+---
+
+#### [P4-UI-10] Implement Settings Dialog (FUTURE)
 
 **Priority:** LOW
 **Complexity:** Simple (1-2 days)
-**Dependencies:** `[P4-UI-01]`, `[P1-CONFIG-01]`
+**Dependencies:** `[P4-UI-02]`, `[P1-CONFIG-01]`
 
 **Description:**
 Create settings dialog for user preferences and configuration.
 
-**Spec Reference:** [spec.md Section 10.5](spec.md#105-settings-dialog)
-
-**POC Comparison:**
-🆕 **New Feature** - POC has no settings dialog.
+**Spec Reference:** [spec/ui.md Section 2.4](spec/ui.md#24-settings-dialog)
 
 **Acceptance Criteria:**
 - [ ] Display current configuration path

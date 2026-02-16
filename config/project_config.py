@@ -18,11 +18,11 @@ import os
 class ProjectConfig(object):
     """
     Loads and manages project configuration from JSON files.
-    
+
     Configuration can be loaded from:
-    1. Code repository (recommended): <repo>/examples/ctx_config.json
+    1. Code repository (recommended): <repo>/project_configs/ctx_config.json
     2. Project workspace (legacy): <workspace>/config/ctx_config.json
-    
+
     Attributes:
         config_path (str): Path to the loaded configuration file
         data (dict): Parsed configuration data
@@ -220,6 +220,28 @@ class ProjectConfig(object):
         """
         return self.data.get('extensions', [])
 
+    def get_tokens(self):
+        """
+        Get all token definitions.
+
+        Returns:
+            dict: Dictionary of token definitions
+        """
+        return self.data.get('tokens', {})
+
+    def get_token_values(self, token_name):
+        """
+        Get predefined values for a token.
+
+        Args:
+            token_name (str): Name of the token (e.g., 'dept', 'assetType')
+
+        Returns:
+            list: List of predefined values, or None if token has no predefined values
+        """
+        token_def = self.data.get('tokens', {}).get(token_name, {})
+        return token_def.get('values')
+
     @classmethod
     def find_config(cls, search_paths=None):
         """
@@ -255,7 +277,7 @@ class ProjectConfig(object):
         # Assuming this module is in <repo>/config/project_config.py
         module_dir = os.path.dirname(os.path.abspath(__file__))
         repo_root = os.path.dirname(module_dir)
-        repo_config = os.path.join(repo_root, 'examples', 'ctx_config.json')
+        repo_config = os.path.join(repo_root, 'project_configs', 'ctx_config.json')
         paths.append(repo_config)
 
         # 2. Environment variable
