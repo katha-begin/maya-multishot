@@ -42,13 +42,14 @@ class PlatformConfig(object):
     
     def __init__(self, project_config):
         """Initialize platform configuration.
-        
+
         Args:
             project_config (ProjectConfig): Project configuration instance
         """
         self.project_config = project_config
         self.current_platform = self._detect_platform()
         self.platform_mapping = self._load_platform_mapping()
+        self.roots = self._load_roots()
     
     def _detect_platform(self):
         """Detect the current operating system.
@@ -67,11 +68,43 @@ class PlatformConfig(object):
     
     def _load_platform_mapping(self):
         """Load platform mapping from configuration.
-        
+
+        For backward compatibility with legacy configs that use platformMapping.
+
         Returns:
-            dict: Platform mapping dictionary
+            dict: Platform mapping dictionary (empty if using new roots format)
         """
         return self.project_config.data.get('platformMapping', {})
+
+    def _load_roots(self):
+        """Load roots from configuration.
+
+        Supports two formats:
+
+        Format 1 (New): Platform-specific roots
+            "roots": {
+                "windows": {"projRoot": "V:/", "imgRoot": "W:/"},
+                "linux": {"projRoot": "/mnt/v/", "imgRoot": "/mnt/w/"}
+            }
+
+        Format 2 (Legacy): Flat roots + platformMapping
+            "roots": {"projRoot": "V:/", "projRootLinux": "/mnt/v/"},
+            "platformMapping": {
+                "windows": {"projRoot": "V:/"},
+                "linux": {"projRoot": "/mnt/v/"}
+            }
+
+        Returns:
+            dict: Roots dictionary in platform-specific format
+        """
+        roots = self.project_config.get_roots()
+
+        # Check if already in new format (has 'windows' or 'linux' keys)
+        if 'windows' in roots or 'linux' in roots:
+            return roots
+
+        # Legacy format: return empty dict, will use platformMapping instead
+        return {}
     
     def get_platform(self):
         """Get the current platform.
@@ -83,19 +116,69 @@ class PlatformConfig(object):
     
     def get_root_for_platform(self, root_name, target_platform=None):
         """Get root path for specific platform.
-        
+
+        This method supports three configuration styles:
+
+        Style 1 (New - Recommended): Platform-specific roots
+            "roots": {
+                "windows": {"projRoot": "V:/", "imgRoot": "W:/"},
+                "linux": {"projRoot": "/mnt/v/", "imgRoot": "/mnt/w/"}
+            }
+
+        Style 2 (Legacy): platformMapping contains actual paths
+            "platformMapping": {
+                "windows": {"projRoot": "V:/"},
+                "linux": {"projRoot": "/mnt/igloo_swa_v/"}
+            }
+
+        Style 3 (Legacy): platformMapping contains keys pointing to roots
+            "roots": {
+                "projRoot": "V:/",
+                "projRootLinux": "/mnt/igloo_swa_v/"
+            },
+            "platformMapping": {
+                "windows": {"projRoot": "projRoot"},
+                "linux": {"projRoot": "projRootLinux"}
+            }
+
         Args:
-            root_name (str): Root name (e.g., 'PROJ_ROOT')
+            root_name (str): Root name (e.g., 'projRoot')
             target_platform (str, optional): Target platform. Defaults to current.
-        
+
         Returns:
             str: Root path for the platform, or None if not found
         """
         if target_platform is None:
             target_platform = self.current_platform
-        
-        platform_roots = self.platform_mapping.get(target_platform, {})
-        return platform_roots.get(root_name)
+
+        # Try new format first (Style 1)
+        if self.roots and target_platform in self.roots:
+            platform_roots = self.roots.get(target_platform, {})
+            root_path = platform_roots.get(root_name)
+            if root_path:
+                return root_path
+
+        # Fall back to legacy platformMapping (Style 2 & 3)
+        if self.platform_mapping:
+            platform_roots = self.platform_mapping.get(target_platform, {})
+            mapped_value = platform_roots.get(root_name)
+
+            if not mapped_value:
+                return None
+
+            # Check if mapped_value is a key pointing to roots section (Style 3)
+            # If it doesn't start with / or contain :, it's likely a key
+            if not ('/' in mapped_value or ':' in mapped_value or '\\' in mapped_value):
+                # It's a key, look it up in flat roots
+                flat_roots = self.project_config.data.get('roots', {})
+                actual_path = flat_roots.get(mapped_value)
+                if actual_path:
+                    return actual_path
+
+            # Style 2: It's an actual path, return as-is
+            return mapped_value
+
+        return None
     
     def map_path(self, path, target_platform=None):
         """Map path from current platform to target platform.
@@ -135,12 +218,28 @@ class PlatformConfig(object):
             return path
 
         # Get all roots for source and target platforms
-        source_roots = self.platform_mapping.get(source_platform, {})
-        target_roots = self.platform_mapping.get(target_platform, {})
+        # Try new format first
+        if self.roots:
+            source_roots = self.roots.get(source_platform, {})
+            target_roots = self.roots.get(target_platform, {})
+        else:
+            # Fall back to legacy platformMapping
+            source_roots = self.platform_mapping.get(source_platform, {})
+            target_roots = self.platform_mapping.get(target_platform, {})
 
         # Try to match and replace each root
         for root_name, source_root in source_roots.items():
             target_root = target_roots.get(root_name)
+
+            # Handle legacy format where value might be a key
+            if self.platform_mapping and not self.roots:
+                if not ('/' in source_root or ':' in source_root or '\\' in source_root):
+                    flat_roots = self.project_config.data.get('roots', {})
+                    source_root = flat_roots.get(source_root, source_root)
+                if not ('/' in target_root or ':' in target_root or '\\' in target_root):
+                    flat_roots = self.project_config.data.get('roots', {})
+                    target_root = flat_roots.get(target_root, target_root)
+
             source_root_normalized = self._normalize_path(source_root)
             if target_root and path.startswith(source_root_normalized):
                 # Replace source root with target root
@@ -161,12 +260,26 @@ class PlatformConfig(object):
         """
         path = self._normalize_path(path)
 
-        # Check all platforms to see which roots match
-        for platform_name, roots in self.platform_mapping.items():
-            for root_name, root_path in roots.items():
-                root_path_normalized = self._normalize_path(root_path)
-                if path.startswith(root_path_normalized):
-                    return platform_name
+        # Try new format first
+        if self.roots:
+            for platform_name, roots in self.roots.items():
+                for root_name, root_path in roots.items():
+                    root_path_normalized = self._normalize_path(root_path)
+                    if path.startswith(root_path_normalized):
+                        return platform_name
+
+        # Fall back to legacy platformMapping
+        if self.platform_mapping:
+            for platform_name, roots in self.platform_mapping.items():
+                for root_name, root_path in roots.items():
+                    # Handle legacy format where value might be a key
+                    if not ('/' in root_path or ':' in root_path or '\\' in root_path):
+                        flat_roots = self.project_config.data.get('roots', {})
+                        root_path = flat_roots.get(root_path, root_path)
+
+                    root_path_normalized = self._normalize_path(root_path)
+                    if path.startswith(root_path_normalized):
+                        return platform_name
 
         # Default to current platform if no match
         return self.current_platform

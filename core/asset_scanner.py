@@ -20,20 +20,22 @@ logger = logging.getLogger(__name__)
 
 class AssetScanner(object):
     """Scanner for discovering assets from filesystem and creating CTX nodes.
-    
+
     Example:
         >>> scanner = AssetScanner(config)
         >>> assets = scanner.scan_shot_assets(shot_node)
         >>> print("Found {} assets".format(len(assets)))
     """
-    
-    def __init__(self, config):
+
+    def __init__(self, config, layer_manager=None):
         """Initialize asset scanner.
-        
+
         Args:
             config: ProjectConfig instance
+            layer_manager (DisplayLayerManager, optional): Display layer manager for assigning assets to layers
         """
         self.config = config
+        self.layer_manager = layer_manager
     
     def scan_shot_assets(self, shot_node, departments=None):
         """Scan filesystem for assets and create CTX_Asset nodes.
@@ -249,10 +251,49 @@ class AssetScanner(object):
             # the Maya reference namespace exactly
             from core.ctx_converter import CTXConverter
             converter = CTXConverter()
+            logger.info("=" * 80)
+            logger.info("ASSET #{} - Attempting to link {} to scene...".format(
+                len(created_assets) + 1, asset_node.node_name))
+            logger.info("  Asset namespace: {}".format(asset_node.get_namespace()))
+            logger.info("  Asset type: {}".format(asset_node.get_asset_type()))
+            logger.info("  Asset name: {}".format(asset_node.get_asset_name()))
+            logger.info("=" * 80)
             linked = converter.link_ctx_asset_to_scene(asset_node.node_name)
+            logger.info("Link result for {}: {}".format(asset_node.node_name, linked))
+
             if linked:
                 logger.info("Auto-linked {} to Maya reference by namespace".format(
                     asset_node.node_name))
+
+                # Add Maya node to display layer if layer manager is available
+                logger.info("+" * 80)
+                logger.info("DISPLAY LAYER ASSIGNMENT FOR ASSET #{}".format(len(created_assets) + 1))
+                logger.info("  Asset node: {}".format(asset_node.node_name))
+                logger.info("  Namespace: {}".format(asset_node.get_namespace()))
+                logger.info("  Layer manager: {}".format(self.layer_manager))
+                logger.info("+" * 80)
+
+                if self.layer_manager:
+                    logger.info("Layer manager available - assigning to display layer...")
+
+                    try:
+                        # Pass the CTX_Asset node and shot node
+                        # Layer manager will determine CTX_Active or CTX_Inactive based on shot.is_active()
+                        logger.info("CALLING assign_to_layer_from_ctx_asset({}, {})".format(
+                            asset_node.node_name, shot_node.node_name))
+                        self.layer_manager.assign_to_layer_from_ctx_asset(
+                            asset_node, shot_node)
+                        logger.info("SUCCESS! Assigned {} to display layer".format(
+                            asset_node.node_name))
+                    except Exception as e:
+                        logger.error("FAILED to assign {} to layer: {}".format(
+                            asset_node.node_name, e))
+                        import traceback
+                        logger.error("Traceback: {}".format(traceback.format_exc()))
+                else:
+                    logger.warning("No layer_manager available")
+
+                logger.info("+" * 80)
             else:
                 logger.info("No matching Maya reference found for {} (will link when asset is loaded)".format(
                     asset_node.node_name))

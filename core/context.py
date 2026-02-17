@@ -149,6 +149,9 @@ class ContextManager(object):
         if not shot_node.exists():
             raise ValueError("Shot node does not exist")
 
+        # Get shot_id BEFORE deleting (needed for callback)
+        shot_id = shot_node.get_shot_id()
+
         # Delete all assets first
         assets = shot_node.get_assets()
         for asset in assets:
@@ -158,7 +161,7 @@ class ContextManager(object):
         shot_node.delete()
 
         # Notify callbacks
-        self._notify_change('shot_deleted', {'shot_id': shot_node.get_shot_id()})
+        self._notify_change('shot_deleted', {'shot_id': shot_id})
 
     def get_shot_context(self, shot_node):
         """Get shot context as dictionary.

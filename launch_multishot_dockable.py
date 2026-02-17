@@ -100,7 +100,10 @@ def launch_dockable():
             cmds.deleteUI(dock_control_name)
 
         try:
-            # Create dock control
+            # Create dock control with calculated width
+            # Get recommended width from MainWindow class
+            recommended_width = MainWindow.get_recommended_width()
+
             cmds.dockControl(
                 dock_control_name,
                 label="Multishot Manager",
@@ -108,7 +111,7 @@ def launch_dockable():
                 content=main_window.objectName(),
                 allowedArea=["left", "right"],
                 floating=True,
-                width=900
+                width=recommended_width
             )
             print("\n✓ Multishot Manager launched with dockControl!")
             print("  - Drag to left or right edge to dock")

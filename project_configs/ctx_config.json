@@ -6,17 +6,29 @@
     "description": "Sample project configuration for Context Variables Pipeline"
   },
   "roots": {
-    "projRoot": "V:/"
+    "windows": {
+      "projRoot": "V:/",
+      "imgRoot": "W:/"
+    },
+    "linux": {
+      "projRoot": "/mnt/igloo_swa_v/",
+      "imgRoot": "/mnt/igloo_swa_w/"
+    }
   },
   "staticPaths": {
     "sceneBase": "all/scene"
   },
   "templates": {
+    "shotRoot": "$projRoot$project/$sceneBase/$ep/$seq/$shot",
+    "shotWork": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/version",
     "publishPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish",
     "cachePath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver",
+    "imgPath": "$imgRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/<RenderLayer>/<RenderLayer>",
     "assetPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
     "fullFilename": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
-    "namespace": "$assetType_$assetName_$variant"
+    "namespace": "$assetType_$assetName_$variant",
+    "namespaceShader": "$assetType_$assetName_$variant_Shade",
+    "namespaceGroom": "$assetType_$assetName_$variant_Groom"
   },
   "patterns": {
     "fullFormat": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
@@ -73,12 +85,19 @@
       "pattern": "\\d{3}"
     }
   },
-  "platformMapping": {
-    "windows": {
-      "projRoot": "V:/"
+  "renderSettings": {
+    "enabled": true,
+    "outputPath": {
+      "template": "imgPath",
+      "deptSource": "sceneFile",
+      "deptFallback": "lighting",
+      "versionSource": "sceneFile",
+      "versionFallback": "v001",
+      "sceneFilePattern": "{ep}_{seq}_{shot}_{dept}_{variant}_{ver}.ma"
     },
-    "linux": {
-      "projRoot": "/mnt/igloo_swa_v/"
+    "camera": {
+      "autoSetFromShot": true,
+      "assetType": "CAM"
     }
   },
   "cache": {
@@ -94,6 +113,25 @@
       "VEH": []
     },
     "versions": {}
+  },
+  "shotMetadata": {
+    "enabled": true,
+    "filenamePattern": ".{shot_id}.json",
+    "location": "shotRoot",
+    "fieldMapping": {
+      "frameRange": {
+        "jsonField": "shot_info",
+        "parseFormat": "nested",
+        "startField": "start_frame",
+        "endField": "end_frame",
+        "defaultStart": 1001,
+        "defaultEnd": 1100
+      },
+      "fps": {
+        "jsonField": "fps",
+        "default": 25.0
+      }
+    }
   }
 }
 

@@ -343,8 +343,27 @@ class CTXShotNode(object):
         layer_name = "CTX_{}_{}_{}".format(ep_code, seq_code, shot_code)
         cmds.setAttr(node_name + '.display_layer_name', layer_name, type='string')
 
+        # Add message attribute for display layer connection
+        cmds.addAttr(node_name, longName='display_layer_link', attributeType='message')
+
         cmds.addAttr(node_name, longName='is_active', attributeType='bool')
         cmds.setAttr(node_name + '.is_active', False)
+
+        # Frame range attributes
+        cmds.addAttr(node_name, longName='start_frame', attributeType='long')
+        cmds.setAttr(node_name + '.start_frame', 1001)  # Default start frame
+
+        cmds.addAttr(node_name, longName='end_frame', attributeType='long')
+        cmds.setAttr(node_name + '.end_frame', 1100)  # Default end frame (100 frames)
+
+        cmds.addAttr(node_name, longName='frame_offset', attributeType='long')
+        cmds.setAttr(node_name + '.frame_offset', 0)  # Default no offset
+
+        cmds.addAttr(node_name, longName='fps', attributeType='double')
+        cmds.setAttr(node_name + '.fps', 24.0)  # Default 24 fps
+
+        cmds.addAttr(node_name, longName='handles', attributeType='long')
+        cmds.setAttr(node_name + '.handles', 10)  # Default 10 frame handles
 
         # Connect to manager if provided
         if manager_node and manager_node.exists():
@@ -422,6 +441,74 @@ class CTXShotNode(object):
         """
         cmds.setAttr(self.node_name + '.is_active', active)
 
+    def get_frame_range(self):
+        """Get frame range for this shot.
+
+        Returns:
+            tuple: (start_frame, end_frame)
+        """
+        start = cmds.getAttr(self.node_name + '.start_frame')
+        end = cmds.getAttr(self.node_name + '.end_frame')
+        return (start, end)
+
+    def set_frame_range(self, start_frame, end_frame):
+        """Set frame range for this shot.
+
+        Args:
+            start_frame (int): Start frame number
+            end_frame (int): End frame number
+        """
+        cmds.setAttr(self.node_name + '.start_frame', start_frame)
+        cmds.setAttr(self.node_name + '.end_frame', end_frame)
+
+    def get_fps(self):
+        """Get frames per second for this shot.
+
+        Returns:
+            float: FPS value
+        """
+        return cmds.getAttr(self.node_name + '.fps')
+
+    def set_fps(self, fps):
+        """Set frames per second for this shot.
+
+        Args:
+            fps (float): FPS value (e.g., 24.0, 23.976, 30.0)
+        """
+        cmds.setAttr(self.node_name + '.fps', fps)
+
+    def get_frame_offset(self):
+        """Get frame offset for this shot.
+
+        Returns:
+            int: Frame offset value
+        """
+        return cmds.getAttr(self.node_name + '.frame_offset')
+
+    def set_frame_offset(self, offset):
+        """Set frame offset for this shot.
+
+        Args:
+            offset (int): Frame offset value
+        """
+        cmds.setAttr(self.node_name + '.frame_offset', offset)
+
+    def get_handles(self):
+        """Get handle frames for this shot.
+
+        Returns:
+            int: Number of handle frames
+        """
+        return cmds.getAttr(self.node_name + '.handles')
+
+    def set_handles(self, handles):
+        """Set handle frames for this shot.
+
+        Args:
+            handles (int): Number of handle frames
+        """
+        cmds.setAttr(self.node_name + '.handles', handles)
+
     def get_assets(self):
         """Get all asset nodes connected to this shot.
 
@@ -444,6 +531,48 @@ class CTXShotNode(object):
                 if ctx_type == 'CTX_Asset':
                     result.append(CTXAssetNode(conn))
         return result
+
+    def link_display_layer(self, layer_name):
+        """Link display layer to this shot node via message attribute.
+
+        Args:
+            layer_name (str): Display layer node name
+
+        Returns:
+            bool: True if linked successfully
+        """
+        if not cmds.objExists(layer_name):
+            return False
+
+        if not cmds.objExists(self.node_name + '.display_layer_link'):
+            cmds.addAttr(self.node_name, longName='display_layer_link', attributeType='message')
+
+        # Add message attribute to display layer if not exists
+        if not cmds.objExists(layer_name + '.ctx_shot_link'):
+            cmds.addAttr(layer_name, longName='ctx_shot_link', attributeType='message')
+
+        # Connect: CTX_Shot.display_layer_link -> DisplayLayer.ctx_shot_link
+        if not cmds.isConnected(layer_name + '.ctx_shot_link', self.node_name + '.display_layer_link'):
+            cmds.connectAttr(layer_name + '.ctx_shot_link', self.node_name + '.display_layer_link', force=True)
+
+        return True
+
+    def get_linked_display_layer(self):
+        """Get linked display layer node.
+
+        Returns:
+            str or None: Display layer node name, or None if not linked
+        """
+        if not cmds.objExists(self.node_name + '.display_layer_link'):
+            return None
+
+        connections = cmds.listConnections(
+            self.node_name + '.display_layer_link',
+            source=True,
+            destination=False
+        ) or []
+
+        return connections[0] if connections else None
 
     def delete(self):
         """Delete this shot node."""

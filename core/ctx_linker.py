@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 """CTX Asset to Maya Node Linking Module.
 
 This module provides functions for creating bidirectional links between CTX_Asset
@@ -58,7 +60,7 @@ def link_to_maya_node(ctx_asset_node, maya_node):
         # For reference nodes, connect directly to .message without adding custom attributes
         # Reference nodes are locked and can't have custom attributes added
         if node_type == 'reference':
-            # Connect reference.message → CTX_Asset.targetNode
+            # Connect reference.message -> CTX_Asset.targetNode
             cmds.connectAttr(
                 '{}.message'.format(maya_node),
                 '{}.targetNode'.format(ctx_asset_node),
@@ -73,7 +75,7 @@ def link_to_maya_node(ctx_asset_node, maya_node):
                 cmds.addAttr(maya_node, longName='ctx_metadata', attributeType='message')
                 logger.debug("Added ctx_metadata attribute to {}".format(maya_node))
 
-            # Create connection: Maya node.message → CTX_Asset.targetNode
+            # Create connection: Maya node.message -> CTX_Asset.targetNode
             cmds.connectAttr(
                 '{}.message'.format(maya_node),
                 '{}.targetNode'.format(ctx_asset_node),

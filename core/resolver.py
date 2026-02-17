@@ -536,30 +536,43 @@ class PathResolver(object):
 
     def _build_full_context(self, context, version=None):
         """Build full context with roots, static paths, and user context.
-        
+
+        Supports both new platform-specific roots and legacy flat roots.
+
         Args:
             context (dict): User-provided context
             version (str, optional): Version override
-        
+
         Returns:
             dict: Full context dictionary
         """
         full_context = {}
-        
+
         # Add roots (mapped to current platform)
-        for root_name in self.config.get_roots().keys():
-            root_path = self.platform_config.get_root_for_platform(root_name)
-            full_context[root_name] = root_path
-        
+        roots = self.config.get_roots()
+
+        # Check if new format (platform-specific)
+        if 'windows' in roots or 'linux' in roots:
+            # New format: get roots for current platform
+            current_platform = self.platform_config.get_platform()
+            platform_roots = roots.get(current_platform, {})
+            for root_name, root_path in platform_roots.items():
+                full_context[root_name] = root_path
+        else:
+            # Legacy format: use platform_config to resolve
+            for root_name in roots.keys():
+                root_path = self.platform_config.get_root_for_platform(root_name)
+                full_context[root_name] = root_path
+
         # Add static paths
         full_context.update(self.config.get_static_paths())
-        
+
         # Add project code
         full_context['project'] = self.config.get_project_code()
-        
+
         # Add user context (overrides above if conflicts)
         full_context.update(context)
-        
+
         # Add version if provided
         if version:
             full_context['ver'] = version

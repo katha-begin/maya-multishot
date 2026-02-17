@@ -6,7 +6,12 @@
     "description": "Sample project configuration for Context Variables Pipeline"
   },
   "roots": {
-    "projRoot": "V:/"
+    "windows": {
+      "projRoot": "V:/"
+    },
+    "linux": {
+      "projRoot": "/mnt/igloo_swa_v/"
+    }
   },
   "staticPaths": {
     "sceneBase": "all/scene"
@@ -71,14 +76,6 @@
       "description": "Asset variant",
       "example": "001",
       "pattern": "\\d{3}"
-    }
-  },
-  "platformMapping": {
-    "windows": {
-      "projRoot": "V:/"
-    },
-    "linux": {
-      "projRoot": "/mnt/igloo_swa_v/"
     }
   },
   "cache": {

@@ -22,13 +22,14 @@ logger = logging.getLogger(__name__)
 class AssetManagerDialog(QtWidgets.QDialog):
     """Dialog for managing assets and versions for a shot."""
 
-    def __init__(self, shot_data, config, parent=None):
+    def __init__(self, shot_data, config, parent=None, layer_manager=None):
         """Initialize asset manager dialog.
 
         Args:
             shot_data: Dict with keys: project, ep, seq, shot, version
             config: ProjectConfig instance
             parent: Parent widget (optional)
+            layer_manager (DisplayLayerManager, optional): Display layer manager for assigning assets to layers
         """
         super(AssetManagerDialog, self).__init__(parent)
 
@@ -45,6 +46,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
         self._shot_data = shot_data
         self._config = config
+        self._layer_manager = layer_manager
         self._assets = []  # List of asset dicts
 
         self._setup_ui()
@@ -63,26 +65,79 @@ class AssetManagerDialog(QtWidgets.QDialog):
         self.setWindowTitle("Asset Manager - {} ({})".format(shot_path, self._shot_data.get('version', 'v001')))
         # DO NOT set modal - we want non-blocking dialog
         # self.setModal(True)  # REMOVED - this was blocking Maya
-        self.setMinimumSize(900, 500)
+        self.setMinimumSize(1000, 600)
+        self.resize(1200, 700)
         
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
         
-        # Assets section label
+        # Assets section label and search box
+        header_layout = QtWidgets.QHBoxLayout()
+
         assets_label = QtWidgets.QLabel("ASSETS IN SHOT")
         assets_label.setStyleSheet("font-weight: bold; font-size: 10pt;")
-        main_layout.addWidget(assets_label)
+        header_layout.addWidget(assets_label)
+
+        header_layout.addStretch()
+
+        # Search box
+        search_label = QtWidgets.QLabel("Search:")
+        header_layout.addWidget(search_label)
+
+        self.search_box = QtWidgets.QLineEdit()
+        self.search_box.setPlaceholderText("Filter assets by name, type, dept...")
+        self.search_box.setMinimumWidth(250)
+        self.search_box.setClearButtonEnabled(True)
+        header_layout.addWidget(self.search_box)
+
+        main_layout.addLayout(header_layout)
         
         # Asset table
         self.asset_table = QtWidgets.QTableWidget()
-        self.asset_table.setColumnCount(9)
+        self.asset_table.setColumnCount(8)
         self.asset_table.setHorizontalHeaderLabels([
-            "Type", "Name", "Var", "Dept", "Current", "Latest", "Status", "CTX Ready", "Action"
+            "Type", "Name", "Var", "Dept", "Current", "Latest", "Status", "Action"
         ])
-        self.asset_table.horizontalHeader().setStretchLastSection(False)
-        self.asset_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+
+        # Set column widths for better readability
+        header = self.asset_table.horizontalHeader()
+        header.setStretchLastSection(False)
+
+        # Column 0: Type - Fixed width (60px)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
+        self.asset_table.setColumnWidth(0, 60)
+
+        # Column 1: Name - Stretch to fill available space
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+
+        # Column 2: Var - Fixed width (50px)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
+        self.asset_table.setColumnWidth(2, 50)
+
+        # Column 3: Dept - Fixed width (70px)
+        header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
+        self.asset_table.setColumnWidth(3, 70)
+
+        # Column 4: Current - Fixed width (120px) for dropdown
+        header.setSectionResizeMode(4, QtWidgets.QHeaderView.Fixed)
+        self.asset_table.setColumnWidth(4, 120)
+
+        # Column 5: Latest - Fixed width (80px)
+        header.setSectionResizeMode(5, QtWidgets.QHeaderView.Fixed)
+        self.asset_table.setColumnWidth(5, 80)
+
+        # Column 6: Status - Fixed width (100px)
+        header.setSectionResizeMode(6, QtWidgets.QHeaderView.Fixed)
+        self.asset_table.setColumnWidth(6, 100)
+
+        # Column 7: Action - Fixed width (80px)
+        header.setSectionResizeMode(7, QtWidgets.QHeaderView.Fixed)
+        self.asset_table.setColumnWidth(7, 80)
+
+        # Enable multi-selection
         self.asset_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.asset_table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.asset_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.asset_table.setAlternatingRowColors(True)
         main_layout.addWidget(self.asset_table)
@@ -122,6 +177,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
     
     def _connect_signals(self):
         """Connect UI signals to slots."""
+        self.search_box.textChanged.connect(self._on_search_changed)
         self.import_asset_btn.clicked.connect(self._on_import_asset)
         self.update_all_btn.clicked.connect(self._on_update_all)
         self.validate_all_btn.clicked.connect(self._on_validate_all)
@@ -451,8 +507,38 @@ class AssetManagerDialog(QtWidgets.QDialog):
             # Column 3: Dept
             self.asset_table.setItem(row, 3, QtWidgets.QTableWidgetItem(asset_data['dept']))
 
-            # Column 4: Current
-            self.asset_table.setItem(row, 4, QtWidgets.QTableWidgetItem(asset_data['current']))
+            # Column 4: Current - Version dropdown
+            version_combo = QtWidgets.QComboBox()
+            versions = self._get_available_versions(asset_data)
+
+            if versions:
+                version_combo.addItems(versions)
+                current_version = asset_data['current']
+
+                # Set current version as selected
+                if current_version in versions:
+                    version_combo.setCurrentText(current_version)
+
+                # Color code based on version status
+                if current_version == asset_data['latest']:
+                    # Latest version - green
+                    version_combo.setStyleSheet("QComboBox { background-color: #4CAF50; color: white; font-weight: bold; }")
+                elif current_version < asset_data['latest']:
+                    # Outdated version - red
+                    version_combo.setStyleSheet("QComboBox { background-color: #F44336; color: white; font-weight: bold; }")
+                else:
+                    # Normal
+                    version_combo.setStyleSheet("")
+
+                # Store row index for callback
+                version_combo.currentTextChanged.connect(
+                    lambda text, r=row: self._on_version_changed(r, text)
+                )
+            else:
+                version_combo.addItem(asset_data['current'])
+                version_combo.setEnabled(False)
+
+            self.asset_table.setCellWidget(row, 4, version_combo)
 
             # Column 5: Latest
             self.asset_table.setItem(row, 5, QtWidgets.QTableWidgetItem(asset_data['latest']))
@@ -472,61 +558,103 @@ class AssetManagerDialog(QtWidgets.QDialog):
             status_widget.setAlignment(QtCore.Qt.AlignCenter)
             self.asset_table.setCellWidget(row, 6, status_widget)
 
-            # Column 7: CTX Ready
-            if asset_data.get('ctx_ready', False):
-                ctx_widget = QtWidgets.QLabel("✓")
-                ctx_widget.setStyleSheet("color: green; font-weight: bold; font-size: 14pt;")
-                ctx_widget.setAlignment(QtCore.Qt.AlignCenter)
-                self.asset_table.setCellWidget(row, 7, ctx_widget)
+            # Column 7: Action button - Apply version change
+            set_btn = QtWidgets.QPushButton("Apply")
+            set_btn.clicked.connect(lambda checked=False, r=row: self._on_apply_version(r))
+            self.asset_table.setCellWidget(row, 7, set_btn)
+
+    def _on_search_changed(self, text):
+        """Handle search box text change - filter table rows.
+
+        Args:
+            text: Search text
+        """
+        search_text = text.lower().strip()
+
+        # If search is empty, show all rows
+        if not search_text:
+            for row in range(self.asset_table.rowCount()):
+                self.asset_table.setRowHidden(row, False)
+            return
+
+        # Filter rows based on search text
+        for row in range(self.asset_table.rowCount()):
+            asset_data = self._assets[row]
+
+            # Search in multiple fields
+            searchable_text = " ".join([
+                asset_data.get('type', ''),
+                asset_data.get('name', ''),
+                asset_data.get('var', ''),
+                asset_data.get('dept', ''),
+                asset_data.get('current', ''),
+                asset_data.get('latest', ''),
+                asset_data.get('status', '')
+            ]).lower()
+
+            # Show row if search text is found in any field
+            if search_text in searchable_text:
+                self.asset_table.setRowHidden(row, False)
             else:
-                convert_btn = QtWidgets.QPushButton("Convert")
-                convert_btn.setStyleSheet("background-color: #FF9800; color: white; font-weight: bold;")
-                convert_btn.clicked.connect(lambda checked=False, r=row: self._on_convert_to_ctx(r))
-                self.asset_table.setCellWidget(row, 7, convert_btn)
+                self.asset_table.setRowHidden(row, True)
 
-            # Column 8: Action button
-            set_btn = QtWidgets.QPushButton("Set")
-            set_btn.clicked.connect(lambda checked=False, r=row: self._on_set_version(r))
-            self.asset_table.setCellWidget(row, 8, set_btn)
+    def _on_version_changed(self, row, version):
+        """Handle version dropdown change.
 
-    def _on_set_version(self, row):
-        """Handle Set button click for version selection.
+        Args:
+            row: Table row index
+            version: Selected version string
+        """
+        if not version:
+            return
+
+        asset_data = self._assets[row]
+        logger.debug("Version changed for row {}: {} -> {}".format(
+            row, asset_data.get('current'), version))
+
+        # Update asset data (but don't apply to Maya yet)
+        asset_data['pending_version'] = version
+
+        # Update status color based on selection
+        version_combo = self.asset_table.cellWidget(row, 4)
+        if version_combo:
+            if version == asset_data['latest']:
+                # Latest version - green
+                version_combo.setStyleSheet("QComboBox { background-color: #4CAF50; color: white; font-weight: bold; }")
+            elif version < asset_data['latest']:
+                # Outdated version - red
+                version_combo.setStyleSheet("QComboBox { background-color: #F44336; color: white; font-weight: bold; }")
+            else:
+                # Normal
+                version_combo.setStyleSheet("")
+
+    def _on_apply_version(self, row):
+        """Handle Apply button click to apply version change.
 
         Args:
             row: Table row index
         """
         logger.info("=" * 80)
-        logger.info("SET VERSION BUTTON CLICKED - Row: {}".format(row))
+        logger.info("APPLY VERSION BUTTON CLICKED - Row: {}".format(row))
 
         asset_data = self._assets[row]
-        logger.info("Asset: {} {} (current: {})".format(
-            asset_data['type'], asset_data['name'], asset_data.get('current', 'N/A')))
 
-        # Discover available versions from filesystem
-        versions = self._get_available_versions(asset_data)
-        logger.info("Available versions: {}".format(versions))
-
-        if not versions:
-            logger.warning("No versions found for {} {}".format(asset_data['type'], asset_data['name']))
-            QtWidgets.QMessageBox.warning(
-                self,
-                "No Versions",
-                "No versions found for {} {}.".format(asset_data['type'], asset_data['name'])
-            )
+        # Get selected version from dropdown
+        version_combo = self.asset_table.cellWidget(row, 4)
+        if not version_combo:
+            logger.warning("No version dropdown found for row {}".format(row))
             return
 
-        version, ok = QtWidgets.QInputDialog.getItem(
-            self,
-            "Select Version",
-            "Select version for {} {}:".format(asset_data['type'], asset_data['name']),
-            versions,
-            versions.index(asset_data['current']) if asset_data['current'] in versions else 0,
-            False
-        )
+        version = version_combo.currentText()
 
-        logger.info("User selected version: {} (ok: {})".format(version, ok))
+        logger.info("Asset: {} {} (current: {} -> new: {})".format(
+            asset_data['type'], asset_data['name'], asset_data.get('current', 'N/A'), version))
 
-        if ok and version:
+        if version == asset_data.get('current'):
+            logger.info("Version unchanged, skipping")
+            return
+
+        if version:
             from maya import cmds
             from core.custom_nodes import CTXAssetNode, CTXManagerNode
             from core.nodes import NodeManager
@@ -852,6 +980,19 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
             asset_data['ctx_ready'] = True
             asset_data['ctx_node'] = ctx_node
+
+            # Assign Maya node to display layer if layer_manager available
+            if self._layer_manager and maya_node and shot_node:
+                try:
+                    layer_name = shot_node.get_display_layer_name()
+                    if layer_name and cmds.objExists(layer_name):
+                        self._layer_manager.assign_to_layer(maya_node, layer_name)
+                        logger.info("Assigned {} to display layer {}".format(maya_node, layer_name))
+                    else:
+                        logger.warning("Display layer {} not found".format(layer_name))
+                except Exception as e:
+                    logger.error("Failed to assign to display layer: %s", e)
+
             self._populate_asset_table()
 
             logger.info("Created and linked CTX node: {}".format(ctx_node))
@@ -1021,8 +1162,8 @@ class AssetManagerDialog(QtWidgets.QDialog):
         )
 
     def _on_apply(self):
-        """Handle Apply button click - Apply asset version changes to CTX nodes and Maya scene."""
-        logger.info("Apply clicked - saving asset version changes")
+        """Handle Apply button click - Apply version changes to selected assets."""
+        logger.info("Apply clicked - applying version changes to selected assets")
 
         try:
             from maya import cmds
@@ -1032,45 +1173,51 @@ class AssetManagerDialog(QtWidgets.QDialog):
         from core.resolver import PathResolver
         from config.platform_config import PlatformConfig
 
-        # Check if there are any non-CTX assets
-        non_ctx_assets = [a for a in self._assets if not a.get('ctx_ready', False)]
-        if non_ctx_assets:
-            reply = QtWidgets.QMessageBox.question(
+        # Get selected rows
+        selected_rows = set()
+        for item in self.asset_table.selectedItems():
+            selected_rows.add(item.row())
+
+        if not selected_rows:
+            QtWidgets.QMessageBox.information(
                 self,
-                "Non-CTX Assets Found",
-                "{} asset(s) are not CTX-ready.\n\nDo you want to convert them first?".format(len(non_ctx_assets)),
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel
+                "No Selection",
+                "Please select one or more assets to apply version changes."
             )
+            return
 
-            if reply == QtWidgets.QMessageBox.Cancel:
-                return
-            elif reply == QtWidgets.QMessageBox.Yes:
-                # Convert all non-CTX assets
-                for asset_data in non_ctx_assets:
-                    # Find row index
-                    row = self._assets.index(asset_data)
-                    self._on_convert_to_ctx(row)
+        logger.info("Applying version changes to {} selected asset(s)".format(len(selected_rows)))
 
-        # Now apply version changes to CTX-ready assets
+        # Apply version changes to selected assets
         platform_config = PlatformConfig(self._config)
         resolver = PathResolver(self._config, platform_config)
 
         updated_count = 0
         errors = []
 
-        for asset_data in self._assets:
+        for row in sorted(selected_rows):
+            asset_data = self._assets[row]
+
+            # Get selected version from dropdown
+            version_combo = self.asset_table.cellWidget(row, 4)
+            if not version_combo:
+                continue
+
+            new_version = version_combo.currentText()
+
             try:
                 # Skip if not CTX-ready
                 if not asset_data.get('ctx_ready', False):
+                    errors.append("{}: Not CTX-ready".format(asset_data['name']))
                     continue
 
                 ctx_node = asset_data.get('ctx_node')
                 if not ctx_node or not cmds.objExists(ctx_node):
+                    errors.append("{}: CTX node not found".format(asset_data['name']))
                     continue
 
                 # Get current version from CTX node
                 old_version = cmds.getAttr('{}.version'.format(ctx_node))
-                new_version = asset_data['current']
 
                 if new_version == old_version:
                     continue  # No change
@@ -1112,6 +1259,13 @@ class AssetManagerDialog(QtWidgets.QDialog):
                         # For references, use file command to change the reference path
                         cmds.file(new_path, loadReference=maya_node)
 
+                # Update asset_data
+                asset_data['current'] = new_version
+                if new_version == asset_data['latest']:
+                    asset_data['status'] = 'valid'
+                elif new_version < asset_data['latest']:
+                    asset_data['status'] = 'update'
+
                 updated_count += 1
                 logger.info("Updated {} to version {} -> {}".format(
                     asset_data['name'], old_version, new_version
@@ -1123,6 +1277,10 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 )
                 errors.append(error_msg)
                 logger.error(error_msg)
+
+        # Refresh table to show updated versions
+        if updated_count > 0:
+            self._populate_asset_table()
 
         # Show results
         if errors:
@@ -1145,8 +1303,6 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 "No Changes",
                 "No asset version changes to apply."
             )
-
-        self.accept()
 
     def get_assets(self):
         """Get the current asset list.

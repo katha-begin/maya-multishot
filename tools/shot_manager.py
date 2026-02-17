@@ -264,10 +264,10 @@ class ShotManager(object):
         # Get attributes
         info = {
             'node': shot_node,
-            'ep': cmds.getAttr("{}.ep".format(shot_node)),
-            'seq': cmds.getAttr("{}.seq".format(shot_node)),
-            'shot': cmds.getAttr("{}.shot".format(shot_node)),
-            'dept': cmds.getAttr("{}.dept".format(shot_node)) or '',
+            'ep': cmds.getAttr("{}.ep_code".format(shot_node)),
+            'seq': cmds.getAttr("{}.seq_code".format(shot_node)),
+            'shot': cmds.getAttr("{}.shot_code".format(shot_node)),
+            'dept': cmds.getAttr("{}.dept".format(shot_node)) if cmds.attributeQuery('dept', node=shot_node, exists=True) else '',
         }
 
         # Get asset count

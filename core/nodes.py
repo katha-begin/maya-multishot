@@ -275,10 +275,21 @@ class NodeManager(object):
         full_context = {}
 
         # Add roots (mapped to current platform)
-        for root_name in config.get_roots().keys():
-            root_path = platform_config.get_root_for_platform(root_name)
-            if root_path:
+        roots = config.get_roots()
+
+        # Check if new format (platform-specific)
+        if 'windows' in roots or 'linux' in roots:
+            # New format: get roots for current platform
+            current_platform = platform_config.get_platform()
+            platform_roots = roots.get(current_platform, {})
+            for root_name, root_path in platform_roots.items():
                 full_context[root_name] = root_path
+        else:
+            # Legacy format: use platform_config to resolve
+            for root_name in roots.keys():
+                root_path = platform_config.get_root_for_platform(root_name)
+                if root_path:
+                    full_context[root_name] = root_path
 
         # Add static paths
         full_context.update(config.get_static_paths())

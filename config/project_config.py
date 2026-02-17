@@ -130,23 +130,67 @@ class ProjectConfig(object):
     def get_roots(self):
         """
         Get all root paths.
-        
+
+        Supports two configuration formats:
+
+        Format 1 (New): Platform-specific roots
+            "roots": {
+                "windows": {"projRoot": "V:/", "imgRoot": "W:/"},
+                "linux": {"projRoot": "/mnt/v/", "imgRoot": "/mnt/w/"}
+            }
+
+        Format 2 (Legacy): Flat roots with platform suffixes
+            "roots": {
+                "projRoot": "V:/",
+                "projRootLinux": "/mnt/v/"
+            }
+
         Returns:
-            dict: Dictionary of root paths (e.g., {'project': 'V:/SWA', ...})
+            dict: Dictionary of root paths
+                  For new format: returns platform-specific dict
+                  For legacy format: returns flat dict
         """
-        return self.data.get('roots', {})
+        roots = self.data.get('roots', {})
+
+        # Detect format by checking if 'windows' or 'linux' keys exist
+        if 'windows' in roots or 'linux' in roots:
+            # New format: platform-specific
+            return roots
+        else:
+            # Legacy format: flat structure
+            return roots
     
-    def get_root(self, root_name):
+    def get_root(self, root_name, platform=None):
         """
         Get specific root path.
 
+        Supports both new and legacy formats.
+
         Args:
-            root_name (str): Name of the root (e.g., 'PROJ_ROOT')
+            root_name (str): Name of the root (e.g., 'projRoot')
+            platform (str, optional): Platform name ('windows' or 'linux').
+                                     Only used for new format.
 
         Returns:
             str: Root path or None if not found
         """
-        return self.data.get('roots', {}).get(root_name)
+        roots = self.data.get('roots', {})
+
+        # Detect format
+        if 'windows' in roots or 'linux' in roots:
+            # New format: platform-specific
+            if platform:
+                platform_roots = roots.get(platform, {})
+                return platform_roots.get(root_name)
+            else:
+                # No platform specified, try to return from any platform
+                for plat in ['windows', 'linux']:
+                    if plat in roots and root_name in roots[plat]:
+                        return roots[plat][root_name]
+                return None
+        else:
+            # Legacy format: flat structure
+            return roots.get(root_name)
 
     def get_static_paths(self):
         """
@@ -242,6 +286,27 @@ class ProjectConfig(object):
         token_def = self.data.get('tokens', {}).get(token_name, {})
         return token_def.get('values')
 
+    def get_shot_metadata_config(self):
+        """
+        Get shot metadata configuration.
+
+        Returns:
+            dict: Shot metadata config or None if not defined
+        """
+        return self.data.get('shotMetadata')
+
+    def is_shot_metadata_enabled(self):
+        """
+        Check if shot metadata import is enabled.
+
+        Returns:
+            bool: True if enabled, False otherwise
+        """
+        metadata_config = self.get_shot_metadata_config()
+        if not metadata_config:
+            return False
+        return metadata_config.get('enabled', False)
+
     @classmethod
     def find_config(cls, search_paths=None):
         """
@@ -290,6 +355,47 @@ class ProjectConfig(object):
         # For now, we'll skip this as it requires Maya API
 
         return paths
+
+    def get_render_settings_config(self):
+        """Get render settings configuration.
+
+        Returns:
+            dict: Render settings config or None
+        """
+        return self.data.get('renderSettings')
+
+    def is_render_settings_enabled(self):
+        """Check if render settings automation is enabled.
+
+        Returns:
+            bool: True if enabled
+        """
+        render_config = self.get_render_settings_config()
+        if not render_config:
+            return False
+        return render_config.get('enabled', False)
+
+    def get_render_output_config(self):
+        """Get render output path configuration.
+
+        Returns:
+            dict: Output path config or None
+        """
+        render_config = self.get_render_settings_config()
+        if not render_config:
+            return None
+        return render_config.get('outputPath')
+
+    def get_render_camera_config(self):
+        """Get render camera configuration.
+
+        Returns:
+            dict: Camera config or None
+        """
+        render_config = self.get_render_settings_config()
+        if not render_config:
+            return None
+        return render_config.get('camera')
 
     def __repr__(self):
         """String representation of ProjectConfig."""

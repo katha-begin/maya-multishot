@@ -16,6 +16,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 try:
     import maya.cmds as cmds
     MAYA_AVAILABLE = True
@@ -82,56 +86,60 @@ class ShotSwitcher(object):
     
     def switch_to_shot(self, shot_node, manager_node, hide_others=True):
         """Switch to a different shot.
-        
+
         Args:
             shot_node (str): CTX_Shot node name to switch to
             manager_node (str): CTX_Manager node name
             hide_others (bool): If True, hide other shots' layers
-        
+
         Returns:
             bool: True if switch successful
         """
+        logger.info("=" * 60)
+        logger.info("SWITCHING TO SHOT: {}".format(shot_node))
+
         # Validate nodes exist
         if not cmds.objExists(shot_node):
             raise ValueError("Shot node '{}' does not exist".format(shot_node))
-        
+
         if not cmds.objExists(manager_node):
             raise ValueError("Manager node '{}' does not exist".format(manager_node))
-        
+
         # Get shot info
-        ep = cmds.getAttr("{}.ep".format(shot_node))
-        seq = cmds.getAttr("{}.seq".format(shot_node))
-        shot = cmds.getAttr("{}.shot".format(shot_node))
-        
-        # Get layer for this shot
-        layer_name = self.layer_manager.get_layer_for_shot(ep, seq, shot)
-        
-        if not layer_name:
-            # Create layer if it doesn't exist
-            layer_name = self.layer_manager.create_display_layer(ep, seq, shot)
-        
+        ep = cmds.getAttr("{}.ep_code".format(shot_node))
+        seq = cmds.getAttr("{}.seq_code".format(shot_node))
+        shot = cmds.getAttr("{}.shot_code".format(shot_node))
+        logger.info("Shot info: ep={}, seq={}, shot={}".format(ep, seq, shot))
+
+        # Ensure global display layers exist (CTX_Active and CTX_Inactive)
+        self.layer_manager.ensure_global_layers()
+        logger.info("Ensured global display layers exist")
+
         # Update manager's active shot
         cmds.setAttr("{}.active_shot_id".format(manager_node), shot_node, type="string")
-        
-        # Show this shot's layer
-        self.layer_manager.show_layer(layer_name)
-        
-        # Hide other shots' layers if requested
+        logger.info("Updated manager active_shot_id to: {}".format(shot_node))
+
+        # Deactivate other shots FIRST (before activating the new one)
         if hide_others:
-            self._hide_other_shots(layer_name)
-        
+            logger.info("Deactivating other shots...")
+            self._deactivate_other_shots(shot_node, manager_node)
+
+        # Set this shot as active (this will automatically show its layer via connection)
+        cmds.setAttr("{}.is_active".format(shot_node), True)
+        logger.info("Set {}.is_active = True".format(shot_node))
+
         # Add to history
         self._add_to_history(shot_node)
-        
-        # Trigger callbacks if context manager available
-        if self.context_manager:
-            context = {
-                'ep': ep,
-                'seq': seq,
-                'shot': shot
-            }
-            self.context_manager.set_context(context, silent=False)
-        
+
+        # Refresh the Layer Editor UI to show visibility changes
+        try:
+            cmds.refresh(force=True)
+            logger.info("Forced viewport refresh")
+        except Exception as e:
+            logger.warning("Failed to refresh viewport: {}".format(e))
+
+        logger.info("Shot switch complete!")
+        logger.info("=" * 60)
         return True
     
     def get_active_shot(self, manager_node):
@@ -216,19 +224,24 @@ class ShotSwitcher(object):
         """Clear shot switching history."""
         self.history = []
 
-    def _hide_other_shots(self, active_layer):
-        """Hide all CTX layers except the active one.
+    def _deactivate_other_shots(self, active_shot_node, manager_node):
+        """Deactivate all other CTX_Shot nodes.
+
+        This will automatically hide their display layers via the is_active connection.
 
         Args:
-            active_layer (str): Active layer name to keep visible
+            active_shot_node (str): Active shot node name to keep active
+            manager_node (str): CTX_Manager node name
         """
-        # Get all CTX layers
-        all_layers = self.layer_manager.get_all_ctx_layers()
+        # Get all shot nodes connected to manager
+        all_shots = cmds.listConnections("{}.shots".format(manager_node), source=True, destination=False) or []
 
-        # Hide all except active
-        for layer in all_layers:
-            if layer != active_layer:
-                self.layer_manager.hide_layer(layer)
+        # Deactivate all except the active one
+        for shot in all_shots:
+            if shot != active_shot_node:
+                if cmds.objExists("{}.is_active".format(shot)):
+                    cmds.setAttr("{}.is_active".format(shot), False)
+                    logger.info("Set {}.is_active = False".format(shot))
 
     def _add_to_history(self, shot_node):
         """Add shot to history.
