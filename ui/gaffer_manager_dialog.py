@@ -570,10 +570,29 @@ class GafferManagerDialog(QtWidgets.QDialog):
         Args:
             light_context: CTXLightContextNode instance
         """
-        # TODO: Open light editor panel
-        QtWidgets.QMessageBox.information(
-            self,
-            "Light Editor",
-            "Light Editor panel not yet implemented.\n\nThis will show detailed per-attribute editing with override controls."
-        )
+        if not self._current_gaffer:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "No Gaffer Selected",
+                "Please select a gaffer first."
+            )
+            return
+
+        try:
+            # Import here to avoid circular imports
+            from ui.light_editor_panel import LightEditorPanel
+
+            # Create and show light editor panel
+            editor = LightEditorPanel(self._current_gaffer, light_context, parent=self)
+            editor.show()
+
+            logger.info("Opened light editor for: {}".format(light_context.get_light_name()))
+
+        except Exception as e:
+            logger.error("Failed to open light editor: {}".format(e))
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                "Failed to open light editor:\n{}".format(e)
+            )
 
