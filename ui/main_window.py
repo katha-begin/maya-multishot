@@ -209,7 +209,10 @@ class MainWindow(QtWidgets.QMainWindow):
         button_layout.addWidget(self.delete_all_btn)
 
         main_layout.addLayout(button_layout)
-        
+
+        # Create menu bar
+        self._create_menu_bar()
+
         self.statusBar().showMessage("Ready")
 
     def _calculate_table_width(self):
@@ -252,6 +255,64 @@ class MainWindow(QtWidgets.QMainWindow):
         padding = 10
 
         return total_column_width + scrollbar_width + margins + padding
+
+    def _create_menu_bar(self):
+        """Create the menu bar."""
+        menubar = self.menuBar()
+
+        # Tools menu
+        tools_menu = menubar.addMenu("Tools")
+
+        # Gaffer Manager action
+        gaffer_action = QtWidgets.QAction("Gaffer Manager", self)
+        gaffer_action.setStatusTip("Open Light Gaffer Manager")
+        gaffer_action.triggered.connect(self._open_gaffer_manager)
+        tools_menu.addAction(gaffer_action)
+
+        # Settings action (existing functionality)
+        settings_action = QtWidgets.QAction("Settings", self)
+        settings_action.setStatusTip("Open Settings")
+        settings_action.triggered.connect(self._open_settings)
+        tools_menu.addAction(settings_action)
+
+    def _open_gaffer_manager(self):
+        """Open the Gaffer Manager dialog."""
+        try:
+            # Import here to avoid circular imports
+            from ui.gaffer_manager_dialog import GafferManagerDialog
+
+            # Create and show gaffer manager
+            dialog = GafferManagerDialog(parent=self)
+            dialog.show()
+
+            logger.info("Opened Gaffer Manager")
+            self.statusBar().showMessage("Gaffer Manager opened")
+
+        except Exception as e:
+            logger.error("Failed to open Gaffer Manager: {}".format(e))
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                "Failed to open Gaffer Manager:\n{}".format(e)
+            )
+
+    def _open_settings(self):
+        """Open the Settings dialog."""
+        try:
+            from ui.settings_dialog import SettingsDialog
+
+            dialog = SettingsDialog(parent=self)
+            dialog.exec_()
+
+            logger.info("Opened Settings")
+
+        except Exception as e:
+            logger.error("Failed to open Settings: {}".format(e))
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                "Failed to open Settings:\n{}".format(e)
+            )
 
     def _connect_signals(self):
         self.search_box.textChanged.connect(self._on_search_changed)

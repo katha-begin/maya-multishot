@@ -399,12 +399,26 @@ class GafferManagerDialog(QtWidgets.QDialog):
             )
             return
 
-        # TODO: Open add light dialog
-        QtWidgets.QMessageBox.information(
-            self,
-            "Add Light",
-            "Add Light dialog not yet implemented.\n\nThis will allow you to select Maya lights and add them to the gaffer."
-        )
+        try:
+            # Import here to avoid circular imports
+            from ui.add_light_dialog import AddLightDialog
+
+            # Create and show add light dialog
+            dialog = AddLightDialog(self._current_gaffer, parent=self)
+            result = dialog.exec_()
+
+            # Refresh table if lights were added
+            if result == QtWidgets.QDialog.Accepted:
+                self._populate_lights_table()
+                logger.info("Refreshed lights table after adding lights")
+
+        except Exception as e:
+            logger.error("Failed to open add light dialog: {}".format(e))
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                "Failed to open add light dialog:\n{}".format(e)
+            )
 
     def _on_remove_light_clicked(self):
         """Handle remove light button click."""
