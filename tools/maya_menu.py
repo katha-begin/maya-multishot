@@ -252,8 +252,14 @@ def open_context_manager():
         )
 
 
+# Global reference to keep dialogs alive (prevent garbage collection)
+_gaffer_manager_dialog = None
+
+
 def open_gaffer_manager():
     """Open the Gaffer Manager dialog."""
+    global _gaffer_manager_dialog
+
     if not MAYA_AVAILABLE:
         logger.error("Maya is not available")
         return
@@ -261,14 +267,25 @@ def open_gaffer_manager():
     try:
         from ui.gaffer_manager_dialog import GafferManagerDialog
 
+        # Close existing dialog if it exists
+        if _gaffer_manager_dialog is not None:
+            try:
+                _gaffer_manager_dialog.close()
+                _gaffer_manager_dialog.deleteLater()
+            except:
+                pass
+
         # Create and show gaffer manager
-        dialog = GafferManagerDialog()
-        dialog.show()
+        # Store reference to prevent garbage collection
+        _gaffer_manager_dialog = GafferManagerDialog()
+        _gaffer_manager_dialog.show()
 
         logger.info("Gaffer Manager opened")
 
     except Exception as e:
         logger.error("Failed to open Gaffer Manager: {}".format(e))
+        import traceback
+        traceback.print_exc()
         cmds.confirmDialog(
             title="Error",
             message="Failed to open Gaffer Manager:\n{}".format(e),
