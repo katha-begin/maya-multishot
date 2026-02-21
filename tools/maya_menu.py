@@ -31,11 +31,26 @@ import logging
 try:
     import maya.cmds as cmds
     import maya.mel as mel
+    from maya import OpenMayaUI as omui
     MAYA_AVAILABLE = True
 except ImportError:
     MAYA_AVAILABLE = False
     cmds = None
     mel = None
+    omui = None
+
+# Import Qt
+try:
+    from PySide6 import QtWidgets, QtCore
+    from shiboken6 import wrapInstance
+except ImportError:
+    try:
+        from PySide2 import QtWidgets, QtCore
+        from shiboken2 import wrapInstance
+    except ImportError:
+        QtWidgets = None
+        QtCore = None
+        wrapInstance = None
 
 logger = logging.getLogger(__name__)
 
@@ -160,10 +175,18 @@ def reload_menu():
     create_ctx_menu()
 
 
+def get_maya_main_window():
+    """Get Maya main window as a Qt widget."""
+    if not MAYA_AVAILABLE or not omui or not wrapInstance:
+        return None
+    main_window_ptr = omui.MQtUtil.mainWindow()
+    return wrapInstance(int(main_window_ptr), QtWidgets.QWidget)
+
+
 def open_context_manager():
     """Open the Context Manager (Shot Manager) dialog.
 
-    This opens the main window which includes the shot manager functionality.
+    This uses the same approach as launch_multishot_dockable.py to ensure consistency.
     """
     if not MAYA_AVAILABLE:
         logger.error("Maya is not available")
@@ -172,21 +195,50 @@ def open_context_manager():
     try:
         from ui.main_window import MainWindow
 
-        # Create and show main window
-        # Check if window already exists
-        for widget in QtWidgets.QApplication.topLevelWidgets():
-            if isinstance(widget, MainWindow):
-                widget.show()
-                widget.raise_()
-                widget.activateWindow()
-                logger.info("Context Manager window already exists, bringing to front")
-                return
+        # Close existing window if it exists
+        if MainWindow._instance is not None:
+            try:
+                MainWindow._instance.close()
+                MainWindow._instance.deleteLater()
+            except:
+                pass
 
-        # Create new window
-        window = MainWindow()
-        window.show()
+        # Create main window with Maya main window as parent
+        main_window = MainWindow(parent=get_maya_main_window())
 
-        logger.info("Context Manager opened")
+        # Get the window's pointer for Maya
+        window_ptr = omui.MQtUtil.findWindow(main_window.objectName())
+
+        if window_ptr:
+            # Try to create a dockControl for it
+            dock_control_name = "MultishotManagerDockControl"
+
+            # Delete existing dock control if it exists
+            if cmds.dockControl(dock_control_name, exists=True):
+                cmds.deleteUI(dock_control_name)
+
+            try:
+                # Create dock control with calculated width
+                recommended_width = MainWindow.get_recommended_width()
+
+                cmds.dockControl(
+                    dock_control_name,
+                    label="Multishot Manager",
+                    area="right",
+                    content=main_window.objectName(),
+                    allowedArea=["left", "right"],
+                    floating=True,
+                    width=recommended_width
+                )
+                logger.info("Context Manager launched with dockControl")
+            except Exception as e:
+                # If dockControl fails, just show as regular window
+                logger.info("dockControl not available, showing as regular window: {}".format(e))
+                main_window.show()
+        else:
+            # Fallback: show as regular window
+            main_window.show()
+            logger.info("Context Manager launched as floating window")
 
     except Exception as e:
         logger.error("Failed to open Context Manager: {}".format(e))
