@@ -170,15 +170,28 @@ def open_context_manager():
         return
 
     try:
-        from ui.dockable_window import show_dockable_window
+        from ui.main_window import MainWindow
 
-        # Show as dockable window
-        show_dockable_window()
+        # Create and show main window
+        # Check if window already exists
+        for widget in QtWidgets.QApplication.topLevelWidgets():
+            if isinstance(widget, MainWindow):
+                widget.show()
+                widget.raise_()
+                widget.activateWindow()
+                logger.info("Context Manager window already exists, bringing to front")
+                return
+
+        # Create new window
+        window = MainWindow()
+        window.show()
 
         logger.info("Context Manager opened")
 
     except Exception as e:
         logger.error("Failed to open Context Manager: {}".format(e))
+        import traceback
+        traceback.print_exc()
         cmds.confirmDialog(
             title="Error",
             message="Failed to open Context Manager:\n{}".format(e),
@@ -213,25 +226,37 @@ def open_gaffer_manager():
 
 
 def open_asset_manager():
-    """Open the Asset Manager dialog."""
+    """Open the Asset Manager dialog.
+
+    Note: Asset Manager requires a shot to be selected. This will show
+    a message if no shot is available.
+    """
     if not MAYA_AVAILABLE:
         logger.error("Maya is not available")
         return
 
     try:
-        from ui.asset_manager_dialog import AssetManagerDialog
+        # Asset Manager requires shot data and config
+        # For now, show a message that it needs to be opened from Context Manager
+        cmds.confirmDialog(
+            title="Asset Manager",
+            message="Asset Manager must be opened from the Context Manager.\n\n"
+                    "Steps:\n"
+                    "1. Open Context Manager (CTX Tools → Context Manager)\n"
+                    "2. Select a shot in the table\n"
+                    "3. Click 'Manage Assets' button\n\n"
+                    "The Asset Manager will open for the selected shot.",
+            button=["OK"],
+            defaultButton="OK"
+        )
 
-        # Create and show asset manager
-        dialog = AssetManagerDialog()
-        dialog.show()
-
-        logger.info("Asset Manager opened")
+        logger.info("Asset Manager info shown")
 
     except Exception as e:
-        logger.error("Failed to open Asset Manager: {}".format(e))
+        logger.error("Failed to show Asset Manager info: {}".format(e))
         cmds.confirmDialog(
             title="Error",
-            message="Failed to open Asset Manager:\n{}".format(e),
+            message="Failed to show Asset Manager info:\n{}".format(e),
             button=["OK"],
             defaultButton="OK"
         )
