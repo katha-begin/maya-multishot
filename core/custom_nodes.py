@@ -14,6 +14,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import logging
+import re
+
+logger = logging.getLogger(__name__)
+
 try:
     import maya.cmds as cmds
     MAYA_AVAILABLE = True
@@ -94,6 +99,34 @@ CTX_ASSET_TYPE = "network"
 CTX_MANAGER_PREFIX = "CTX_Manager"
 CTX_SHOT_PREFIX = "CTX_Shot"
 CTX_ASSET_PREFIX = "CTX_Asset"
+
+
+def find_next_available_multi_index(node_attr):
+    """Find the next available index in a multi-attribute array.
+
+    Simple approach: Try each index starting from 0 until we find one that's free.
+
+    Args:
+        node_attr (str): Full attribute path (e.g., 'CTX_Shot_SH0140.assets')
+
+    Returns:
+        int: First available index in the array
+    """
+    # Try indices starting from 0
+    index = 0
+    while True:
+        attr_with_index = '{}[{}]'.format(node_attr, index)
+        # Check if this index already has a connection
+        existing = cmds.listConnections(attr_with_index, source=True, destination=False)
+        if not existing:
+            # This index is free!
+            return index
+        # This index is occupied, try next one
+        index += 1
+        # Safety limit to prevent infinite loop
+        if index > 1000:
+            logger.error("find_next_available_multi_index: Hit safety limit at index 1000")
+            return index
 
 
 class CTXManagerNode(object):
@@ -374,10 +407,10 @@ class CTXShotNode(object):
                 cmds.addAttr(manager_node.node_name, longName='shots', attributeType='message', multi=True)
 
             # Connect shot to manager
-            # Find next available index
-            connections = cmds.listConnections(manager_node.node_name + '.shots', source=True, destination=False) or []
-            next_index = len(connections)
+            # Find next available index (handles gaps from deleted connections)
+            next_index = find_next_available_multi_index(manager_node.node_name + '.shots')
             cmds.connectAttr(node_name + '.manager', manager_node.node_name + '.shots[{}]'.format(next_index))
+            logger.debug("Connected {} to manager {} at shots[{}]".format(node_name, manager_node.node_name, next_index))
 
         return cls(node_name)
 
@@ -678,17 +711,27 @@ class CTXAssetNode(object):
         cmds.addAttr(node_name, longName='version', dataType='string')
 
         # Connect to shot if provided
-        if shot_node and shot_node.exists():
-            # Add message attributes for bidirectional connection
-            if not cmds.objExists(node_name + '.shot_node'):
-                cmds.addAttr(node_name, longName='shot_node', attributeType='message')
-            if not cmds.objExists(shot_node.node_name + '.assets'):
-                cmds.addAttr(shot_node.node_name, longName='assets', attributeType='message', multi=True)
+        if shot_node:
+            logger.info("DEBUG: shot_node provided: {}".format(shot_node.node_name))
+            if shot_node.exists():
+                logger.info("DEBUG: shot_node exists, connecting CTX_Asset to shot")
+                # Add message attributes for bidirectional connection
+                if not cmds.objExists(node_name + '.shot_node'):
+                    cmds.addAttr(node_name, longName='shot_node', attributeType='message')
+                    logger.debug("Added shot_node attribute to {}".format(node_name))
+                if not cmds.objExists(shot_node.node_name + '.assets'):
+                    cmds.addAttr(shot_node.node_name, longName='assets', attributeType='message', multi=True)
+                    logger.debug("Added assets attribute to {}".format(shot_node.node_name))
 
-            # Connect asset to shot (bidirectional)
-            connections = cmds.listConnections(shot_node.node_name + '.assets', source=True, destination=False) or []
-            next_index = len(connections)
-            cmds.connectAttr(node_name + '.shot_node', shot_node.node_name + '.assets[{}]'.format(next_index))
+                # Connect asset to shot (bidirectional)
+                # Find next available index (handles gaps from deleted connections)
+                next_index = find_next_available_multi_index(shot_node.node_name + '.assets')
+                cmds.connectAttr(node_name + '.shot_node', shot_node.node_name + '.assets[{}]'.format(next_index))
+                logger.info("Connected {} to shot {} at assets[{}]".format(node_name, shot_node.node_name, next_index))
+            else:
+                logger.warning("DEBUG: shot_node does not exist: {}".format(shot_node.node_name))
+        else:
+            logger.warning("DEBUG: No shot_node provided, CTX_Asset will not be connected to shot")
 
         return cls(node_name)
 

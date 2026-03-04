@@ -1,29 +1,98 @@
 # Context Variables Pipeline - Implementation Task List
 
-**Version:** 1.1
-**Last Updated:** 2026-02-14
-**Status:** Planning Phase
+**Version:** 2.0
+**Last Updated:** 2026-02-20
+**Status:** Production + Schema Migration Phase
 **Repository:** https://github.com/katha-begin/maya-multishot.git
 
 ---
 
 ## Table of Contents
 
-0. [Phase 0: Repository Setup](#phase-0-repository-setup)
-1. [Quick Reference](#quick-reference)
-2. [Pre-Implementation Checklist](#pre-implementation-checklist)
-3. [Phase 1: Core Architecture & Data Model](#phase-1-core-architecture--data-model)
-4. [Phase 2: Path Resolution & Token System](#phase-2-path-resolution--token-system)
-5. [Phase 3: Display Layer Management](#phase-3-display-layer-management)
-6. [Phase 4: Tools & UI](#phase-4-tools--ui)
-7. [Phase 5: Testing, Validation & Documentation](#phase-5-testing-validation--documentation)
-8. [Migration Strategy](#migration-strategy)
-9. [Risk Assessment](#risk-assessment)
-10. [Testing Strategy](#testing-strategy)
+### Completed Phases
+0. [✅ Phase 0: Repository Setup](#phase-0-repository-setup-complete)
+1. [✅ Phase 1: Core Architecture & Data Model](#phase-1-core-architecture--data-model-complete)
+2. [✅ Phase 2: Path Resolution & Token System](#phase-2-path-resolution--token-system-complete)
+3. [✅ Phase 3: Display Layer Management](#phase-3-display-layer-management-complete)
+4. [✅ Phase 4: Tools & UI](#phase-4-tools--ui-mostly-complete)
+
+### New Phases (Schema-Based System)
+5. [⏳ Phase 5: Foundation & Planning](#phase-5-foundation--planning-week-1)
+6. [⏳ Phase 6: Gaffer Implementation](#phase-6-gaffer-implementation-week-2)
+7. [⏳ Phase 7: Asset & Renderer Systems](#phase-7-asset--renderer-systems-week-3)
+8. [⏳ Phase 8: Node Migration](#phase-8-node-migration-week-4)
+
+### Reference
+9. [Migration Strategy](#migration-strategy)
+10. [Risk Assessment](#risk-assessment)
+11. [Testing Strategy](#testing-strategy)
 
 ---
 
-## Phase 0: Repository Setup
+## Implementation Status Summary
+
+### ✅ Completed Work (Phases 0-4)
+
+**Phase 0: Repository Setup** - ✅ COMPLETE
+- Repository structure created
+- Git workflow established
+- Development environment configured
+
+**Phase 1: Core Architecture & Data Model** - ✅ COMPLETE
+- CTX_Manager, CTX_Shot, CTX_Asset, CTX_Sequence nodes implemented
+- Node wrapper classes functional
+- Message attribute connections working
+- Shot/asset hierarchy established
+
+**Phase 2: Path Resolution & Token System** - ✅ COMPLETE
+- Token-based path resolution implemented
+- Template system working
+- Config file structure established
+- Path resolver functional
+
+**Phase 3: Display Layer Management** - ✅ COMPLETE
+- Per-shot display layer system implemented
+- Layer creation/deletion working
+- Layer switching functional
+- Shot isolation working
+
+**Phase 4: Tools & UI** - ✅ MOSTLY COMPLETE
+- Multishot Manager UI implemented
+- Asset Manager UI implemented
+- Add Shot Dialog with filtering
+- Right-click context menus
+- Multi-selection support
+- Search/filter functionality
+
+**Core Modules Implemented:**
+- `core/custom_nodes.py` - CTX node wrappers (900 lines)
+- `core/config.py` - Configuration management
+- `core/ctx_converter.py` - Path token resolution
+- `core/display_layers.py` - Display layer management
+- `core/nodes.py` - NodeManager for asset types
+- `core/reference_manager.py` - Reference operations
+- `core/shader_assignment.py` - Shader operations
+- `core/shader_discovery.py` - Shader discovery
+- `core/asset_path_resolver.py` - Asset path resolution
+- `ui/multishot_manager_dialog.py` - Main UI
+- `ui/asset_manager_dialog.py` - Asset management UI
+- `ui/add_shot_dialog.py` - Shot addition UI
+
+### ⏳ Next Phase: Schema-Based Node System
+
+**Timeline:** 4 weeks
+**Documentation:** See [NODE_ARCHITECTURE.md](NODE_ARCHITECTURE.md), [ASSET_TYPES.md](ASSET_TYPES.md), [RENDERER_ADAPTERS.md](RENDERER_ADAPTERS.md)
+
+**Goals:**
+- Migrate from imperative to schema-based node creation
+- Add USD support via asset type handlers
+- Add multi-renderer support via renderer adapters
+- Implement light gaffer system
+- Integrate NodeGraphQt for visual node graph
+
+---
+
+## Phase 0: Repository Setup [✅ COMPLETE]
 
 **Duration:** 1-2 days
 **Focus:** Set up Git repository, directory structure, and development environment
@@ -3032,6 +3101,522 @@ The following POC code can be adapted for production:
 - ✅ **Node Type Detection** - `get_node_type()` logic
 - ✅ **UI Structure** - Qt compatibility layer and basic layout
 - ✅ **Pre-Render Callback** - Callback registration pattern
+
+---
+
+## Phase 5: Foundation & Planning (Week 1)
+
+**Duration:** 1 week
+**Focus:** Create schema-based infrastructure and planning documents
+**Status:** ⏳ Pending
+**Documentation:** [NODE_ARCHITECTURE.md](NODE_ARCHITECTURE.md)
+
+### [P5-FOUNDATION-01] Create Repository Structure
+
+**Priority:** HIGH (Critical Path)
+**Complexity:** Simple (2-3 hours)
+**Dependencies:** None
+
+**Description:**
+Create new directory structure for schema-based node system, asset type handlers, renderer adapters, and gaffer system.
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 4](NODE_ARCHITECTURE.md#4-repository-structure)
+
+**Acceptance Criteria:**
+- [ ] `core/nodes/` directory created with subdirectories
+- [ ] `core/nodes/schemas/` directory created
+- [ ] `core/nodes/wrappers/` directory created
+- [ ] `core/asset_types/` directory created
+- [ ] `core/renderers/` directory created
+- [ ] `core/gaffer/` directory created
+- [ ] All `__init__.py` files created
+- [ ] Directory structure matches NODE_ARCHITECTURE.md
+
+**Implementation Steps:**
+```bash
+cd maya-multishot
+
+# Create new directories
+mkdir -p core/nodes/schemas
+mkdir -p core/nodes/wrappers
+mkdir -p core/asset_types
+mkdir -p core/renderers
+mkdir -p core/gaffer
+
+# Create __init__.py files
+touch core/nodes/__init__.py
+touch core/nodes/schemas/__init__.py
+touch core/nodes/wrappers/__init__.py
+touch core/asset_types/__init__.py
+touch core/renderers/__init__.py
+touch core/gaffer/__init__.py
+```
+
+---
+
+### [P5-FOUNDATION-02] Implement Base Schema Classes
+
+**Priority:** HIGH (Critical Path)
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-01]`
+
+**Description:**
+Implement `NodeSchema`, `NodeFactory`, and `NodeWrapper` base classes as defined in NODE_ARCHITECTURE.md.
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 3](NODE_ARCHITECTURE.md#3-schema-based-architecture)
+
+**Acceptance Criteria:**
+- [ ] `core/nodes/base.py` created
+- [ ] `NodeSchema` class implemented with validation
+- [ ] `NodeFactory` class implemented with schema creation
+- [ ] `NodeWrapper` base class implemented
+- [ ] `get_graph_ports()` method implemented
+- [ ] Unit tests written and passing
+- [ ] Code coverage > 90%
+
+**Implementation Steps:**
+1. Create `core/nodes/base.py`
+2. Implement `NodeSchema` class (see NODE_ARCHITECTURE.md Section 3.2)
+3. Implement `NodeFactory` class (see NODE_ARCHITECTURE.md Section 3.3)
+4. Implement `NodeWrapper` class (see NODE_ARCHITECTURE.md Section 3.4)
+5. Write unit tests in `tests/test_node_schema.py`
+6. Test schema validation
+7. Test node creation from schema
+8. Test graph port generation
+
+---
+
+### [P5-FOUNDATION-03] Implement Asset Type Handler Base
+
+**Priority:** HIGH
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-01]`
+
+**Description:**
+Implement `AssetTypeHandler` base class and `AssetTypeRegistry` as defined in ASSET_TYPES.md.
+
+**Spec Reference:** [ASSET_TYPES.md Section 2](ASSET_TYPES.md#2-asset-type-handler-pattern)
+
+**Acceptance Criteria:**
+- [ ] `core/asset_types/base.py` created
+- [ ] `AssetTypeHandler` base class implemented
+- [ ] `core/asset_types/registry.py` created
+- [ ] `AssetTypeRegistry` class implemented
+- [ ] Registry decorator pattern working
+- [ ] Unit tests written and passing
+- [ ] Code coverage > 90%
+
+**Implementation Steps:**
+1. Create `core/asset_types/base.py`
+2. Implement `AssetTypeHandler` class (see ASSET_TYPES.md Section 2.1)
+3. Create `core/asset_types/registry.py`
+4. Implement `AssetTypeRegistry` class (see ASSET_TYPES.md Section 2.2)
+5. Write unit tests in `tests/test_asset_types.py`
+6. Test handler registration
+7. Test handler retrieval by extension
+8. Test handler retrieval by node type
+
+---
+
+### [P5-FOUNDATION-04] Implement Renderer Adapter Base
+
+**Priority:** HIGH
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-01]`
+
+**Description:**
+Implement `RendererAdapter` base class and `RendererRegistry` as defined in RENDERER_ADAPTERS.md.
+
+**Spec Reference:** [RENDERER_ADAPTERS.md Section 2](RENDERER_ADAPTERS.md#2-renderer-adapter-pattern)
+
+**Acceptance Criteria:**
+- [ ] `core/renderers/base.py` created
+- [ ] `RendererAdapter` base class implemented
+- [ ] `core/renderers/registry.py` created
+- [ ] `RendererRegistry` class implemented
+- [ ] Active renderer detection working
+- [ ] Unit tests written and passing
+- [ ] Code coverage > 90%
+
+**Implementation Steps:**
+1. Create `core/renderers/base.py`
+2. Implement `RendererAdapter` class (see RENDERER_ADAPTERS.md Section 2.1)
+3. Create `core/renderers/registry.py`
+4. Implement `RendererRegistry` class (see RENDERER_ADAPTERS.md Section 2.2)
+5. Write unit tests in `tests/test_renderers.py`
+6. Test adapter registration
+7. Test active renderer detection
+8. Test adapter retrieval
+
+---
+
+### [P5-FOUNDATION-05] Document All Node Schemas
+
+**Priority:** MEDIUM
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-02]`
+
+**Description:**
+Create detailed schema planning documents for all CTX node types (Manager, Sequence, Shot, Asset, Gaffer, LightContext).
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 9](NODE_ARCHITECTURE.md#9-implementation-roadmap)
+
+**Acceptance Criteria:**
+- [ ] `spec/SCHEMA_PLANNING.md` created
+- [ ] CTX_Manager schema documented
+- [ ] CTX_Sequence schema documented
+- [ ] CTX_Shot schema documented
+- [ ] CTX_Asset schema documented
+- [ ] CTX_LightGaffer schema documented
+- [ ] CTX_LightContext schema documented
+- [ ] All attributes specified with types and defaults
+- [ ] All connections specified with directions
+
+---
+
+## Phase 6: Gaffer Implementation (Week 2)
+
+**Duration:** 1 week
+**Focus:** Implement light gaffer system using schema-based approach
+**Status:** ⏳ Pending
+**Documentation:** [CTX_lightGaffer.md](CTX_lightGaffer.md)
+
+### [P6-GAFFER-01] Implement Gaffer Schemas
+
+**Priority:** HIGH (Critical Path)
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-02]`, `[P5-FOUNDATION-05]`
+
+**Description:**
+Implement `CTXLightGafferSchema` and `CTXLightContextSchema` based on planning documents.
+
+**Spec Reference:** [CTX_lightGaffer.md](CTX_lightGaffer.md)
+
+**Acceptance Criteria:**
+- [ ] `core/nodes/schemas/gaffer.py` created
+- [ ] `CTXLightGafferSchema` class implemented
+- [ ] All gaffer attributes defined in schema
+- [ ] Per-attribute `*_enabled` flags defined
+- [ ] `core/nodes/schemas/light_context.py` created
+- [ ] `CTXLightContextSchema` class implemented
+- [ ] Unit tests written and passing
+
+---
+
+### [P6-GAFFER-02] Implement Gaffer Wrappers
+
+**Priority:** HIGH (Critical Path)
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P6-GAFFER-01]`
+
+**Description:**
+Implement `CTXLightGafferNode` and `CTXLightContextNode` wrapper classes.
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 3.4](NODE_ARCHITECTURE.md#34-node-wrapper-pattern)
+
+**Acceptance Criteria:**
+- [ ] `core/nodes/wrappers/gaffer.py` created
+- [ ] `CTXLightGafferNode` class implemented
+- [ ] `core/nodes/wrappers/light_context.py` created
+- [ ] `CTXLightContextNode` class implemented
+- [ ] High-level API methods implemented
+- [ ] Unit tests written and passing
+
+---
+
+### [P6-GAFFER-03] Implement Gaffer Chain Resolution
+
+**Priority:** HIGH (Critical Path)
+**Complexity:** High (2 days)
+**Dependencies:** `[P6-GAFFER-02]`, `[P5-FOUNDATION-04]`
+
+**Description:**
+Implement gaffer chain resolution system with per-attribute inheritance.
+
+**Spec Reference:** [CTX_lightGaffer.md](CTX_lightGaffer.md)
+
+**Acceptance Criteria:**
+- [ ] `core/gaffer/chain.py` created
+- [ ] Chain resolution algorithm implemented
+- [ ] `core/gaffer/inheritance.py` created
+- [ ] Per-attribute inheritance logic implemented
+- [ ] `core/gaffer/overrides.py` created
+- [ ] Override system implemented
+- [ ] Integration with renderer adapters working
+- [ ] Unit tests written and passing
+- [ ] Integration tests written and passing
+
+---
+
+### [P6-GAFFER-04] Create Light Manager UI
+
+**Priority:** MEDIUM
+**Complexity:** High (2 days)
+**Dependencies:** `[P6-GAFFER-03]`
+
+**Description:**
+Create Light Manager UI for managing gaffer hierarchy and light overrides.
+
+**Spec Reference:** [CTX_lightGaffer.md](CTX_lightGaffer.md)
+
+**Acceptance Criteria:**
+- [ ] `ui/light_manager_dialog.py` created
+- [ ] Gaffer hierarchy tree view implemented
+- [ ] Light list view implemented
+- [ ] Per-attribute override controls implemented
+- [ ] Enable/disable checkboxes working
+- [ ] Real-time preview working
+- [ ] UI tests written and passing
+
+---
+
+## Phase 7: Asset & Renderer Systems (Week 3)
+
+**Duration:** 1 week
+**Focus:** Implement asset type handlers and renderer adapters
+**Status:** ⏳ Pending
+**Documentation:** [ASSET_TYPES.md](ASSET_TYPES.md), [RENDERER_ADAPTERS.md](RENDERER_ADAPTERS.md)
+
+### [P7-ASSET-01] Implement Arnold StandIn Handler
+
+**Priority:** HIGH
+**Complexity:** Simple (2-3 hours)
+**Dependencies:** `[P5-FOUNDATION-03]`
+
+**Description:**
+Implement `ArnoldStandInHandler` for Arnold StandIn nodes.
+
+**Spec Reference:** [ASSET_TYPES.md Section 3.1](ASSET_TYPES.md#31-arnold-standin)
+
+**Acceptance Criteria:**
+- [ ] `core/asset_types/arnold.py` created
+- [ ] `ArnoldStandInHandler` class implemented
+- [ ] Handler registered with decorator
+- [ ] `create_node()` method working
+- [ ] `get_path()` method working
+- [ ] `set_path()` method working
+- [ ] Unit tests written and passing
+
+---
+
+### [P7-ASSET-02] Implement Redshift Proxy Handler
+
+**Priority:** HIGH
+**Complexity:** Simple (2-3 hours)
+**Dependencies:** `[P5-FOUNDATION-03]`
+
+**Description:**
+Implement `RedshiftProxyHandler` for Redshift Proxy nodes.
+
+**Spec Reference:** [ASSET_TYPES.md Section 3.2](ASSET_TYPES.md#32-redshift-proxy)
+
+**Acceptance Criteria:**
+- [ ] `core/asset_types/redshift.py` created
+- [ ] `RedshiftProxyHandler` class implemented
+- [ ] Handler registered with decorator
+- [ ] All methods implemented
+- [ ] Unit tests written and passing
+
+---
+
+### [P7-ASSET-03] Implement USD Reference Handler
+
+**Priority:** HIGH
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-03]`
+
+**Description:**
+Implement `USDReferenceHandler` for USD proxy shape nodes.
+
+**Spec Reference:** [ASSET_TYPES.md Section 4](ASSET_TYPES.md#4-usd-support)
+
+**Acceptance Criteria:**
+- [ ] `core/asset_types/usd.py` created
+- [ ] `USDReferenceHandler` class implemented
+- [ ] Handler registered with decorator
+- [ ] USD proxy shape creation working
+- [ ] File path get/set working
+- [ ] Reload functionality working
+- [ ] Unit tests written and passing
+- [ ] Integration tests with Maya USD plugin
+
+---
+
+### [P7-RENDERER-01] Implement Arnold Adapter
+
+**Priority:** HIGH
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-04]`
+
+**Description:**
+Implement `ArnoldAdapter` for Arnold renderer.
+
+**Spec Reference:** [RENDERER_ADAPTERS.md Section 3.1](RENDERER_ADAPTERS.md#31-arnold-adapter)
+
+**Acceptance Criteria:**
+- [ ] `core/renderers/arnold.py` created
+- [ ] `ArnoldAdapter` class implemented
+- [ ] Adapter registered with decorator
+- [ ] Light attribute mapping defined
+- [ ] `set_light_attribute()` working
+- [ ] `get_light_attribute()` working
+- [ ] `get_lights()` working
+- [ ] Unit tests written and passing
+
+---
+
+### [P7-RENDERER-02] Implement Redshift Adapter
+
+**Priority:** HIGH
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-04]`
+
+**Description:**
+Implement `RedshiftAdapter` for Redshift renderer.
+
+**Spec Reference:** [RENDERER_ADAPTERS.md Section 3.2](RENDERER_ADAPTERS.md#32-redshift-adapter)
+
+**Acceptance Criteria:**
+- [ ] `core/renderers/redshift.py` created
+- [ ] `RedshiftAdapter` class implemented
+- [ ] Adapter registered with decorator
+- [ ] All methods implemented
+- [ ] Unit tests written and passing
+
+---
+
+### [P7-INTEGRATION-01] Update Asset Manager for New Systems
+
+**Priority:** HIGH
+**Complexity:** High (2 days)
+**Dependencies:** `[P7-ASSET-01]`, `[P7-ASSET-02]`, `[P7-ASSET-03]`
+
+**Description:**
+Update Asset Manager UI to use new asset type handler system.
+
+**Spec Reference:** [ASSET_TYPES.md Section 5](ASSET_TYPES.md#5-implementation-guide)
+
+**Acceptance Criteria:**
+- [ ] Asset Manager uses `AssetTypeRegistry`
+- [ ] USD assets can be created
+- [ ] File extension detection working
+- [ ] Handler selection automatic
+- [ ] All existing functionality preserved
+- [ ] Integration tests written and passing
+
+---
+
+## Phase 8: Node Migration (Week 4)
+
+**Duration:** 1 week
+**Focus:** Migrate existing nodes to schema-based system
+**Status:** ⏳ Pending
+**Documentation:** [NODE_ARCHITECTURE.md Section 8](NODE_ARCHITECTURE.md#8-migration-strategy)
+
+### [P8-MIGRATE-01] Create CTX_Asset Schema
+
+**Priority:** HIGH (Critical Path)
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P5-FOUNDATION-02]`, `[P5-FOUNDATION-05]`
+
+**Description:**
+Create `CTXAssetNodeSchema` based on existing `CTXAssetNode` implementation.
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 2.2](NODE_ARCHITECTURE.md#22-future-implementation-schema-based)
+
+**Acceptance Criteria:**
+- [ ] `core/nodes/schemas/asset.py` created
+- [ ] `CTXAssetNodeSchema` class implemented
+- [ ] All attributes from current implementation included
+- [ ] All connections defined
+- [ ] Schema validation passing
+- [ ] Unit tests written and passing
+
+---
+
+### [P8-MIGRATE-02] Migrate CTX_Asset to Schema-Based
+
+**Priority:** HIGH (Critical Path)
+**Complexity:** High (2 days)
+**Dependencies:** `[P8-MIGRATE-01]`, `[P7-INTEGRATION-01]`
+
+**Description:**
+Migrate `CTXAssetNode` wrapper to use schema-based implementation.
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 8.2](NODE_ARCHITECTURE.md#82-compatibility-layer)
+
+**Acceptance Criteria:**
+- [ ] `core/nodes/wrappers/asset.py` created
+- [ ] New `CTXAssetNode` wrapper implemented
+- [ ] Compatibility layer in `core/custom_nodes.py` created
+- [ ] All existing functionality preserved
+- [ ] Integration with asset type handlers working
+- [ ] All tests passing
+- [ ] No breaking changes to existing code
+
+---
+
+### [P8-MIGRATE-03] Migrate CTX_Shot and CTX_Manager
+
+**Priority:** HIGH
+**Complexity:** High (2 days)
+**Dependencies:** `[P8-MIGRATE-02]`
+
+**Description:**
+Migrate `CTXShotNode` and `CTXManagerNode` to schema-based implementation.
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 8](NODE_ARCHITECTURE.md#8-migration-strategy)
+
+**Acceptance Criteria:**
+- [ ] `core/nodes/schemas/shot.py` created
+- [ ] `core/nodes/schemas/manager.py` created
+- [ ] `core/nodes/wrappers/shot.py` created
+- [ ] `core/nodes/wrappers/manager.py` created
+- [ ] Compatibility layers created
+- [ ] All existing functionality preserved
+- [ ] All tests passing
+
+---
+
+### [P8-MIGRATE-04] Update All UI Code
+
+**Priority:** HIGH
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P8-MIGRATE-03]`
+
+**Description:**
+Update all UI code to use new schema-based node system.
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 9](NODE_ARCHITECTURE.md#9-implementation-roadmap)
+
+**Acceptance Criteria:**
+- [ ] Multishot Manager UI updated
+- [ ] Asset Manager UI updated
+- [ ] Add Shot Dialog updated
+- [ ] All UI functionality working
+- [ ] No breaking changes
+- [ ] UI tests passing
+
+---
+
+### [P8-TESTING-01] Write Migration Tests
+
+**Priority:** HIGH
+**Complexity:** Medium (1 day)
+**Dependencies:** `[P8-MIGRATE-04]`
+
+**Description:**
+Write comprehensive tests for migration and compatibility.
+
+**Spec Reference:** [NODE_ARCHITECTURE.md Section 11](NODE_ARCHITECTURE.md#11-testing-strategy)
+
+**Acceptance Criteria:**
+- [ ] Migration tests written
+- [ ] Compatibility tests written
+- [ ] Backward compatibility verified
+- [ ] Forward compatibility verified
+- [ ] All tests passing
+- [ ] Code coverage > 90%
 
 ---
 

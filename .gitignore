@@ -42,6 +42,8 @@ Thumbs.db
 .coverage
 htmlcov/
 .tox/
+tests/
+
 
 # Documentation
 docs/_build/

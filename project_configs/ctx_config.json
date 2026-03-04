@@ -16,7 +16,8 @@
     }
   },
   "staticPaths": {
-    "sceneBase": "all/scene"
+    "sceneBase": "all/scene",
+    "assetBase": "all/asset"
   },
   "templates": {
     "shotRoot": "$projRoot$project/$sceneBase/$ep/$seq/$shot",
@@ -25,10 +26,38 @@
     "cachePath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver",
     "imgPath": "$imgRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/<RenderLayer>/<RenderLayer>",
     "assetPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
+    "assetHeroPath": "$projRoot$project/$assetBase/$assetCategory/$assetSubdir/$assetName/$heroSubdir/$assetName.$ext",
+    "assetShaderPath": "$projRoot$project/$assetBase/$assetCategory/$assetSubdir/$assetName/$heroSubdir/$assetName$shaderSuffix",
+    "assetGroomPath": "$projRoot$project/$assetBase/$assetCategory/$assetSubdir/$assetName/$heroSubdir/$assetName$groomSuffix",
+    "assetSearchPath": "$projRoot$project/$assetBase/$assetCategory/$assetSubdir/$assetName/$heroSubdir",
     "fullFilename": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
     "namespace": "$assetType_$assetName_$variant",
     "namespaceShader": "$assetType_$assetName_$variant_Shade",
     "namespaceGroom": "$assetType_$assetName_$variant_Groom"
+  },
+  "assetDiscovery": {
+    "heroSubdir": "hero",
+    "texRenderSubdir": "tex_render",
+    "shaderFileSuffix": "_rsshade.ma",
+    "groomFileSuffix": "_groom.ma",
+    "categoryMappings": {
+      "CHAR": {
+        "directory": "Character",
+        "subdirs": ["Main", "Extra"]
+      },
+      "PROP": {
+        "directory": "Props",
+        "subdirs": ["object"]
+      },
+      "SETS": {
+        "directory": "Sets",
+        "subdirs": ["exterior", "interior"]
+      },
+      "SDRS": {
+        "directory": "Setdress",
+        "subdirs": ["interior", "exterior", "Set"]
+      }
+    }
   },
   "patterns": {
     "fullFormat": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
@@ -71,9 +100,26 @@
       "pattern": "v\\d{3}"
     },
     "assetType": {
-      "description": "Asset type",
+      "description": "Asset type code",
       "example": "CHAR",
-      "values": ["CHAR", "PROP", "SET", "VEH", "CAM"]
+      "values": ["CHAR", "PROP", "SETS", "SDRS", "VEH", "CAM"]
+    },
+    "assetCategory": {
+      "description": "Asset category directory name",
+      "example": "Character",
+      "values": ["Character", "Props", "Sets", "Setdress", "Vehicle"],
+      "mapping": {
+        "CHAR": "Character",
+        "PROP": "Props",
+        "SETS": "Sets",
+        "SDRS": "Setdress",
+        "VEH": "Vehicle"
+      }
+    },
+    "assetSubdir": {
+      "description": "Asset subdirectory (Main, object, Exterior, etc.)",
+      "example": "Main",
+      "values": ["Main", "object", "Exterior", "Interior", "interior", "exterior"]
     },
     "assetName": {
       "description": "Asset name",
@@ -83,6 +129,21 @@
       "description": "Asset variant",
       "example": "001",
       "pattern": "\\d{3}"
+    },
+    "heroSubdir": {
+      "description": "Hero subdirectory for asset files",
+      "example": "hero",
+      "default": "hero"
+    },
+    "shaderSuffix": {
+      "description": "Shader file suffix",
+      "example": "_rsshade.ma",
+      "default": "_rsshade.ma"
+    },
+    "groomSuffix": {
+      "description": "Groom file suffix",
+      "example": "_groom.ma",
+      "default": "_groom.ma"
     }
   },
   "renderSettings": {

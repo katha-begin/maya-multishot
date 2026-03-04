@@ -129,6 +129,48 @@ Each gaffer has two types of connections:
 | parentGaffer | Inheritance chain | Shot gaffer → Seq gaffer |
 | childGaffers | Inheritance chain | Master gaffer → [Seq gaffer, Custom gaffer] |
 
+### 2.5.1 Ownership vs Inheritance
+
+The gaffer system uses a **dual-connection pattern** that combines direct ownership with inheritance:
+
+**Direct Ownership (Parent-Child):**
+- Sequence owns its gaffer via `Sequence.gaffer` connection
+- Shot owns its gaffer via `Shot.gaffer` connection (NEW!)
+- Similar to how Sequence owns shots, Shot owns assets
+- Provides clear parent-child relationship and direct access
+
+**Inheritance Chain (Hierarchical):**
+- Shot gaffer inherits from Sequence gaffer via `parentGaffer` connection
+- Sequence gaffer inherits from Master gaffer via `parentGaffer` connection
+- Attribute resolution walks up the chain checking enabled flags
+- Allows flexible override control at each level
+
+**Benefits of This Design:**
+- ✅ **Symmetry** - Both Sequence and Shot directly own their gaffers
+- ✅ **Clarity** - Clear parent-child relationship (like Sequence→Shots, Shot→Assets)
+- ✅ **Direct Access** - Can query `shot.get_gaffer()` directly
+- ✅ **Consistency** - Follows same pattern as other parent-child relationships
+- ✅ **Inheritance Still Works** - Shot gaffer's `parentGaffer` still points to Sequence gaffer for attribute resolution
+- ✅ **Flexible Chains** - Not hardcoded by type (Master/Sequence/Shot), supports custom chains
+
+**Visual Representation:**
+
+```
+CTX_Sequence
+    ↓ gaffer (INPUT SINGLE) - Sequence owns its gaffer
+CTX_LightGaffer (Sequence-level)
+    ↓ parentGaffer (INPUT) - Inherits from Master
+    ↓ lights (OUTPUT MULTI)
+CTX_LightContext (per-light storage)
+
+CTX_Shot
+    ↓ gaffer (INPUT SINGLE) - Shot owns its gaffer (NEW!)
+CTX_LightGaffer (Shot-level)
+    ↓ parentGaffer (INPUT) - Inherits from Sequence
+    ↓ lights (OUTPUT MULTI)
+CTX_LightContext (per-light storage)
+```
+
 ### 2.6 Resolution Priority
 
 ```
@@ -180,7 +222,65 @@ SEQUENCE_ATTRS = {
 }
 ```
 
-### 3.2 CTX_LightGaffer Node
+### 3.2 CTX_Shot Node
+
+Container for shot-level organization. Groups assets within a shot and owns the shot-level light gaffer.
+
+**Node Naming:**
+```
+CTX_Shot_{episodeCode}_{sequenceCode}_{shotCode}
+
+Example:
+CTX_Shot_Ep04_sq0070_SH0170
+```
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| ep_code | string | Episode code (e.g., "Ep04") |
+| seq_code | string | Sequence code (e.g., "sq0070") |
+| shot_code | string | Shot code (e.g., "SH0170") |
+| start_frame | int | Shot start frame |
+| end_frame | int | Shot end frame |
+| is_active | bool | Whether this shot is currently active |
+| parentSequence | message | Connection to CTX_Sequence |
+| assets | message[] | Connections to CTX_Asset nodes |
+| gaffer | message | Connection to CTX_LightGaffer_Shot (NEW!) |
+| display_layer_link | message | Connection to Maya display layer |
+
+**Gaffer Connection (NEW):**
+
+The `gaffer` attribute enables direct ownership of the shot-level gaffer:
+
+```python
+# Wire shot gaffer to shot node (direct ownership)
+shot = CTXShotNode.find_by_code('Ep04', 'sq0070', 'SH0170')
+shot_gaffer = CTXLightGafferNode.create(
+    gafferName='SH0170',
+    gafferType='shot',
+    scopeCode='SH0170'
+)
+shot.set_gaffer(shot_gaffer)  # Direct ownership
+
+# Wire shot gaffer to sequence gaffer (inheritance chain)
+shot_gaffer.set_parent_gaffer(seq_gaffer)  # Inheritance chain
+```
+
+**Attribute Definitions:**
+
+```python
+SHOT_ATTRS = {
+    "ep_code": {"type": "string", "default": ""},
+    "seq_code": {"type": "string", "default": ""},
+    "shot_code": {"type": "string", "default": ""},
+    "start_frame": {"type": "long", "default": 1001},
+    "end_frame": {"type": "long", "default": 1100},
+    "is_active": {"type": "bool", "default": False},
+}
+```
+
+### 3.3 CTX_LightGaffer Node
 
 Network node that contains a collection of light contexts for a specific scope. Supports dynamic gaffer chains with dual connection pattern.
 
@@ -222,7 +322,7 @@ GAFFER_ATTRS = {
 }
 ```
 
-### 3.3 CTX_LightContext Node
+### 3.4 CTX_LightContext Node
 
 Network node that stores attribute values for a single light within a gaffer.
 
@@ -663,6 +763,31 @@ CTX_LightContext_keyLight1_SH0020
 6. Values inherit from Master unless overridden
 ```
 
+### 8.2.1 Wire Sequence Gaffer to Sequence Node (Code Example)
+
+```python
+from core.nodes.wrappers import CTXSequenceNode, CTXLightGafferNode
+
+# 1. Create sequence gaffer
+seq_gaffer = CTXLightGafferNode.create(
+    gafferName='sq0070',
+    gafferType='sequence',
+    scopeCode='sq0070'
+)
+
+# 2. Wire sequence gaffer to sequence node (direct ownership)
+seq = CTXSequenceNode.find_by_code('sq0070')
+seq.set_gaffer(seq_gaffer)
+
+# 3. Wire sequence gaffer to master gaffer (inheritance chain)
+master = CTXLightGafferNode.find_by_type('master')
+seq_gaffer.set_parent_gaffer(master)
+
+print("Sequence gaffer created and wired:")
+print(f"  - Owned by: {seq.node_name}")
+print(f"  - Inherits from: {master.node_name}")
+```
+
 ### 8.3 Create Shot Override
 
 ```
@@ -672,6 +797,37 @@ CTX_LightContext_keyLight1_SH0020
 4. User adjusts values in Gaffer Table
 5. Values inherit from Seq (or Master) unless overridden
 ```
+
+### 8.3.1 Wire Shot Gaffer to Shot Node (Code Example - NEW!)
+
+```python
+from core.nodes.wrappers import CTXShotNode, CTXLightGafferNode
+
+# 1. Create shot gaffer
+shot_gaffer = CTXLightGafferNode.create(
+    gafferName='SH0020',
+    gafferType='shot',
+    scopeCode='SH0020'
+)
+
+# 2. Wire shot gaffer to shot node (direct ownership - NEW!)
+shot = CTXShotNode.find_by_code('Ep04', 'sq0070', 'SH0020')
+shot.set_gaffer(shot_gaffer)
+
+# 3. Wire shot gaffer to sequence gaffer (inheritance chain)
+seq = shot.get_parent_sequence()
+seq_gaffer = seq.get_gaffer()
+shot_gaffer.set_parent_gaffer(seq_gaffer)
+
+print("Shot gaffer created and wired:")
+print(f"  - Owned by: {shot.node_name}")
+print(f"  - Inherits from: {seq_gaffer.node_name}")
+print(f"  - Which inherits from: Master gaffer")
+```
+
+**Key Difference from Previous Design:**
+- ✅ **Previous:** Shot gaffer only connected via inheritance chain (no direct shot.gaffer)
+- ✅ **New:** Shot gaffer directly owned by shot (shot.gaffer) + inheritance chain (parentGaffer)
 
 ### 8.4 Switch Shots
 
@@ -903,6 +1059,58 @@ class CTXLightContext(object):
     
     def apply_transform(self):
         """Apply stored transform to light."""
+        pass
+```
+
+### 10.2.1 CTXShotNode Class (NEW!)
+
+```python
+class CTXShotNode(NodeWrapper):
+    """
+    Shot context node with gaffer ownership.
+    """
+
+    SCHEMA = CTXShotSchema
+
+    # Manual wiring - Gaffer (NEW)
+    def set_gaffer(self, gaffer):
+        """
+        Wire to shot-level gaffer (direct ownership).
+
+        Args:
+            gaffer (CTXLightGafferNode): Shot-level gaffer
+
+        Returns:
+            bool: True if successful
+        """
+        pass
+
+    # Query methods - Gaffer (NEW)
+    def get_gaffer(self):
+        """
+        Get connected shot-level gaffer.
+
+        Returns:
+            CTXLightGafferNode: Shot gaffer or None
+        """
+        pass
+
+    # Other existing methods
+    def get_parent_sequence(self):
+        """Get parent sequence."""
+        pass
+
+    def get_assets(self):
+        """Get all connected assets."""
+        pass
+
+    def get_shot_id(self):
+        """Get shot ID (e.g., 'Ep04_sq0070_SH0170')."""
+        pass
+
+    @staticmethod
+    def find_by_code(ep_code, seq_code, shot_code):
+        """Find shot by codes."""
         pass
 ```
 

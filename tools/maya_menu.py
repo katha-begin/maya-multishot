@@ -105,16 +105,108 @@ def create_ctx_menu():
             annotation="Open Light Gaffer Manager",
             parent=menu
         )
-        
+
         # Add separator
         cmds.menuItem(divider=True, parent=menu)
-        
+
         # Add Asset Manager menu item (if available)
         cmds.menuItem(
             label="Asset Manager",
             command=lambda *args: open_asset_manager(),
             annotation="Open Asset Manager",
             parent=menu
+        )
+
+        # Add separator
+        cmds.menuItem(divider=True, parent=menu)
+
+        # Add Nodes submenu
+        nodes_submenu = cmds.menuItem(
+            label="Nodes",
+            subMenu=True,
+            tearOff=True,
+            annotation="Create CTX nodes manually",
+            parent=menu
+        )
+
+        # Add node creation menu items
+        cmds.menuItem(
+            label="Create CTX_Sequence",
+            command=lambda *args: create_sequence_node(),
+            annotation="Create a new CTX_Sequence node manually",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="Create CTX_LightGaffer",
+            command=lambda *args: create_gaffer_node(),
+            annotation="Create a new CTX_LightGaffer node manually",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="Create CTX_LightContext",
+            command=lambda *args: create_light_context_node(),
+            annotation="Create a new CTX_LightContext node manually",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="Create CTX_Shot",
+            command=lambda *args: create_shot_node(),
+            annotation="Create a new CTX_Shot node manually",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="Create CTX_Asset",
+            command=lambda *args: create_asset_node(),
+            annotation="Create a new CTX_Asset node manually",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="Create CTX_Manager",
+            command=lambda *args: create_manager_node(),
+            annotation="Create a new CTX_Manager node (singleton)",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(divider=True, parent=nodes_submenu)
+
+        cmds.menuItem(
+            label="List All Sequences",
+            command=lambda *args: list_all_sequences(),
+            annotation="List all CTX_Sequence nodes in scene",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="List All Gaffers",
+            command=lambda *args: list_all_gaffers(),
+            annotation="List all CTX_LightGaffer nodes in scene",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="List All Light Contexts",
+            command=lambda *args: list_all_light_contexts(),
+            annotation="List all CTX_LightContext nodes in scene",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="List All Shots",
+            command=lambda *args: list_all_shots(),
+            annotation="List all CTX_Shot nodes in scene",
+            parent=nodes_submenu
+        )
+
+        cmds.menuItem(
+            label="List All Assets",
+            command=lambda *args: list_all_assets(),
+            annotation="List all CTX_Asset nodes in scene",
+            parent=nodes_submenu
         )
         
         # Add separator
@@ -166,13 +258,88 @@ def remove_ctx_menu():
 
 
 def reload_menu():
-    """Reload the CTX Tools menu.
+    """Reload the CTX Tools menu and all Python modules.
 
-    Useful for development when menu items change.
+    Useful for development when menu items or code changes.
+    This will:
+    1. Reload all Python modules in the project
+    2. Remove and recreate the menu
     """
-    logger.info("Reloading CTX Tools menu...")
-    remove_ctx_menu()
-    create_ctx_menu()
+    if not MAYA_AVAILABLE:
+        return
+
+    try:
+        logger.info("Reloading CTX Tools menu and modules...")
+
+        # Step 1: Reload Python modules
+        import sys
+
+        # List of module prefixes to reload
+        module_prefixes = [
+            'core.',
+            'ui.',
+            'tools.',
+            'utils.',
+        ]
+
+        # Find all loaded modules that match our prefixes
+        modules_to_reload = []
+        for module_name in list(sys.modules.keys()):
+            for prefix in module_prefixes:
+                if module_name.startswith(prefix) or module_name in ['core', 'ui', 'tools', 'utils']:
+                    if sys.modules[module_name] is not None:
+                        modules_to_reload.append(module_name)
+                    break
+
+        # Reload modules in reverse order (to handle dependencies)
+        logger.info("Reloading {} modules...".format(len(modules_to_reload)))
+        for module_name in reversed(modules_to_reload):
+            try:
+                if sys.modules[module_name] is not None:
+                    import importlib
+                    importlib.reload(sys.modules[module_name])
+                    logger.debug("Reloaded: {}".format(module_name))
+            except Exception as e:
+                logger.warning("Failed to reload {}: {}".format(module_name, e))
+
+        # Step 2: Remove old menu first
+        remove_ctx_menu()
+
+        # Step 3: Reload this module itself
+        try:
+            import importlib
+            import tools.maya_menu as menu_module
+            importlib.reload(menu_module)
+            logger.info("Reloaded tools.maya_menu")
+
+            # Step 4: Call create_ctx_menu from the RELOADED module
+            menu_module.create_ctx_menu()
+
+        except Exception as e:
+            logger.warning("Failed to reload tools.maya_menu: {}".format(e))
+            # Fallback: create menu with current module
+            create_ctx_menu()
+
+        logger.info("CTX Tools menu reloaded successfully!")
+
+        cmds.confirmDialog(
+            title="Reload Complete",
+            message="CTX Tools menu and modules reloaded successfully!\n\n"
+                    "Reloaded {} modules.".format(len(modules_to_reload)),
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+    except Exception as e:
+        logger.error("Failed to reload menu: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Reload Error",
+            message="Failed to reload menu:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
 
 
 def get_maya_main_window():
@@ -368,6 +535,553 @@ See docs/ folder for complete documentation
     )
 
 
+# ============================================================================
+# Node Creation Functions
+# ============================================================================
+
+def create_sequence_node():
+    """Create a new CTX_Sequence node."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        # Create the sequence node with default values
+        from core.nodes.wrappers import CTXSequenceNode
+
+        seq = CTXSequenceNode.create(
+            sequenceCode='',
+            sequenceName='',
+            frameStart=1001,
+            frameEnd=2000
+        )
+
+        # Select the created node
+        cmds.select(seq.node_name)
+
+        # Print to Script Editor
+        print("\n" + "="*60)
+        print("CREATED CTX_SEQUENCE NODE")
+        print("="*60)
+        print("Node: {}".format(seq.node_name))
+        print("Edit attributes in Attribute Editor")
+        print("="*60)
+
+        logger.info("Created CTX_Sequence: {}".format(seq.node_name))
+
+    except Exception as e:
+        logger.error("Failed to create CTX_Sequence: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.warning("Failed to create CTX_Sequence: {}".format(e))
+
+
+def create_gaffer_node():
+    """Create a new CTX_LightGaffer node."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        # Create the gaffer node with default values
+        from core.nodes.wrappers import CTXLightGafferNode
+
+        gaffer = CTXLightGafferNode.create(
+            gafferName='',
+            gafferType='custom',
+            scopeCode='',
+            enabled=True
+        )
+
+        # Select the created node
+        cmds.select(gaffer.node_name)
+
+        # Print to Script Editor
+        print("\n" + "="*60)
+        print("CREATED CTX_LIGHTGAFFER NODE")
+        print("="*60)
+        print("Node: {}".format(gaffer.node_name))
+        print("Edit attributes in Attribute Editor")
+        print("="*60)
+
+        logger.info("Created CTX_LightGaffer: {}".format(gaffer.node_name))
+
+    except Exception as e:
+        logger.error("Failed to create CTX_LightGaffer: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.warning("Failed to create CTX_LightGaffer: {}".format(e))
+
+
+def create_light_context_node():
+    """Create a new CTX_LightContext node."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        # Create the light context node with default values
+        from core.nodes.wrappers import CTXLightContextNode
+
+        light_ctx = CTXLightContextNode.create(
+            lightName=''
+        )
+
+        # Select the created node
+        cmds.select(light_ctx.node_name)
+
+        # Print to Script Editor
+        print("\n" + "="*60)
+        print("CREATED CTX_LIGHTCONTEXT NODE")
+        print("="*60)
+        print("Node: {}".format(light_ctx.node_name))
+        print("Edit attributes in Attribute Editor")
+        print("="*60)
+
+        logger.info("Created CTX_LightContext: {}".format(light_ctx.node_name))
+
+    except Exception as e:
+        logger.error("Failed to create CTX_LightContext: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.warning("Failed to create CTX_LightContext: {}".format(e))
+
+
+def list_all_sequences():
+    """List all CTX_Sequence nodes in the scene."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        from core.nodes.wrappers import CTXSequenceNode
+
+        sequences = CTXSequenceNode.list_all()
+
+        if not sequences:
+            cmds.confirmDialog(
+                title="No Sequences Found",
+                message="No CTX_Sequence nodes found in the scene.\n\n"
+                        "Create one using: CTX Tools → Nodes → Create CTX_Sequence",
+                button=["OK"],
+                defaultButton="OK"
+            )
+            return
+
+        # Build message
+        message = "Found {} CTX_Sequence node(s):\n\n".format(len(sequences))
+
+        for seq in sequences:
+            code = seq.get_sequence_code()
+            name = seq.get_sequence_name()
+            frame_range = seq.get_frame_range()
+            gaffer = seq.get_gaffer()
+
+            message += "• {} ({})\n".format(code, name)
+            message += "  Node: {}\n".format(seq.node_name)
+            message += "  Frames: {}-{}\n".format(frame_range[0], frame_range[1])
+            message += "  Gaffer: {}\n\n".format(gaffer or "(none)")
+
+        cmds.confirmDialog(
+            title="CTX_Sequence Nodes",
+            message=message,
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+        # Also print to Script Editor
+        print("\n" + "="*60)
+        print("CTX_SEQUENCE NODES")
+        print("="*60)
+        print(message)
+
+    except Exception as e:
+        logger.error("Failed to list sequences: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Error",
+            message="Failed to list sequences:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+
+def list_all_gaffers():
+    """List all CTX_LightGaffer nodes in the scene."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        from core.nodes.wrappers import CTXLightGafferNode
+
+        gaffers = CTXLightGafferNode.list_all()
+
+        if not gaffers:
+            cmds.confirmDialog(
+                title="No Gaffers Found",
+                message="No CTX_LightGaffer nodes found in the scene.\n\n"
+                        "Create one using: CTX Tools → Nodes → Create CTX_LightGaffer",
+                button=["OK"],
+                defaultButton="OK"
+            )
+            return
+
+        # Build message
+        message = "Found {} CTX_LightGaffer node(s):\n\n".format(len(gaffers))
+
+        for gaffer in gaffers:
+            name = gaffer.get_gaffer_name()
+            gaffer_type = gaffer.get_gaffer_type()
+            enabled = gaffer.is_enabled()
+            parent = gaffer.get_parent_gaffer()
+            lights = gaffer.get_lights()
+
+            message += "• {} ({})\n".format(name, gaffer_type)
+            message += "  Node: {}\n".format(gaffer.node_name)
+            message += "  Enabled: {}\n".format(enabled)
+            message += "  Parent: {}\n".format(parent.node_name if parent else "(none)")
+            message += "  Lights: {}\n\n".format(len(lights))
+
+        cmds.confirmDialog(
+            title="CTX_LightGaffer Nodes",
+            message=message,
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+        # Also print to Script Editor
+        print("\n" + "="*60)
+        print("CTX_LIGHTGAFFER NODES")
+        print("="*60)
+        print(message)
+
+    except Exception as e:
+        logger.error("Failed to list gaffers: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Error",
+            message="Failed to list gaffers:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+
+def list_all_light_contexts():
+    """List all CTX_LightContext nodes in the scene."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        from core.nodes.wrappers import CTXLightContextNode
+
+        light_contexts = CTXLightContextNode.list_all()
+
+        if not light_contexts:
+            cmds.confirmDialog(
+                title="No Light Contexts Found",
+                message="No CTX_LightContext nodes found in the scene.\n\n"
+                        "Create one using: CTX Tools → Nodes → Create CTX_LightContext",
+                button=["OK"],
+                defaultButton="OK"
+            )
+            return
+
+        # Build message
+        message = "Found {} CTX_LightContext node(s):\n\n".format(len(light_contexts))
+
+        for light_ctx in light_contexts:
+            light_name = light_ctx.get_light_name()
+            target_light = light_ctx.get_target_light()
+
+            message += "• {}\n".format(light_name)
+            message += "  Node: {}\n".format(light_ctx.node_name)
+            message += "  Target: {}\n\n".format(target_light or "(none)")
+
+        cmds.confirmDialog(
+            title="CTX_LightContext Nodes",
+            message=message,
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+        # Also print to Script Editor
+        print("\n" + "="*60)
+        print("CTX_LIGHTCONTEXT NODES")
+        print("="*60)
+        print(message)
+
+    except Exception as e:
+        logger.error("Failed to list light contexts: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Error",
+            message="Failed to list light contexts:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+
+def create_shot_node():
+    """Create a new CTX_Shot node."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        # Create the shot node with default values
+        from core.nodes.wrappers import CTXShotNode
+
+        shot = CTXShotNode.create(
+            ep_code='',
+            seq_code='',
+            shot_code='',
+            display_layer_name='',
+            is_active=False,
+            start_frame=1001,
+            end_frame=1100,
+            frame_offset=0,
+            fps=24.0,
+            handles=10
+        )
+
+        # Select the created node
+        cmds.select(shot.node_name)
+
+        # Print to Script Editor
+        print("\n" + "="*60)
+        print("CREATED CTX_SHOT NODE")
+        print("="*60)
+        print("Node: {}".format(shot.node_name))
+        print("Edit attributes in Attribute Editor")
+        print("="*60)
+
+        logger.info("Created CTX_Shot: {}".format(shot.node_name))
+
+    except Exception as e:
+        logger.error("Failed to create CTX_Shot: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.warning("Failed to create CTX_Shot: {}".format(e))
+
+
+def create_asset_node():
+    """Create a new CTX_Asset node."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        # Create the asset node with default values
+        from core.nodes.wrappers import CTXAssetNode
+
+        asset = CTXAssetNode.create(
+            asset_type='',
+            asset_name='',
+            variant='001',
+            namespace='',
+            file_path='',
+            version='',
+            is_loaded=False
+        )
+
+        # Select the created node
+        cmds.select(asset.node_name)
+
+        # Print to Script Editor
+        print("\n" + "="*60)
+        print("CREATED CTX_ASSET NODE")
+        print("="*60)
+        print("Node: {}".format(asset.node_name))
+        print("Edit attributes in Attribute Editor")
+        print("="*60)
+
+        logger.info("Created CTX_Asset: {}".format(asset.node_name))
+
+    except Exception as e:
+        logger.error("Failed to create CTX_Asset: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.warning("Failed to create CTX_Asset: {}".format(e))
+
+
+def create_manager_node():
+    """Create a new CTX_Manager node (singleton)."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        # Check if manager already exists
+        from core.nodes.wrappers import CTXManagerNode
+
+        existing = CTXManagerNode.get_manager()
+        if existing is not None:
+            cmds.warning("CTX_Manager already exists: {}".format(existing.node_name))
+            cmds.select(existing.node_name)
+            print("\n" + "="*60)
+            print("CTX_MANAGER ALREADY EXISTS")
+            print("="*60)
+            print("Node: {}".format(existing.node_name))
+            print("Only one CTX_Manager allowed per scene")
+            print("="*60)
+            return
+
+        # Create the manager node with default values
+        manager = CTXManagerNode.create(
+            config_path='',
+            project_root='',
+            active_shot_id=''
+        )
+
+        # Select the created node
+        cmds.select(manager.node_name)
+
+        # Print to Script Editor
+        print("\n" + "="*60)
+        print("CREATED CTX_MANAGER NODE")
+        print("="*60)
+        print("Node: {}".format(manager.node_name))
+        print("Edit attributes in Attribute Editor")
+        print("WARNING: Only one CTX_Manager allowed per scene")
+        print("="*60)
+
+        logger.info("Created CTX_Manager: {}".format(manager.node_name))
+
+    except Exception as e:
+        logger.error("Failed to create CTX_Manager: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.warning("Failed to create CTX_Manager: {}".format(e))
+
+
+def list_all_shots():
+    """List all CTX_Shot nodes in the scene."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        from core.nodes.wrappers import CTXShotNode
+
+        shots = CTXShotNode.list_all()
+
+        if not shots:
+            cmds.confirmDialog(
+                title="No Shots Found",
+                message="No CTX_Shot nodes found in the scene.\n\n"
+                        "Create one using: CTX Tools → Nodes → Create CTX_Shot",
+                button=["OK"],
+                defaultButton="OK"
+            )
+            return
+
+        # Build message
+        message = "Found {} CTX_Shot node(s):\n\n".format(len(shots))
+
+        for shot in shots:
+            shot_id = shot.get_shot_id()
+            frame_range = shot.get_attribute('start_frame'), shot.get_attribute('end_frame')
+            is_active = shot.get_attribute('is_active')
+
+            message += "• {}\n".format(shot_id)
+            message += "  Node: {}\n".format(shot.node_name)
+            message += "  Frames: {}-{}\n".format(frame_range[0], frame_range[1])
+            message += "  Active: {}\n\n".format("Yes" if is_active else "No")
+
+        cmds.confirmDialog(
+            title="CTX_Shot Nodes",
+            message=message,
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+        # Also print to Script Editor
+        print("\n" + "="*60)
+        print("CTX_SHOT NODES")
+        print("="*60)
+        print(message)
+
+    except Exception as e:
+        logger.error("Failed to list shots: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Error",
+            message="Failed to list shots:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+
+def list_all_assets():
+    """List all CTX_Asset nodes in the scene."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        from core.nodes.wrappers import CTXAssetNode
+
+        assets = CTXAssetNode.list_all()
+
+        if not assets:
+            cmds.confirmDialog(
+                title="No Assets Found",
+                message="No CTX_Asset nodes found in the scene.\n\n"
+                        "Create one using: CTX Tools → Nodes → Create CTX_Asset",
+                button=["OK"],
+                defaultButton="OK"
+            )
+            return
+
+        # Build message
+        message = "Found {} CTX_Asset node(s):\n\n".format(len(assets))
+
+        for asset in assets:
+            asset_id = asset.get_asset_id()
+            file_path = asset.get_attribute('file_path')
+            version = asset.get_attribute('version')
+            is_loaded = asset.get_attribute('is_loaded')
+
+            message += "• {}\n".format(asset_id)
+            message += "  Node: {}\n".format(asset.node_name)
+            message += "  Version: {}\n".format(version or "(none)")
+            message += "  Loaded: {}\n\n".format("Yes" if is_loaded else "No")
+
+        cmds.confirmDialog(
+            title="CTX_Asset Nodes",
+            message=message,
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+        # Also print to Script Editor
+        print("\n" + "="*60)
+        print("CTX_ASSET NODES")
+        print("="*60)
+        print(message)
+
+    except Exception as e:
+        logger.error("Failed to list assets: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Error",
+            message="Failed to list assets:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+
+# ============================================================================
+# Installation
+# ============================================================================
+
 # Convenience function for userSetup.py
 def install():
     """Install the CTX Tools menu.
@@ -388,4 +1102,59 @@ def install():
         logger.info("CTX Tools menu will be created when Maya is ready")
     else:
         logger.warning("Maya is not available, menu will not be created")
+
+
+def reload_all_modules():
+    """Reload all project modules without recreating menu.
+
+    This is useful for development when you want to reload code changes
+    without recreating the menu UI.
+
+    Usage in Maya Script Editor:
+        from tools import maya_menu
+        maya_menu.reload_all_modules()
+    """
+    import sys
+    import importlib
+
+    # List of module prefixes to reload
+    module_prefixes = [
+        'core.',
+        'ui.',
+        'tools.',
+        'utils.',
+    ]
+
+    # Find all loaded modules that match our prefixes
+    modules_to_reload = []
+    for module_name in list(sys.modules.keys()):
+        for prefix in module_prefixes:
+            if module_name.startswith(prefix) or module_name in ['core', 'ui', 'tools', 'utils']:
+                if sys.modules[module_name] is not None:
+                    modules_to_reload.append(module_name)
+                break
+
+    # Reload modules in reverse order (to handle dependencies)
+    print("\n" + "="*60)
+    print("RELOADING {} MODULES".format(len(modules_to_reload)))
+    print("="*60)
+
+    reloaded_count = 0
+    failed_count = 0
+
+    for module_name in reversed(modules_to_reload):
+        try:
+            if sys.modules[module_name] is not None:
+                importlib.reload(sys.modules[module_name])
+                print("✓ Reloaded: {}".format(module_name))
+                reloaded_count += 1
+        except Exception as e:
+            print("✗ Failed: {} - {}".format(module_name, e))
+            failed_count += 1
+
+    print("="*60)
+    print("RELOAD COMPLETE: {} succeeded, {} failed".format(reloaded_count, failed_count))
+    print("="*60)
+
+    return reloaded_count, failed_count
 

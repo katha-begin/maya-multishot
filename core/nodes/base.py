@@ -114,12 +114,16 @@ class NodeFactory(object):
         # Add all attributes from schema
         for attr_name, attr_def in schema.ATTRIBUTES.items():
             NodeFactory._add_attribute(node_name, attr_name, attr_def)
-        
+
+        # Add all connection attributes from schema
+        for conn_name, conn_def in schema.CONNECTIONS.items():
+            NodeFactory._add_connection_attribute(node_name, conn_name, conn_def)
+
         # Set initial values from kwargs
         for attr_name, value in kwargs.items():
             if attr_name in schema.ATTRIBUTES:
                 NodeFactory._set_attribute(node_name, attr_name, value, schema.ATTRIBUTES[attr_name])
-        
+
         return node_name
     
     @staticmethod
@@ -151,6 +155,30 @@ class NodeFactory(object):
         elif attr_type == 'message':
             multi = attr_def.get('multi', False)
             cmds.addAttr(node_name, longName=attr_name, attributeType='message', multi=multi)
+
+    @staticmethod
+    def _add_connection_attribute(node_name, conn_name, conn_def):
+        """Add connection attribute (message) to node based on definition.
+
+        Args:
+            node_name (str): Node name
+            conn_name (str): Connection attribute name
+            conn_def (dict): Connection definition from schema
+        """
+        # All connections are message attributes
+        multi = conn_def.get('multi', False)
+
+        # Check if attribute already exists (avoid duplicates)
+        if cmds.attributeQuery(conn_name, node=node_name, exists=True):
+            return
+
+        # Add message attribute
+        # NOTE: indexMatters=False is required for multi attributes so that
+        # connectAttr(nextAvailable=True) works correctly in Maya.
+        if multi:
+            cmds.addAttr(node_name, longName=conn_name, attributeType='message', multi=True, indexMatters=False)
+        else:
+            cmds.addAttr(node_name, longName=conn_name, attributeType='message')
 
     @staticmethod
     def _set_attribute(node_name, attr_name, value, attr_def):

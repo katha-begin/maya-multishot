@@ -48,3 +48,36 @@ class DockableMainWindow(QtWidgets.QWidget):
         """Get the underlying MainWindow instance."""
         return self._main_window
 
+
+def show_dockable_window():
+    """Show the Context Manager as a dockable window in Maya.
+
+    This function creates or shows the Context Manager window.
+    If the window already exists, it will be shown. Otherwise, a new one is created.
+
+    Returns:
+        DockableMainWindow: The dockable window instance
+    """
+    try:
+        import maya.cmds as cmds
+    except ImportError:
+        # Not in Maya, create standalone window
+        from ui.main_window import MainWindow
+        window = MainWindow()
+        window.show()
+        return window
+
+    # Check if window already exists
+    window_name = "MultishotManagerDockableWidget"
+
+    # Try to find existing window
+    if cmds.window(window_name, exists=True):
+        cmds.showWindow(window_name)
+        return None
+
+    # Create new dockable window
+    window = DockableMainWindow()
+    window.show()
+
+    return window
+

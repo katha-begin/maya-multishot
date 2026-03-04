@@ -23,7 +23,7 @@ class CTXLightContextSchema(NodeSchema):
     
     ATTRIBUTES = {
         # Node identification
-        'ctx_node_type': {
+        'ctx_type': {
             'type': 'string',
             'default': 'CTX_LightContext',
             'description': 'CTX node type identifier'
@@ -152,21 +152,17 @@ class CTXLightContextSchema(NodeSchema):
     }
     
     CONNECTIONS = {
-        # Parent gaffer
-        'parentGaffer': {
-            'type': 'message',
-            'multi': False,
-            'direction': 'input',
-            'accepts': ['CTX_LightGaffer'],
-            'description': 'Gaffer that owns this light context'
-        },
-        
-        # Target light
+        # Target light connection (OUTPUT - sends to Maya light)
         'targetLight': {
             'type': 'message',
             'multi': False,
             'direction': 'output',
             'description': 'Maya light shape node'
         },
+
+        # NOTE: parentGaffer removed - redundant with unidirectional pattern
+        # Light contexts are owned by gaffer via gaffer.lights[i] OUTPUT connection
+        # To query parent gaffer: cmds.listConnections("light_context.message", source=False, destination=True, type='network')
+        # Then filter for ctx_type == 'CTX_LightGaffer'
     }
 

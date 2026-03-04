@@ -102,7 +102,12 @@ class AssetManager(object):
     
     def add_asset(self, shot_node, asset_type, asset_name, variant, version, file_path):
         """Add asset to shot.
-        
+
+        Creates a CTX_Asset node and links it to the CTX_Shot node using the proper
+        CTXAssetNode.create_asset() method. Also creates the Maya node (aiStandIn,
+        RedshiftProxyMesh, or reference) with proper namespace and links it to the
+        CTX_Asset node using message attributes.
+
         Args:
             shot_node (str): CTX_Shot node name
             asset_type (str): Asset type (CHAR, PROP, ENV, VEH)
@@ -110,76 +115,86 @@ class AssetManager(object):
             variant (str): Variant code (e.g., '002')
             version (str): Version (e.g., 'v003')
             file_path (str): Full path to asset file
-        
+
         Returns:
             str: Created CTX_Asset node name
+
+        Raises:
+            ValueError: If shot node doesn't exist or file doesn't exist
         """
+        from core.custom_nodes import CTXAssetNode, CTXShotNode
+        from core.ctx_linker import link_to_maya_node
+        from core.nodes import create_standin_with_namespace, create_redshift_proxy_with_namespace
+
         # Validate shot exists
         if not cmds.objExists(shot_node):
             raise ValueError("Shot node '{}' does not exist".format(shot_node))
-        
+
         # Validate file exists
         if not os.path.exists(file_path):
             raise ValueError("Asset file '{}' does not exist".format(file_path))
-        
-        # Build asset node name
-        asset_node_name = "CTX_Asset_{}_{}_{}_{}".format(asset_type, asset_name, variant, version)
-        
-        # Check if asset already exists
-        if cmds.objExists(asset_node_name):
-            raise ValueError("Asset '{}' already exists".format(asset_node_name))
-        
-        # Create asset node
-        asset_node = cmds.createNode('network', name=asset_node_name)
-        
-        # Add attributes
-        cmds.addAttr(asset_node, longName='assetType', dataType='string')
-        cmds.addAttr(asset_node, longName='assetName', dataType='string')
-        cmds.addAttr(asset_node, longName='variant', dataType='string')
-        cmds.addAttr(asset_node, longName='version', dataType='string')
-        cmds.addAttr(asset_node, longName='path', dataType='string')
-        cmds.addAttr(asset_node, longName='maya_node', dataType='string')
-        cmds.addAttr(asset_node, longName='shot', attributeType='message')
-        
-        # Set attribute values
-        cmds.setAttr("{}.assetType".format(asset_node), asset_type, type='string')
-        cmds.setAttr("{}.assetName".format(asset_node), asset_name, type='string')
-        cmds.setAttr("{}.variant".format(asset_node), variant, type='string')
-        cmds.setAttr("{}.version".format(asset_node), version, type='string')
-        cmds.setAttr("{}.path".format(asset_node), file_path, type='string')
 
-        # Connect to shot node
-        cmds.connectAttr("{}.message".format(asset_node), "{}.assets".format(shot_node), nextAvailable=True)
+        # Wrap shot node
+        shot_node_obj = CTXShotNode(shot_node)
 
-        # Determine node type from file extension
+        # Create CTX_Asset node using proper method (this handles shot connection)
+        asset_node_obj = CTXAssetNode.create_asset(
+            asset_type=asset_type,
+            asset_name=asset_name,
+            variant=variant,
+            shot_node=shot_node_obj
+        )
+
+        # Set file path and version
+        asset_node_obj.set_file_path(file_path)
+        asset_node_obj.set_version(version)
+
+        # Build namespace: CHAR_ToriiMechSuit_001
+        namespace = "{}_{}_{}".format(asset_type, asset_name, variant)
+
+        # Determine node type from file extension and create Maya node
         ext = os.path.splitext(file_path)[1].lower()
         maya_node = None
+        shape_node = None
 
         if ext == '.abc':
-            # Create Arnold StandIn
-            maya_node = cmds.createNode('aiStandIn', name="{}_{}_{}".format(asset_type, asset_name, variant))
-            cmds.setAttr("{}.dso".format(maya_node), file_path, type='string')
-        elif ext in ['.ma', '.mb']:
-            # Create Reference (simplified for testing)
-            maya_node = "ref_{}_{}_{}".format(asset_type, asset_name, variant)
-        elif ext == '.rs':
-            # Create Redshift Proxy
-            maya_node = cmds.createNode('RedshiftProxyMesh', name="{}_{}_{}".format(asset_type, asset_name, variant))
-            cmds.setAttr("{}.fileName".format(maya_node), file_path, type='string')
+            # Create Arnold StandIn with namespace
+            transform_node, shape_node = create_standin_with_namespace(namespace, file_path)
+            maya_node = transform_node  # Store transform for display layer
 
-        if maya_node:
-            cmds.setAttr("{}.maya_node".format(asset_node), maya_node, type='string')
+            # Link shape node to CTX_Asset via message attribute
+            link_to_maya_node(asset_node_obj.node_name, shape_node)
+
+        elif ext in ['.ma', '.mb']:
+            # Create Reference with namespace
+            from core.reference_manager import reference_file
+            ref_node = reference_file(file_path, namespace)
+            if ref_node:
+                maya_node = ref_node
+                # Link reference node to CTX_Asset
+                link_to_maya_node(asset_node_obj.node_name, ref_node)
+
+        elif ext == '.rs':
+            # Create Redshift Proxy with namespace
+            transform_node, shape_node = create_redshift_proxy_with_namespace(namespace, file_path)
+            maya_node = transform_node  # Store transform for display layer
+
+            # Link shape node to CTX_Asset via message attribute
+            link_to_maya_node(asset_node_obj.node_name, shape_node)
 
         # Assign to display layer if available
-        if self.layer_manager:
+        if self.layer_manager and maya_node:
             ep = cmds.getAttr("{}.ep".format(shot_node))
             seq = cmds.getAttr("{}.seq".format(shot_node))
             shot = cmds.getAttr("{}.shot".format(shot_node))
             layer = self.layer_manager.get_layer_for_shot(ep, seq, shot)
-            if layer and maya_node:
+            if layer:
                 self.layer_manager.assign_to_layer(maya_node, layer)
 
-        return asset_node
+        logger.info("Created CTX_Asset: {} linked to Maya node: {}".format(
+            asset_node_obj.node_name, maya_node))
+
+        return asset_node_obj.node_name
 
     def remove_asset(self, asset_node):
         """Remove asset from shot and delete Maya node.

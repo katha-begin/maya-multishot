@@ -25,7 +25,7 @@ class CTXLightGafferSchema(NodeSchema):
     
     ATTRIBUTES = {
         # Node identification
-        'ctx_node_type': {
+        'ctx_type': {
             'type': 'string',
             'default': 'CTX_LightGaffer',
             'description': 'CTX node type identifier'
@@ -65,36 +65,35 @@ class CTXLightGafferSchema(NodeSchema):
     }
     
     CONNECTIONS = {
-        # Hierarchy connections
-        'parentNode': {
-            'type': 'message',
-            'multi': False,
-            'direction': 'input',
-            'accepts': ['CTX_Shot', 'CTX_Sequence', 'CTX_Manager'],
-            'description': 'Parent context node (Shot/Sequence/Manager)'
-        },
-        
+        # Inheritance chain connection (INPUT - receives from parent gaffer)
+        # Unidirectional: ChildGaffer.message → ParentGaffer.parentGaffer
         'parentGaffer': {
             'type': 'message',
             'multi': False,
             'direction': 'input',
             'accepts': ['CTX_LightGaffer'],
-            'description': 'Parent gaffer in inheritance chain'
+            'description': 'Parent gaffer in inheritance chain (for attribute resolution)'
         },
-        
+
+        # Child gaffer connections (OUTPUT MULTI - for querying children)
         'childGaffers': {
             'type': 'message',
             'multi': True,
             'direction': 'output',
             'description': 'Child gaffers that inherit from this gaffer'
         },
-        
-        # Light connections
+
+        # Light context connections (OUTPUT MULTI - for querying lights)
         'lights': {
             'type': 'message',
             'multi': True,
             'direction': 'output',
             'description': 'Light context nodes managed by this gaffer'
         },
+
+        # NOTE: parentNode removed - redundant with direct ownership pattern
+        # Gaffers are now directly owned by Sequence/Shot via their .gaffer attribute
+        # To query owner: cmds.listConnections("gaffer.message", source=False, destination=True, type='network')
+        # Then filter for ctx_type in ['CTX_Sequence', 'CTX_Shot']
     }
 

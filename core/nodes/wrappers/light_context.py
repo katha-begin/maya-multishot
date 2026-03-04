@@ -26,49 +26,54 @@ class CTXLightContextNode(NodeWrapper):
     SCHEMA = CTXLightContextSchema
     
     def get_parent_gaffer(self):
-        """Get owning gaffer.
-        
+        """Get owning gaffer using unidirectional pattern.
+
+        Queries: LightContext.message → Gaffer.lights[i]
+        Uses destination=True to traverse from child to parent.
+
         Returns:
             CTXLightGafferNode or None: Parent gaffer wrapper
         """
         if cmds is None:
             return None
-        
+
         from .gaffer import CTXLightGafferNode
-        
+
+        # Query where light_context.message is connected TO (destination=True)
         connections = cmds.listConnections(
-            "{}.parentGaffer".format(self.node_name),
-            source=True,
-            destination=False,
+            "{}.message".format(self.node_name),
+            source=False,
+            destination=True,
+            type='network',
             plugs=False
-        )
-        
-        if connections:
-            return CTXLightGafferNode(connections[0])
-        
+        ) or []
+
+        # Filter for CTX_LightGaffer nodes
+        for conn in connections:
+            if cmds.attributeQuery('ctx_type', node=conn, exists=True):
+                node_type = cmds.getAttr('{}.ctx_type'.format(conn))
+                if node_type == 'CTX_LightGaffer':
+                    return CTXLightGafferNode(conn)
+
         return None
     
     def set_parent_gaffer(self, gaffer):
-        """Set owning gaffer.
-        
+        """Set owning gaffer using unidirectional pattern.
+
+        Creates ONE connection: LightContext.message → Gaffer.lights[i]
+
         Args:
             gaffer (CTXLightGafferNode or str): Gaffer wrapper or node name
         """
         if cmds is None:
             raise RuntimeError("Maya is not available")
-        
+
         from .gaffer import CTXLightGafferNode
-        
+
         gaffer_node = gaffer.node_name if isinstance(gaffer, CTXLightGafferNode) else gaffer
-        
-        # Connect to gaffer
-        cmds.connectAttr(
-            "{}.message".format(gaffer_node),
-            "{}.parentGaffer".format(self.node_name),
-            force=True
-        )
-        
-        # Also connect to gaffer's lights array
+
+        # Unidirectional connection: light_context.message → gaffer.lights[i]
+        # Parent (gaffer) owns children (light contexts)
         cmds.connectAttr(
             "{}.message".format(self.node_name),
             "{}.lights".format(gaffer_node),
@@ -150,9 +155,30 @@ class CTXLightContextNode(NodeWrapper):
     
     def get_light_name(self):
         """Get the light name.
-        
+
         Returns:
             str: Light name
         """
         return self.get_attribute('lightName')
+
+    @staticmethod
+    def list_all():
+        """List all CTX_LightContext nodes in scene.
+
+        Returns:
+            list: List of CTXLightContextNode wrappers
+        """
+        if cmds is None:
+            return []
+
+        light_contexts = []
+        all_nodes = cmds.ls(type='network')
+
+        for node in all_nodes:
+            if cmds.attributeQuery('ctx_type', node=node, exists=True):
+                node_type = cmds.getAttr('{}.ctx_type'.format(node))
+                if node_type == 'CTX_LightContext':
+                    light_contexts.append(CTXLightContextNode(node))
+
+        return light_contexts
 

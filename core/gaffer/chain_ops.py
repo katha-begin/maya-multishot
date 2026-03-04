@@ -102,8 +102,8 @@ class ChainOperations(object):
         
         for node in all_nodes:
             # Check if it's a CTX_LightGaffer
-            if cmds.attributeQuery('ctx_node_type', node=node, exists=True):
-                node_type = cmds.getAttr('{}.ctx_node_type'.format(node))
+            if cmds.attributeQuery('ctx_type', node=node, exists=True):
+                node_type = cmds.getAttr('{}.ctx_type'.format(node))
                 if node_type == 'CTX_LightGaffer':
                     # Check if name matches
                     if cmds.attributeQuery('gafferName', node=node, exists=True):
@@ -262,8 +262,8 @@ class ChainOperations(object):
 
         for node in all_nodes:
             # Check if it's a CTX_LightGaffer
-            if cmds.attributeQuery('ctx_node_type', node=node, exists=True):
-                node_type = cmds.getAttr('{}.ctx_node_type'.format(node))
+            if cmds.attributeQuery('ctx_type', node=node, exists=True):
+                node_type = cmds.getAttr('{}.ctx_type'.format(node))
                 if node_type == 'CTX_LightGaffer':
                     # Check if name matches
                     if cmds.attributeQuery('gafferName', node=node, exists=True):
@@ -304,8 +304,8 @@ class ChainOperations(object):
 
         for node in all_nodes:
             # Check if it's a CTX_LightGaffer
-            if cmds.attributeQuery('ctx_node_type', node=node, exists=True):
-                node_type = cmds.getAttr('{}.ctx_node_type'.format(node))
+            if cmds.attributeQuery('ctx_type', node=node, exists=True):
+                node_type = cmds.getAttr('{}.ctx_type'.format(node))
                 if node_type == 'CTX_LightGaffer':
                     wrapper = CTXLightGafferNode(node)
                     gaffers.append({
