@@ -1,8 +1,8 @@
 # Maya Multishot Pipeline - AI Agent Summary
 
-**Version:** 1.0  
-**Last Updated:** 2026-02-22  
-**Purpose:** High-level project overview for AI agents and new developers  
+**Version:** 2.0
+**Last Updated:** 2026-03-04
+**Purpose:** High-level project overview for AI agents and new developers
 
 ---
 
@@ -74,23 +74,31 @@
 
 ### Current Status
 
-**Branch:** `feature/gaffer-system`
-**Phase:** Phase 1 - Schema-Based Node System (Complete)
+**Branch:** `feature/ui-tools-framework`
+**Phase:** Phase 2 - UI & Tools Framework Migration (In Progress)
 **Lines of Code:** ~8,000+ (core + UI + tests)
 **Test Coverage:** 63 passing tests for gaffer system
 
 **Completed Phases:**
-- ✅ Phase 0: Repository Setup
-- ✅ Phase 1-4: Core system (nodes, paths, display layers, UI)
-- ✅ Phase 5: Light Gaffer System (complete)
-- ✅ Phase 1: Schema-Based Node System (complete)
+- Phase 0: Repository Setup
+- Phase 1-4: Core system (nodes, paths, display layers, UI)
+- Phase 5: Light Gaffer System
+- Phase 1 (schema): Schema-Based Node System — all 6 node types, unidirectional connections
+
+**Current Phase — Phase 2: UI & Tools Framework Migration**
+- Create `tools/base_manager.py` (shared BaseManager class, MockCmds, MAYA_AVAILABLE)
+- Create `ui/base_dialog.py` (shared Qt boilerplate)
+- Migrate `tools/shot_manager.py` to schema-based wrappers
+- Migrate `tools/asset_manager.py` to schema-based wrappers
+- Migrate `ui/main_window.py` to schema-based wrappers
+- Remove 5 unused `ui/` files (shot_widget, asset_widget, filesystem_discovery, import_asset_dialog, convert_scene_dialog)
 
 ### Roadmap Highlights
 
 **Q1 2026:**
-- Complete schema-based node system
-- Migrate core CTX nodes to schemas
-- Implement asset type handlers
+- Complete UI & tools framework migration (Phase 2)
+- Migrate main_window.py to schema-based nodes
+- Remove unused UI files
 
 **Q2 2026:**
 - NodeGraphQt visual graph integration
@@ -190,12 +198,12 @@ pytest-cov         # Coverage reporting
 
 ### System Design Overview
 
-**Two-Phase Architecture:**
+**Migration-Phase Architecture:**
 
-1. **Legacy System** (Production) - Imperative node creation
-2. **Schema-Based System** (NEW) - Declarative node definitions
+1. **Legacy System** (`core/custom_nodes.py`) - Deprecated, kept for backward compatibility with existing Maya scenes only
+2. **Schema-Based System** (`core/nodes/wrappers/`) - Primary system, use for all new development
 
-Both systems coexist during migration. Legacy code in `core/custom_nodes.py` remains unchanged.
+Both systems coexist during migration. Do not modify `core/custom_nodes.py`. All new code must use `core/nodes/wrappers/`.
 
 ### Schema-Based Node System (NEW)
 
@@ -243,63 +251,7 @@ class CTXSequenceNode(NodeWrapper):
 
 ### Repository Structure
 
-**See:** [spec/ARCHITECTURE_SUMMARY.md](spec/ARCHITECTURE_SUMMARY.md) for complete structure.
-
-```
-maya-multishot/
-├── core/
-│   ├── custom_nodes.py          # LEGACY - CTX node wrappers (keep for compatibility)
-│   │
-│   ├── nodes/                   # NEW - Schema-based node system
-│   │   ├── base.py              # NodeSchema, NodeFactory, NodeWrapper
-│   │   ├── schemas/             # Node definitions (declarative)
-│   │   │   ├── manager.py       # CTX_Manager schema
-│   │   │   ├── sequence.py      # CTX_Sequence schema
-│   │   │   ├── shot.py          # CTX_Shot schema
-│   │   │   ├── asset.py         # CTX_Asset schema
-│   │   │   ├── gaffer.py        # CTX_LightGaffer schema
-│   │   │   └── light_context.py # CTX_LightContext schema
-│   │   │
-│   │   └── wrappers/            # High-level API
-│   │       ├── manager.py       # CTX_Manager wrapper
-│   │       ├── sequence.py      # CTX_Sequence wrapper
-│   │       ├── shot.py          # CTX_Shot wrapper
-│   │       ├── asset.py         # CTX_Asset wrapper
-│   │       ├── gaffer.py        # CTX_LightGaffer wrapper
-│   │       └── light_context.py # CTX_LightContext wrapper
-│   │
-│   ├── gaffer/                  # Gaffer system
-│   │   ├── manager.py           # GafferManager (add/remove/resolve)
-│   │   ├── resolver.py          # AttributeResolver (chain walking)
-│   │   ├── chain_ops.py         # Chain operations
-│   │   └── light_ops.py         # Light operations (capture/apply)
-│   │
-│   ├── asset_types/             # Asset type handlers (future)
-│   │   ├── base.py              # AssetTypeHandler base
-│   │   ├── arnold.py            # ArnoldStandInHandler
-│   │   ├── redshift.py          # RedshiftProxyHandler
-│   │   └── usd.py               # USDReferenceHandler
-│   │
-│   ├── renderers/               # Renderer adapters (future)
-│   │   ├── base.py              # RendererAdapter base
-│   │   ├── arnold.py            # ArnoldAdapter
-│   │   └── redshift.py          # RedshiftAdapter
-│   │
-│   └── (existing modules)       # config, context, tokens, resolver, etc.
-│
-├── ui/
-│   ├── main_window.py           # Context Manager (main UI)
-│   ├── gaffer_manager_dialog.py # Gaffer Manager UI
-│   ├── asset_manager_dialog.py  # Asset Manager UI
-│   └── (other UI components)
-│
-├── tools/
-│   └── maya_menu.py             # CTX Tools menu integration
-│
-├── tests/                       # Test suite
-├── docs/                        # User documentation
-└── spec/                        # Technical specifications
-```
+See [spec/ARCHITECTURE_SUMMARY.md](spec/ARCHITECTURE_SUMMARY.md) for the complete, authoritative directory tree including current state and target state (post Phase 2 migration).
 
 ### Core Modules
 
@@ -544,35 +496,32 @@ color: [1, 0, 0] (enabled) → OVERRIDES Sequence
 
 ## 7. Development Status
 
-### Current Phase: Schema-Based Node Migration
+### Current Phase: UI & Tools Framework Migration
 
-**Status:** In Progress (Phase 1)
-**Branch:** `feature/gaffer-system`
+**Status:** In Progress (Phase 2)
+**Branch:** `feature/ui-tools-framework`
 
-**Completed:**
-- ✅ Created schema-based node system architecture
-- ✅ Implemented CTX_Sequence, CTX_Shot, CTX_Asset, CTX_Manager schemas
-- ✅ Implemented CTX_LightGaffer, CTX_LightContext schemas
-- ✅ Created wrappers with manual wiring methods
-- ✅ Added Maya menu integration (CTX Tools → Nodes)
-- ✅ Fixed NodeFactory to process CONNECTIONS dict
-- ✅ Removed popup dialogs from node creation
+**Completed (Phase 1 — Schema-Based Node System):**
+- Created schema-based node system architecture
+- Implemented all 6 node schemas (Manager, Sequence, Shot, Asset, LightGaffer, LightContext)
+- Created all 6 wrappers with manual wiring methods
+- Fixed NodeFactory to process CONNECTIONS dict
+- Added Maya menu integration (CTX Tools -> Nodes)
+- Removed popup dialogs from node creation
+- Migrated documentation to reflect unidirectional connection pattern
 
-**In Progress:**
-- 🚧 Testing schema-based nodes in Maya
-- 🚧 Updating documentation with new workflows
-
-**Next Steps:**
-- Migrate legacy code to use schema-based nodes
-- Implement asset type handlers
-- Implement renderer adapters
-- NodeGraphQt visual graph integration
+**In Progress (Phase 2 — UI & Tools Framework Migration):**
+- Create tools/base_manager.py (shared BaseManager, MockCmds)
+- Create ui/base_dialog.py (shared Qt boilerplate)
+- Migrate tools/shot_manager.py
+- Migrate tools/asset_manager.py
+- Migrate ui/main_window.py
+- Remove 5 unused ui/ files
 
 ### Known Issues
 
-1. **Connection attributes visibility** - Need to verify `shots`, `gaffer` attributes appear in Attribute Editor
-2. **Legacy compatibility** - Ensure old scenes still work with new schema-based nodes
-3. **Performance** - Test with large scenes (100+ nodes)
+1. **Legacy compatibility** - Ensure old scenes still work with schema-based nodes
+2. **Performance** - Test with large scenes (100+ nodes)
 
 ---
 
@@ -581,11 +530,45 @@ color: [1, 0, 0] (enabled) → OVERRIDES Sequence
 ### Essential Documents
 
 - **[ARCHITECTURE_SUMMARY.md](spec/ARCHITECTURE_SUMMARY.md)** - Repository structure (SINGLE SOURCE OF TRUTH)
+- **[core/nodes/AGENTS.md](core/nodes/AGENTS.md)** - Schema-based node system technical reference
 - **[NODE_ARCHITECTURE.md](spec/NODE_ARCHITECTURE.md)** - Schema-based node system details
 - **[DEVELOPMENT_PLAN.md](spec/DEVELOPMENT_PLAN.md)** - Development roadmap
 - **[spec.md](spec/spec.md)** - Complete technical specification
 - **[GAFFER_IMPLEMENTATION_PLAN.md](spec/GAFFER_IMPLEMENTATION_PLAN.md)** - Gaffer task breakdown
 - **[CTX_lightGaffer_spec.md](spec/CTX_lightGaffer_spec.md)** - Gaffer detailed specification
+
+### Node System
+
+**Primary system (use for all new code):** `core/nodes/wrappers/`
+**Legacy system (backward compat only):** `core/custom_nodes.py` — DEPRECATED, do not use for new development
+
+**Correct imports:**
+
+```python
+# CORRECT
+from core.nodes.wrappers import (
+    CTXManagerNode, CTXSequenceNode, CTXShotNode, CTXAssetNode,
+    CTXLightGafferNode, CTXLightContextNode
+)
+
+# WRONG — do not use for new code
+from core.custom_nodes import CTXManagerNode, CTXShotNode
+```
+
+**Correct attribute name:** `ctx_type` (snake_case)
+**Wrong attribute name:** `ctx_node_type` — do not use
+
+### Migration Priority
+
+Files that still use the legacy node system and need migration in Phase 2:
+
+| File | Issue | Action |
+|---|---|---|
+| `ui/main_window.py` | Imports `CTXManagerNode, CTXShotNode` from `core.custom_nodes` | Migrate to `core.nodes.wrappers` |
+| `tools/shot_manager.py` | Uses raw `cmds.createNode` + legacy node operations | Extend `BaseManager`, use wrappers |
+| `tools/asset_manager.py` | Inline `from core.custom_nodes import ...` inside methods | Extend `BaseManager`, use wrappers |
+
+Migration order: `base_manager.py` -> `base_dialog.py` -> `shot_manager.py` -> `asset_manager.py` -> `main_window.py`
 
 ### Key Commands
 
@@ -593,12 +576,18 @@ color: [1, 0, 0] (enabled) → OVERRIDES Sequence
 # Launch Context Manager
 exec(open(r'E:/dev/maya-multishot/launch_multishot_dockable.py').read())
 
-# Create nodes manually
-from core.nodes.wrappers import CTXSequenceNode, CTXLightGafferNode
+# Create nodes (schema-based wrappers)
+from core.nodes.wrappers import CTXManagerNode, CTXSequenceNode, CTXShotNode
+from core.nodes.wrappers import CTXLightGafferNode
+
+manager = CTXManagerNode.create(projectName='MyProject')
 seq = CTXSequenceNode.create(sequenceCode='sq0070', sequenceName='Sequence 70')
+shot = CTXShotNode.create(ep='Ep04', seq='sq0070', shot='SH0170')
 gaffer = CTXLightGafferNode.create(gafferName='Master', gafferType='master')
 
-# Wire nodes
+# Wire nodes (unidirectional: child.message -> parent.attribute)
+manager.add_sequence(seq)
+seq.add_shot(shot)
 seq.set_gaffer(gaffer)
 
 # Reload menu (for development)
@@ -619,9 +608,16 @@ pytest --cov=core --cov-report=html tests/
 pytest tests/test_gaffer_manager.py -v
 ```
 
+### Code Style Rules
+
+- DO NOT USE EMOJI IN CODE FILES (.py files)
+  - No emoji in comments, docstrings, print statements, or logging messages
+  - No emoji in variable names, class names, or function names
+  - Documentation files (.md) may use emoji for readability
+
 ---
 
 **Maintainer:** CTX Pipeline Team
 **Repository:** https://github.com/katha-begin/maya-multishot.git
-**Last Updated:** 2026-02-22
+**Last Updated:** 2026-03-04
 

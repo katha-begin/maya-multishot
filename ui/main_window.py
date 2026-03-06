@@ -19,7 +19,7 @@ except ImportError:
 from config.project_config import ProjectConfig
 from config.platform_config import PlatformConfig
 from core.context import ContextManager
-from core.custom_nodes import CTXManagerNode, CTXShotNode
+from core.nodes.wrappers import CTXManagerNode, CTXShotNode
 from core.asset_scanner import AssetScanner
 from core.nodes import NodeManager
 from core.display_layers import DisplayLayerManager

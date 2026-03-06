@@ -85,8 +85,8 @@ class CTXAssetNode(NodeWrapper):
 
         # Filter for CTX_Shot nodes
         for conn in connections:
-            if cmds.attributeQuery('ctx_node_type', node=conn, exists=True):
-                node_type = cmds.getAttr('{}.ctx_node_type'.format(conn))
+            if cmds.attributeQuery('ctx_type', node=conn, exists=True):
+                node_type = cmds.getAttr('{}.ctx_type'.format(conn))
                 if node_type == 'CTX_Shot':
                     return conn
 

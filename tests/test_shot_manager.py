@@ -100,12 +100,19 @@ class MockCmds(object):
             return [name for name, data in self.nodes.items() if data.get('type') == node_type]
         return list(self.nodes.keys())
     
+    def attributeQuery(self, attr, **kwargs):
+        """Mock attributeQuery."""
+        node = kwargs.get('node')
+        if node and node in self.nodes:
+            return attr in self.nodes[node]
+        return False
+
     def delete(self, *nodes):
         """Mock delete."""
         for node in nodes:
             if node in self.nodes:
                 del self.nodes[node]
-            
+
             # Remove connections
             to_remove = []
             for src, dsts in self.connections.items():
@@ -113,7 +120,7 @@ class MockCmds(object):
                     to_remove.append(src)
                 else:
                     self.connections[src] = [dst for dst in dsts if node not in dst]
-            
+
             for src in to_remove:
                 del self.connections[src]
 

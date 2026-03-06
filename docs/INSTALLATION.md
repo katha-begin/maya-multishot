@@ -1,7 +1,7 @@
 # CTX Tools - Installation Guide
 
-**Version:** 1.0  
-**Last Updated:** 2026-02-21
+**Version:** 1.1
+**Last Updated:** 2026-03-06
 
 ---
 
@@ -20,9 +20,9 @@
 
 ### Software Requirements
 
-- **Maya:** 2020 or later
-- **Python:** 2.7 (Maya 2020-2022) or 3.7+ (Maya 2023+)
-- **Qt:** PySide2 (Maya 2020-2022) or PySide6 (Maya 2023+)
+- **Maya:** 2022 or later
+- **Python:** 3.7+ (Maya 2022+)
+- **Qt:** PySide2 (Maya 2022-2023) or PySide6 (Maya 2024+)
 
 ### Python Dependencies
 
@@ -42,9 +42,9 @@ All dependencies are included with Maya, no additional installation required:
 cd E:/dev  # Or your preferred location
 git clone https://github.com/katha-begin/maya-multishot.git
 
-# Switch to feature branch (if testing gaffer system)
+# Switch to current development branch
 cd maya-multishot
-git checkout feature/gaffer-system
+git checkout feature/ui-tools-framework
 ```
 
 ### Method 2: Download ZIP
@@ -358,7 +358,7 @@ After installation:
 
 ---
 
-**Installation Complete!** 🎉
+**Installation Complete!**
 
 You should now see the "CTX Tools" menu in Maya's main menu bar.
 

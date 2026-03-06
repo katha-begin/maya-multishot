@@ -11,7 +11,11 @@ Fallback Method: String attributes (for locked reference nodes)
 """
 
 import logging
-from maya import cmds
+
+try:
+    from maya import cmds
+except ImportError:
+    cmds = None
 
 logger = logging.getLogger(__name__)
 

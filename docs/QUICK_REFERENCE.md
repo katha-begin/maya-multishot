@@ -1,7 +1,7 @@
 # CTX Tools - Quick Reference Card
 
-**Version:** 1.0  
-**Branch:** `feature/gaffer-system`
+**Version:** 1.1
+**Branch:** `feature/ui-tools-framework`
 
 ---
 
@@ -231,7 +231,7 @@ print("Light Contexts: {}".format(light_contexts))
 
 **Installation:**
 - Repository: `E:/dev/maya-multishot`
-- Branch: `feature/gaffer-system`
+- Branch: `feature/ui-tools-framework`
 
 **Documentation:**
 - Installation: `docs/INSTALLATION.md`
@@ -254,5 +254,5 @@ print("Light Contexts: {}".format(light_contexts))
 
 ---
 
-**Quick Reference v1.0** | CTX Tools | 2026-02-21
+**Quick Reference v1.1** | CTX Tools | 2026-03-06
 

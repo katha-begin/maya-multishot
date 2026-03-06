@@ -1,8 +1,8 @@
 # CTX Tools - Testing Guide
 
-**Version:** 1.0  
-**Last Updated:** 2026-02-21  
-**Branch:** `feature/gaffer-system`
+**Version:** 1.1
+**Last Updated:** 2026-03-06
+**Branch:** `feature/ui-tools-framework`
 
 ---
 
@@ -362,7 +362,7 @@ Copy any error messages from Script Editor
 **Environment:**
 - Maya Version: ___________
 - OS: ___________
-- CTX Tools Branch: feature/gaffer-system
+- CTX Tools Branch: feature/ui-tools-framework
 - Commit: ___________
 
 **Screenshots:**
@@ -397,7 +397,7 @@ Attach screenshots if applicable
 
 1. **If all tests pass:**
    - Report success
-   - Ready for Phase 7 (Final Review & Merge)
+   - Continue with Phase 2 UI & Tools Framework migration
 
 2. **If issues found:**
    - Report issues with details
@@ -411,5 +411,5 @@ Attach screenshots if applicable
 
 ---
 
-**Happy Testing!** 🧪
+**Happy Testing!**
 

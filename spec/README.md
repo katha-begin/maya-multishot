@@ -1,8 +1,8 @@
 # Maya Multishot - Specification Documentation
 
-**Version:** 3.0  
-**Last Updated:** 2026-02-20  
-**Status:** Production + Schema Migration Planning
+**Version:** 3.1
+**Last Updated:** 2026-03-06
+**Status:** Phase 2 In Progress — UI & Tools Framework Migration
 
 ---
 
@@ -70,66 +70,54 @@ This directory contains all specification and planning documents for the maya-mu
 
 ## Project Status
 
-### ✅ Completed (Phases 0-4)
+### ✅ Completed
 
-**Production-Ready Features:**
-- Multi-shot scene management
-- Token-based path resolution
-- Display layer system
-- Asset management UI
-- Shot management UI
-- Arnold/Redshift support
+- **Phases 0–4:** Multi-shot management, token-based path resolution, display layers, asset/shot management UI
+- **Phase 5:** Light Gaffer System — hierarchical light management (Master → Sequence → Shot), 63 passing tests
+- **Phase 1 (schema):** Schema-Based Node System — all 6 node types (Manager, Sequence, Shot, Asset, LightGaffer, LightContext), unidirectional connections, `core/nodes/wrappers/`
 
-**Core Modules:**
-- `core/custom_nodes.py` - CTX node system
-- `core/config.py` - Configuration
-- `core/ctx_converter.py` - Path resolution
-- `core/display_layers.py` - Display layers
-- `ui/multishot_manager_dialog.py` - Main UI
-- `ui/asset_manager_dialog.py` - Asset UI
+**Primary Node System:** `core/nodes/wrappers/` — use for all new code
+**Legacy (deprecated, read-only):** `core/custom_nodes.py` — backward compatibility only
 
-### ⏳ In Progress (Phases 5-8)
+### 🚧 In Progress — Phase 2: UI & Tools Framework Migration
 
-**Schema-Based Node System:**
-- Week 1: Foundation & Planning
-- Week 2: Gaffer Implementation
-- Week 3: Asset & Renderer Systems
-- Week 4: Node Migration
+**Branch:** `feature/ui-tools-framework`
 
-**New Features:**
-- USD support
-- Multi-renderer support
-- Light gaffer system
-- NodeGraphQt integration
+1. Create `tools/base_manager.py` — `BaseManager` class, `MockCmds`, `MAYA_AVAILABLE`
+2. Create `ui/base_dialog.py` — shared Qt boilerplate (PySide6/PySide2 try/except)
+3. Migrate `tools/shot_manager.py` — extend `BaseManager`, use schema wrappers
+4. Migrate `tools/asset_manager.py` — extend `BaseManager`, use schema wrappers
+5. Migrate `ui/main_window.py` — replace `core.custom_nodes` imports with `core.nodes.wrappers`
+6. Remove 5 unused `ui/` files
 
 ---
 
 ## Architecture Overview
 
-### Current System
+### Current System (Schema-Based)
 
 ```
-CTX_Manager (network node)
-    ├── CTX_Sequence (network node)
-    │   └── CTX_Shot (network node)
-    │       └── CTX_Asset (network node)
-    │           └── targetNode (message link)
-    │               └── Maya Node (aiStandIn/RedshiftProxy/reference)
+NodeSchema (Definition)
+    ↓
+NodeFactory (Creation) → Maya Node
+    ↓
+NodeWrapper (High-level API)
 ```
 
-**Pattern:** Imperative node creation with wrapper classes
-
-### Future System
-
+**Node Hierarchy:**
 ```
-Schema Definition → NodeFactory → NodeWrapper → Maya Node
-                                      ↓
-                              AssetTypeHandler
-                                      ↓
-                              RendererAdapter
+CTX_Manager (singleton)
+    ↑ sequences[i]   (Sequence.message → Manager.sequences[i])
+CTX_Sequence
+    ↑ shots[i]       (Shot.message → Sequence.shots[i])
+    ↑ gaffer         (SeqGaffer.message → Sequence.gaffer)
+CTX_Shot
+    ↑ assets[i]      (Asset.message → Shot.assets[i])
+    ↑ gaffer         (ShotGaffer.message → Shot.gaffer)
+CTX_Asset
 ```
 
-**Pattern:** Schema-based declarative system with plugin architecture
+**Key Rule:** All connections are **unidirectional** (`child.message → parent.attribute`). Never bidirectional.
 
 ---
 
@@ -148,48 +136,26 @@ Schema Definition → NodeFactory → NodeWrapper → Maya Node
 
 ## Development Workflow
 
-### 1. Planning Phase (Current)
+### Current Phase: Phase 2 — UI & Tools Framework Migration
 
-- ✅ Architecture documents complete
-- ✅ Task list updated
-- ✅ Specifications finalized
-- ⏳ Ready to begin implementation
+See [ARCHITECTURE_SUMMARY.md](ARCHITECTURE_SUMMARY.md) for the full Phase 2 task list and target repository structure.
 
-### 2. Implementation Phase (Next)
+### Testing
 
-**Week 1: Foundation**
-- Create directory structure
-- Implement base classes
-- Document schemas
+```bash
+# Run all tests
+pytest tests/ -v
 
-**Week 2: Gaffer**
-- Implement gaffer system
-- Prove schema pattern
-- Create Light Manager UI
+# Run with coverage
+pytest --cov=core --cov-report=html tests/
+```
 
-**Week 3: Asset/Renderer**
-- Implement handlers/adapters
-- Add USD support
-- Update Asset Manager
+### Contributing
 
-**Week 4: Migration**
-- Migrate existing nodes
-- Create compatibility layer
-- Update all UI code
-
-### 3. Testing Phase
-
-- Unit tests (90%+ coverage)
-- Integration tests
-- Migration tests
-- Compatibility tests
-
-### 4. Deployment Phase
-
-- Feature flags
-- Gradual rollout
-- User documentation
-- Training materials
+1. Read [ARCHITECTURE_SUMMARY.md](ARCHITECTURE_SUMMARY.md) for current state
+2. Use `core.nodes.wrappers` — never `core.custom_nodes`
+3. Write tests first (TDD)
+4. Follow unidirectional connection pattern
 
 ---
 
@@ -227,7 +193,7 @@ Schema Definition → NodeFactory → NodeWrapper → Maya Node
 
 ---
 
-**Maintainer:** CTX Pipeline Team  
-**Repository:** https://github.com/katha-begin/maya-multishot.git  
-**Last Updated:** 2026-02-20
+**Maintainer:** CTX Pipeline Team
+**Repository:** https://github.com/katha-begin/maya-multishot.git
+**Last Updated:** 2026-03-06
 

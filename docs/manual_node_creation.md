@@ -1,7 +1,7 @@
 # Manual Node Creation and Wiring Guide
 
-**Version:** 1.0  
-**Date:** 2026-02-21  
+**Version:** 1.1
+**Date:** 2026-03-06
 **Purpose:** Guide for manually creating and wiring CTX nodes
 
 ---
@@ -20,21 +20,27 @@ This guide shows how to manually create and wire CTX nodes using the schema-base
 
 ## Node Types
 
-### Available Schema-Based Nodes
+### All Schema-Based Nodes (use `core.nodes.wrappers` for all new code)
 
 | Node Type | Schema | Wrapper | Purpose |
 |-----------|--------|---------|---------|
+| CTX_Manager | `CTXManagerSchema` | `CTXManagerNode` | Root manager (singleton) |
 | CTX_Sequence | `CTXSequenceSchema` | `CTXSequenceNode` | Sequence container |
+| CTX_Shot | `CTXShotSchema` | `CTXShotNode` | Shot context |
+| CTX_Asset | `CTXAssetSchema` | `CTXAssetNode` | Asset metadata |
 | CTX_LightGaffer | `CTXLightGafferSchema` | `CTXLightGafferNode` | Light gaffer |
 | CTX_LightContext | `CTXLightContextSchema` | `CTXLightContextNode` | Light attribute storage |
 
-### Legacy Nodes (Keep Using)
+**Correct import:**
 
-| Node Type | Class | Purpose |
-|-----------|-------|---------|
-| CTX_Manager | `CTXManagerNode` | Root manager (DO NOT CHANGE) |
-| CTX_Shot | `CTXShotNode` | Shot container (DO NOT CHANGE) |
-| CTX_Asset | `CTXAssetNode` | Asset container (DO NOT CHANGE) |
+```python
+from core.nodes.wrappers import (
+    CTXManagerNode, CTXSequenceNode, CTXShotNode, CTXAssetNode,
+    CTXLightGafferNode, CTXLightContextNode
+)
+```
+
+> **DO NOT** import from `core.custom_nodes` — it is deprecated and kept only for backward compatibility with existing Maya scenes.
 
 ---
 
@@ -121,8 +127,7 @@ print("  Seq parent:", seq_gaffer.get_parent_gaffer().node_name)
 ## Example 4: Wire Sequence to Manager
 
 ```python
-from core.custom_nodes import CTXManagerNode
-from core.nodes.wrappers import CTXSequenceNode
+from core.nodes.wrappers import CTXManagerNode, CTXSequenceNode
 
 # Get existing manager (DO NOT create new one)
 manager = CTXManagerNode.get_manager()
@@ -167,8 +172,7 @@ print("  Gaffer:", seq.get_gaffer())
 ## Example 6: Complete Hierarchy Setup
 
 ```python
-from core.custom_nodes import CTXManagerNode
-from core.nodes.wrappers import CTXSequenceNode, CTXLightGafferNode
+from core.nodes.wrappers import CTXManagerNode, CTXSequenceNode, CTXLightGafferNode
 
 # Step 1: Get manager (existing)
 manager = CTXManagerNode.get_manager()
@@ -268,33 +272,48 @@ for g in chain:
 
 ## Important Notes
 
-### DO NOT Modify Context Manager
+### CTX_Manager is a Singleton
 
-❌ **DO NOT** create new CTX_Manager nodes
-❌ **DO NOT** modify existing CTX_Manager structure
-❌ **DO NOT** change CTX_Shot or CTX_Asset nodes
+❌ **DO NOT** create more than one CTX_Manager per scene
+✅ **DO** use `CTXManagerNode.get_manager()` to retrieve the existing manager
+✅ **DO** use `CTXManagerNode.create(...)` only when initializing a fresh scene
 
-✅ **DO** use existing `CTXManagerNode.get_manager()`
-✅ **DO** use existing CTX_Shot nodes
-✅ **DO** create new CTX_Sequence nodes
-✅ **DO** create new CTX_LightGaffer nodes
+### All 6 Node Types Use Schema-Based Wrappers
+
+All CTX node types (Manager, Sequence, Shot, Asset, LightGaffer, LightContext) are schema-based.
+Use `core.nodes.wrappers` for all creation and wiring. `core.custom_nodes` is deprecated.
 
 ### Node Naming Convention
 
+- **CTX_Manager**: `CTX_Manager` (singleton)
 - **CTX_Sequence**: `CTX_Sequence_{sequenceCode}` (e.g., `CTX_Sequence_sq0070`)
+- **CTX_Shot**: `CTX_Shot_{ep}_{seq}_{shot}` (e.g., `CTX_Shot_Ep04_sq0070_SH0170`)
+- **CTX_Asset**: `CTX_Asset_{namespace}`
 - **CTX_LightGaffer**: `CTX_LightGaffer_{name}` (e.g., `CTX_LightGaffer_Master`)
 - **CTX_LightContext**: `CTX_LightContext_{lightName}_{gafferName}`
 
-### Connection Pattern
+### Connection Pattern (Unidirectional)
+
+All connections are **unidirectional**: `child.message → parent.attribute`.
+Never create a second reverse connection.
 
 ```
-CTX_Manager (existing)
-    ↓ sequences (multi)
-CTX_Sequence (new)
-    ↓ gaffer (single)
-CTX_LightGaffer (new)
-    ↓ parentGaffer (single)
-CTX_LightGaffer (parent)
+CTX_Manager (singleton)
+    ↑ sequences[i]   (Sequence.message → Manager.sequences[i])
+CTX_Sequence
+    ↑ shots[i]       (Shot.message → Sequence.shots[i])
+    ↑ gaffer         (SeqGaffer.message → Sequence.gaffer)
+CTX_Shot
+    ↑ assets[i]      (Asset.message → Shot.assets[i])
+    ↑ gaffer         (ShotGaffer.message → Shot.gaffer)
+CTX_Asset
+
+Gaffer inheritance chain (for attribute resolution):
+    Master CTX_LightGaffer
+        ↑ parentGaffer   (SeqGaffer.message → MasterGaffer.parentGaffer)
+    Sequence CTX_LightGaffer
+        ↑ parentGaffer   (ShotGaffer.message → SeqGaffer.parentGaffer)
+    Shot CTX_LightGaffer
 ```
 
 ---
@@ -303,8 +322,7 @@ CTX_LightGaffer (parent)
 
 ```python
 # Test script to verify manual wiring
-from core.custom_nodes import CTXManagerNode
-from core.nodes.wrappers import CTXSequenceNode, CTXLightGafferNode
+from core.nodes.wrappers import CTXManagerNode, CTXSequenceNode, CTXLightGafferNode
 
 def test_manual_setup():
     """Test manual node creation and wiring."""
@@ -341,7 +359,7 @@ def test_manual_setup():
     assert seq.get_gaffer() == seq_gaffer.node_name
     assert seq_gaffer.get_parent_gaffer().node_name == master.node_name
 
-    print("✅ All tests passed!")
+    print("All tests passed!")
 
 # Run test
 test_manual_setup()

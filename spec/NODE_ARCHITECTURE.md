@@ -1,9 +1,9 @@
 # CTX Node Architecture - Schema-Based System
 
-**Version:** 3.0
-**Last Updated:** 2026-02-22
-**Status:** Planning Phase
-**Related Docs:** [spec.md](spec.md), [CTX_lightGaffer.md](CTX_lightGaffer.md)
+**Version:** 3.1
+**Last Updated:** 2026-03-06
+**Status:** Complete — implemented in `core/nodes/wrappers/`
+**Related Docs:** [spec.md](spec.md), [CTX_lightGaffer.md](CTX_lightGaffer.md), [ARCHITECTURE_SUMMARY.md](ARCHITECTURE_SUMMARY.md)
 
 ---
 

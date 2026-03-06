@@ -1,8 +1,8 @@
 # Context Variables Pipeline - Implementation Task List
 
-**Version:** 2.0
-**Last Updated:** 2026-02-20
-**Status:** Production + Schema Migration Phase
+**Version:** 2.1
+**Last Updated:** 2026-03-06
+**Status:** Phase 2 In Progress — UI & Tools Framework Migration
 **Repository:** https://github.com/katha-begin/maya-multishot.git
 
 ---
@@ -16,11 +16,12 @@
 3. [✅ Phase 3: Display Layer Management](#phase-3-display-layer-management-complete)
 4. [✅ Phase 4: Tools & UI](#phase-4-tools--ui-mostly-complete)
 
-### New Phases (Schema-Based System)
-5. [⏳ Phase 5: Foundation & Planning](#phase-5-foundation--planning-week-1)
-6. [⏳ Phase 6: Gaffer Implementation](#phase-6-gaffer-implementation-week-2)
-7. [⏳ Phase 7: Asset & Renderer Systems](#phase-7-asset--renderer-systems-week-3)
-8. [⏳ Phase 8: Node Migration](#phase-8-node-migration-week-4)
+### Completed Phases (Schema & Gaffer)
+5. [✅ Phase 5: Light Gaffer System](#phase-5-light-gaffer-system-complete)
+6. [✅ Phase 1 (schema): Schema-Based Node System](#phase-1-schema-based-node-system-complete)
+
+### Current Phase
+7. [🚧 Phase 2: UI & Tools Framework Migration](#phase-2-ui--tools-framework-migration-current)
 
 ### Reference
 9. [Migration Strategy](#migration-strategy)
@@ -78,17 +79,33 @@
 - `ui/asset_manager_dialog.py` - Asset management UI
 - `ui/add_shot_dialog.py` - Shot addition UI
 
-### ⏳ Next Phase: Schema-Based Node System
+### ✅ Phase 5: Light Gaffer System - COMPLETE
 
-**Timeline:** 4 weeks
-**Documentation:** See [NODE_ARCHITECTURE.md](NODE_ARCHITECTURE.md), [ASSET_TYPES.md](ASSET_TYPES.md), [RENDERER_ADAPTERS.md](RENDERER_ADAPTERS.md)
+- Hierarchical light management (Master → Sequence → Shot)
+- Per-attribute inheritance with enable flags
+- 63 passing tests in `tests/`
+- Modules: `core/gaffer/` (manager, resolver, chain_ops, light_ops)
 
-**Goals:**
-- Migrate from imperative to schema-based node creation
-- Add USD support via asset type handlers
-- Add multi-renderer support via renderer adapters
-- Implement light gaffer system
-- Integrate NodeGraphQt for visual node graph
+### ✅ Phase 1 (schema): Schema-Based Node System - COMPLETE
+
+- All 6 node types in `core/nodes/wrappers/`: Manager, Sequence, Shot, Asset, LightGaffer, LightContext
+- Unidirectional connection pattern (`child.message → parent.attribute`)
+- `ctx_type` attribute naming standard
+- `core/custom_nodes.py` deprecated — backward compat only
+
+### 🚧 Phase 2: UI & Tools Framework Migration - CURRENT
+
+**Branch:** `feature/ui-tools-framework`
+
+| Task | Status |
+|------|--------|
+| Create `tools/base_manager.py` | Pending |
+| Create `ui/base_dialog.py` | Pending |
+| Migrate `tools/shot_manager.py` | Pending |
+| Migrate `tools/asset_manager.py` | Pending |
+| Migrate `ui/main_window.py` | Pending |
+| Update `__init__.py` files | Pending |
+| Delete 5 unused `ui/` files | Pending |
 
 ---
 

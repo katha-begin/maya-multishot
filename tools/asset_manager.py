@@ -18,51 +18,10 @@ from __future__ import print_function
 
 import os
 
-try:
-    import maya.cmds as cmds
-    MAYA_AVAILABLE = True
-except ImportError:
-    # Mock Maya commands for testing outside Maya
-    class MockCmds(object):
-        """Mock Maya commands for testing."""
-        
-        def objExists(self, name):
-            """Mock objExists."""
-            return False
-        
-        def createNode(self, node_type, name=None, **kwargs):
-            """Mock createNode."""
-            return name if name else "node1"
-        
-        def delete(self, *nodes):
-            """Mock delete."""
-            pass
-        
-        def getAttr(self, attr):
-            """Mock getAttr."""
-            return None
-        
-        def setAttr(self, attr, value, **kwargs):
-            """Mock setAttr."""
-            pass
-        
-        def listConnections(self, node, **kwargs):
-            """Mock listConnections."""
-            return []
-        
-        def connectAttr(self, src, dst, **kwargs):
-            """Mock connectAttr."""
-            pass
-        
-        def addAttr(self, node, **kwargs):
-            """Mock addAttr."""
-            pass
-    
-    cmds = MockCmds()
-    MAYA_AVAILABLE = False
+from tools.base_manager import cmds, MAYA_AVAILABLE, BaseManager
 
 
-class AssetManager(object):
+class AssetManager(BaseManager):
     """High-level asset management tool.
     
     This class provides utilities to:
@@ -96,6 +55,7 @@ class AssetManager(object):
             cache_manager (CacheManager, optional): Cache manager for asset discovery
             layer_manager (DisplayLayerManager, optional): Display layer manager
         """
+        super(AssetManager, self).__init__()
         self.path_resolver = path_resolver
         self.cache_manager = cache_manager
         self.layer_manager = layer_manager
