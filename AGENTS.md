@@ -510,18 +510,29 @@ color: [1, 0, 0] (enabled) → OVERRIDES Sequence
 - Removed popup dialogs from node creation
 - Migrated documentation to reflect unidirectional connection pattern
 
-**In Progress (Phase 2 — UI & Tools Framework Migration):**
-- Create tools/base_manager.py (shared BaseManager, MockCmds)
-- Create ui/base_dialog.py (shared Qt boilerplate)
-- Migrate tools/shot_manager.py
-- Migrate tools/asset_manager.py
-- Migrate ui/main_window.py
-- Remove 5 unused ui/ files
+**Completed (Phase 2 — partial):**
+- Created tools/base_manager.py (BaseManager, MockCmds, MAYA_AVAILABLE)
+- Created ui/base_dialog.py (shared Qt boilerplate)
+- Migrated tools/shot_manager.py
+- Migrated tools/asset_manager.py
+- Updated ui/main_window.py import line
+- Updated ui/__init__.py and tools/__init__.py
+- Removed 5 unused ui/ files
+- Fixed core/ctx_linker.py Maya import guard
+- Fixed tests/test_node_schemas.py stale assertions
+
+**Remaining (Phase 2 — core migration):**
+- `core/nodes/wrappers/shot.py`: add `get_ep_code/seq_code/shot_code()`, `is_active()`, `set_active()`, fix `get_assets()`, override `create()` for naming
+- `core/nodes/wrappers/manager.py`: fix `get_sequences()`/`get_shots()` return types, add `set_active_shot_id()`
+- `core/nodes/wrappers/sequence.py`: fix `get_parent_manager()` attribute bug, fix `get_shots()` return type
+- `core/context.py`: replace `core.custom_nodes` imports, add `_get_or_create_sequence()`, wire `Manager → Sequence → Shot`
 
 ### Known Issues
 
-1. **Legacy compatibility** - Ensure old scenes still work with schema-based nodes
-2. **Performance** - Test with large scenes (100+ nodes)
+1. **core/context.py still legacy** - Still imports from `core.custom_nodes`; the main tool end-to-end uses the old node system until this is migrated
+2. **Wrapper return types** - `manager.get_shots()`, `sequence.get_shots()` return raw strings instead of wrapper instances
+3. **Legacy compatibility** - Ensure old scenes still work with schema-based nodes
+4. **Pre-existing test failure** - `tests/test_asset_manager.py` (10 failures): `add_asset()` imports `create_standin_with_namespace` from `core.nodes` which does not exist (renderer handlers are Phase 3+ work)
 
 ---
 

@@ -15,7 +15,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from core.custom_nodes import CTXManagerNode, CTXShotNode, CTXAssetNode
+from core.nodes.wrappers import CTXManagerNode, CTXSequenceNode, CTXShotNode, CTXAssetNode
 
 
 class ContextManager(object):
@@ -38,14 +38,30 @@ class ContextManager(object):
     
     def get_or_create_manager(self):
         """Get existing or create new CTX_Manager node.
-        
+
         Returns:
             CTXManagerNode: Manager node instance
         """
         manager = CTXManagerNode.get_manager()
         if manager is None:
-            manager = CTXManagerNode.create_manager()
+            manager = CTXManagerNode.create()
         return manager
+
+    def _get_or_create_sequence(self, manager, seq_code):
+        """Get existing sequence by code or create and wire a new one.
+
+        Args:
+            manager (CTXManagerNode): Parent manager node
+            seq_code (str): Sequence code (e.g., 'sq0070')
+
+        Returns:
+            CTXSequenceNode: Sequence node instance
+        """
+        seq = CTXSequenceNode.find_by_code(seq_code)
+        if seq is None:
+            seq = CTXSequenceNode.create(sequenceCode=seq_code)
+            manager.add_sequence(seq)
+        return seq
     
     def create_shot(self, ep_code, seq_code, shot_code):
         """Create a new shot in the scene.
@@ -70,10 +86,12 @@ class ContextManager(object):
         for shot in existing_shots:
             if shot.get_shot_id() == shot_id:
                 raise ValueError("Shot {} already exists".format(shot_id))
-        
-        # Create shot
-        shot = CTXShotNode.create_shot(ep_code, seq_code, shot_code, manager)
-        
+
+        # Get or create the parent sequence, then create and wire the shot
+        seq = self._get_or_create_sequence(manager, seq_code)
+        shot = CTXShotNode.create(ep_code=ep_code, seq_code=seq_code, shot_code=shot_code)
+        seq.add_shot(shot)
+
         # Notify callbacks
         self._notify_change('shot_created', {'shot': shot})
         
@@ -88,12 +106,12 @@ class ContextManager(object):
         Raises:
             ValueError: If shot node is invalid
         """
-        if not isinstance(shot_node, CTXShotNode):
-            raise ValueError("Invalid shot node")
-        
+        if not hasattr(shot_node, 'node_name') or not hasattr(shot_node, 'exists'):
+            raise ValueError("Invalid shot node: expected CTXShotNode wrapper, got {}".format(type(shot_node)))
+
         if not shot_node.exists():
             raise ValueError("Shot node does not exist")
-        
+
         # Get manager
         manager = self.get_or_create_manager()
         
@@ -126,13 +144,12 @@ class ContextManager(object):
     def get_all_shots(self):
         """Get all shots in the scene.
 
+        Walks Manager -> Sequences -> Shots to collect all shot nodes.
+
         Returns:
             list: List of CTXShotNode instances
         """
-        manager = CTXManagerNode.get_manager()
-        if manager:
-            return manager.get_shots()
-        return []
+        return CTXShotNode.list_all()
     
     def delete_shot(self, shot_node):
         """Delete a shot and all its assets.
@@ -143,8 +160,8 @@ class ContextManager(object):
         Raises:
             ValueError: If shot node is invalid
         """
-        if not isinstance(shot_node, CTXShotNode):
-            raise ValueError("Invalid shot node")
+        if not hasattr(shot_node, 'node_name') or not hasattr(shot_node, 'exists'):
+            raise ValueError("Invalid shot node: expected CTXShotNode wrapper, got {}".format(type(shot_node)))
 
         if not shot_node.exists():
             raise ValueError("Shot node does not exist")
@@ -172,8 +189,8 @@ class ContextManager(object):
         Returns:
             dict: Context dictionary with ep, seq, shot keys
         """
-        if not isinstance(shot_node, CTXShotNode):
-            raise ValueError("Invalid shot node")
+        if not hasattr(shot_node, 'node_name') or not hasattr(shot_node, 'exists'):
+            raise ValueError("Invalid shot node: expected CTXShotNode wrapper, got {}".format(type(shot_node)))
 
         return {
             'ep': shot_node.get_ep_code(),

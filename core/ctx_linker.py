@@ -49,16 +49,21 @@ def link_to_maya_node(ctx_asset_node, maya_node):
     
     # Handle different node types
     node_type = cmds.nodeType(maya_node)
-    
-    # For references, try to get the reference node
-    if node_type == 'reference':
+
+    # For nodes INSIDE a reference (mesh, transform, etc.), walk up to the reference node.
+    # If maya_node is already a reference node (e.g., CHAR_CatStompie_001RN), skip this
+    # step — referenceQuery(referenceNode=True) expects a member node, not the RN itself,
+    # and would return None or raise when called on the RN directly.
+    if node_type != 'reference':
         try:
             ref_node = cmds.referenceQuery(maya_node, referenceNode=True)
-            maya_node = ref_node
-            logger.debug("Using reference node: {}".format(ref_node))
+            if ref_node and cmds.objExists(ref_node):
+                logger.debug("Resolved {} to reference node {}".format(maya_node, ref_node))
+                maya_node = ref_node
+                node_type = cmds.nodeType(maya_node)
         except RuntimeError:
-            logger.debug("Could not get reference node for {}".format(maya_node))
-    
+            pass  # Not part of a reference — use maya_node as-is
+
     # Try to create message connection
     try:
         # For reference nodes, connect directly to .message without adding custom attributes
@@ -92,8 +97,8 @@ def link_to_maya_node(ctx_asset_node, maya_node):
 
     except RuntimeError as e:
         # Node is locked or connection failed - fall back to string attribute
-        logger.warning("Cannot connect to node {}, using string fallback: {}".format(
-            maya_node, str(e)))
+        logger.warning("Cannot connect {} -> {}.targetNode: {}".format(
+            maya_node, ctx_asset_node, str(e)))
         return _link_with_string_fallback(ctx_asset_node, maya_node)
 
 

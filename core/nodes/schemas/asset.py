@@ -83,6 +83,12 @@ class CTXAssetSchema(NodeSchema):
         },
 
         # Status
+        'department': {
+            'type': 'string',
+            'default': '',
+            'description': 'Department this asset belongs to (e.g., "lighting", "anim")'
+        },
+
         'is_loaded': {
             'type': 'bool',
             'default': False,
@@ -94,5 +100,11 @@ class CTXAssetSchema(NodeSchema):
         # NOTE: parentShot removed - redundant with unidirectional pattern
         # To query parent shot: cmds.listConnections("asset.message", source=False, destination=True, type='network')
         # Then filter for ctx_type == 'CTX_Shot'
+        'targetNode': {
+            'type': 'message',
+            'multi': False,
+            'direction': 'input',
+            'description': 'Input from Maya reference node (ReferenceNode.message -> CTX_Asset.targetNode)'
+        }
     }
 

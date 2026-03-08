@@ -66,6 +66,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._shots = []  # List of dicts with shot data + CTX node reference
         self._active_shot_index = None
         self._asset_manager_dialogs = {}  # Store references to prevent garbage collection
+        self._gaffer_manager_dialog = None  # Single Gaffer Manager instance
+        self._light_original_values = {}  # Pre-gaffer snapshot for "no gaffer" restore
 
         # Initialize display layer management
         self._layer_manager = DisplayLayerManager()
@@ -78,6 +80,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._connect_signals()
         self._load_config()
         self._load_existing_shots()
+
+        # Snapshot light values now, before any gaffer is ever applied
+        self._light_original_values = self._capture_all_light_originals()
 
         # Register context change callback for path resolution
         self._context_manager.register_callback(self._on_context_changed)
@@ -141,8 +146,8 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addLayout(header_layout)
         
         self.shot_table = QtWidgets.QTableWidget()
-        self.shot_table.setColumnCount(5)
-        self.shot_table.setHorizontalHeaderLabels(["#", "Shot", "Frame Range", "Set Shot", "Version"])
+        self.shot_table.setColumnCount(6)
+        self.shot_table.setHorizontalHeaderLabels(["#", "Shot", "Frame Range", "Set Shot", "Version", "Gaffer"])
 
         # Set column widths
         header = self.shot_table.horizontalHeader()
@@ -167,6 +172,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # Column 4: Version button - Fixed width (80px)
         header.setSectionResizeMode(4, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(4, 80)
+
+        # Column 5: Gaffer button - Fixed width (70px)
+        header.setSectionResizeMode(5, QtWidgets.QHeaderView.Fixed)
+        self.shot_table.setColumnWidth(5, 70)
 
         # Enable multi-selection and row selection
         self.shot_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -245,8 +254,8 @@ class MainWindow(QtWidgets.QMainWindow):
         Returns:
             int: Recommended width in pixels
         """
-        # Column widths: 30 + 300 + 100 + 80 + 80 = 590
-        column_widths = [30, 300, 100, 80, 80]
+        # Column widths: 30 + 300 + 100 + 80 + 80 + 70 = 660
+        column_widths = [30, 300, 100, 80, 80, 70]
         total_column_width = sum(column_widths)
 
         # Add extra space for margins, scrollbar, and padding
@@ -278,16 +287,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _open_gaffer_manager(self):
         """Open the Gaffer Manager dialog."""
         try:
-            # Import here to avoid circular imports
             from ui.gaffer_manager_dialog import GafferManagerDialog
-
-            # Create and show gaffer manager
-            dialog = GafferManagerDialog(parent=self)
-            dialog.show()
-
+            self._gaffer_manager_dialog = GafferManagerDialog.open_or_raise(parent=self)
             logger.info("Opened Gaffer Manager")
             self.statusBar().showMessage("Gaffer Manager opened")
-
         except Exception as e:
             logger.error("Failed to open Gaffer Manager: {}".format(e))
             QtWidgets.QMessageBox.critical(
@@ -295,6 +298,105 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Error",
                 "Failed to open Gaffer Manager:\n{}".format(e)
             )
+
+    def _on_gaffer_click(self, row):
+        """Handle Gaffer button click on a shot row.
+
+        Creates a shot-level gaffer if one does not exist, auto-wires it to
+        the sequence gaffer (if present), then opens the Gaffer Manager.
+
+        Args:
+            row (int): Shot table row index
+        """
+        if row >= len(self._shots):
+            return
+
+        shot_data = self._shots[row]
+        ctx_node = shot_data.get('ctx_node')
+        if not ctx_node:
+            return
+
+        try:
+            import maya.cmds as cmds
+        except ImportError:
+            QtWidgets.QMessageBox.warning(
+                self, "Maya Not Available", "Maya is not available."
+            )
+            return
+
+        try:
+            from core.nodes.wrappers import CTXLightGafferNode
+            from ui.gaffer_manager_dialog import GafferManagerDialog
+
+            # Check if shot already has a gaffer
+            existing_gaffer_name = ctx_node.get_gaffer()
+            if existing_gaffer_name:
+                gaffer = CTXLightGafferNode(existing_gaffer_name)
+            else:
+                # Create shot-level gaffer named after the shot
+                shot_id = "{}_{}".format(ctx_node.get_seq_code(), ctx_node.get_shot_code())
+                gaffer = CTXLightGafferNode.create(
+                    gafferName=shot_id,
+                    gafferType='shot'
+                )
+                ctx_node.set_gaffer(gaffer)
+
+                # Auto-wire parentGaffer chain: seq gaffer first, then master
+                try:
+                    wired = False
+                    from core.nodes.wrappers import CTXSequenceNode
+                    seq_name = ctx_node.get_parent_sequence()
+                    if seq_name:
+                        seq = CTXSequenceNode(seq_name)
+                        seq_gaffer_name = seq.get_gaffer()
+                        if seq_gaffer_name:
+                            seq_gaffer = CTXLightGafferNode(seq_gaffer_name)
+                            gaffer.set_parent_gaffer(seq_gaffer)
+                            logger.info("Auto-wired shot gaffer to sequence gaffer: {}".format(seq_gaffer_name))
+                            wired = True
+
+                    if not wired:
+                        # No sequence gaffer — wire directly to master gaffer
+                        from core.gaffer.chain_ops import ChainOperations
+                        all_gaffers = ChainOperations.list_all_gaffers()
+                        master_gaffers = [g['wrapper'] for g in all_gaffers
+                                          if g.get('type') == 'master']
+                        if master_gaffers:
+                            gaffer.set_parent_gaffer(master_gaffers[0])
+                            logger.info("Auto-wired shot gaffer to master gaffer: {}".format(
+                                master_gaffers[0].node_name))
+                except Exception as e:
+                    logger.warning("Could not auto-wire gaffer chain: {}".format(e))
+
+                # Update button appearance
+                gaffer_btn = self.shot_table.cellWidget(row, 5)
+                if gaffer_btn:
+                    gaffer_btn.setText("Gaffer")
+                    gaffer_btn.setStyleSheet("background-color: #1565C0; color: white;")
+
+                logger.info("Created shot gaffer: {}".format(gaffer.node_name))
+
+            # Open / refresh Gaffer Manager and pre-select this gaffer
+            self._open_gaffer_manager_for(gaffer)
+
+        except Exception as e:
+            logger.error("Gaffer button error: {}".format(e))
+            QtWidgets.QMessageBox.critical(
+                self, "Error", "Failed to open gaffer:\n{}".format(e)
+            )
+
+    def _open_gaffer_manager_for(self, gaffer):
+        """Open (or bring to front) the Gaffer Manager and select a specific gaffer.
+
+        Args:
+            gaffer (CTXLightGafferNode): Gaffer to pre-select
+        """
+        try:
+            from ui.gaffer_manager_dialog import GafferManagerDialog
+            self._gaffer_manager_dialog = GafferManagerDialog.open_or_raise(parent=self)
+            self._gaffer_manager_dialog.select_gaffer(gaffer)
+        except Exception as e:
+            logger.error("Failed to open Gaffer Manager for gaffer: {}".format(e))
 
     def _open_settings(self):
         """Open the Settings dialog."""
@@ -841,6 +943,20 @@ class MainWindow(QtWidgets.QMainWindow):
         version_btn.clicked.connect(lambda checked=False, r=row: self._on_version_click(r))
         self.shot_table.setCellWidget(row, 4, version_btn)
 
+        # Column 5: Gaffer button
+        ctx_node = shot_data.get('ctx_node')
+        has_gaffer = False
+        if ctx_node:
+            try:
+                has_gaffer = ctx_node.get_gaffer() is not None
+            except Exception:
+                pass
+        gaffer_btn = QtWidgets.QPushButton("Gaffer" if has_gaffer else "+ Gaffer")
+        if has_gaffer:
+            gaffer_btn.setStyleSheet("background-color: #1565C0; color: white;")
+        gaffer_btn.clicked.connect(lambda checked=False, r=row: self._on_gaffer_click(r))
+        self.shot_table.setCellWidget(row, 5, gaffer_btn)
+
         # Store shot data
         if 'version' not in shot_data:
             shot_data['version'] = 'v001'
@@ -1143,11 +1259,64 @@ class MainWindow(QtWidgets.QMainWindow):
                     import traceback
                     traceback.print_exc()
 
+                # Apply gaffer overrides to Maya lights when switching shot.
+                # apply_gaffer_to_all_lights always restores originals first,
+                # then applies the full chain root-first (master -> seq -> shot).
+                # If no gaffer exists, restore originals directly.
+                try:
+                    from core.nodes.wrappers.gaffer import CTXLightGafferNode
+                    from core.nodes.wrappers.sequence import CTXSequenceNode
+                    from core.gaffer.light_ops import LightOperations
+
+                    apply_gaffer = None
+
+                    # Try shot gaffer first, then sequence gaffer
+                    shot_gaffer_name = shot_node.get_gaffer()
+                    if shot_gaffer_name:
+                        apply_gaffer = CTXLightGafferNode(shot_gaffer_name)
+                        logger.info("Shot switch: using shot gaffer: {}".format(shot_gaffer_name))
+                    else:
+                        seq_name = shot_node.get_parent_sequence()
+                        if seq_name:
+                            seq = CTXSequenceNode(seq_name)
+                            seq_gaffer_name = seq.get_gaffer()
+                            if seq_gaffer_name:
+                                apply_gaffer = CTXLightGafferNode(seq_gaffer_name)
+                                logger.info("Shot switch: using sequence gaffer: {}".format(seq_gaffer_name))
+
+                    if apply_gaffer:
+                        # Restores originals + applies full chain in one call
+                        LightOperations.apply_gaffer_to_all_lights(apply_gaffer)
+                        logger.info("Shot switch: applied gaffer chain from {}".format(
+                            apply_gaffer.node_name))
+                    else:
+                        # No gaffer — restore persisted originals
+                        restored = LightOperations.restore_originals()
+                        logger.info("Shot switch: no gaffer — restored {} original light values".format(
+                            restored))
+
+                except Exception as e:
+                    logger.warning("Failed to apply gaffer on shot switch: {}".format(e))
+                    import traceback
+                    traceback.print_exc()
+
                 shot_path = "{}_{}_{}_{}".format(
                     shot_data['project'], shot_data['ep'], shot_data['seq'], shot_data['shot']
                 )
                 logger.info("Active shot set to: %s (display layer visibility updated)", shot_path)
                 self.statusBar().showMessage("Active shot: {}".format(shot_path))
+
+                # Refresh Gaffer Manager if open; auto-select the active gaffer
+                try:
+                    from ui.gaffer_manager_dialog import GafferManagerDialog
+                    dlg = GafferManagerDialog._instance
+                    if dlg is not None:
+                        if apply_gaffer is not None:
+                            dlg.select_gaffer(apply_gaffer)
+                        else:
+                            dlg.refresh()
+                except Exception:
+                    pass
             else:
                 logger.error("Failed to switch to shot")
                 QtWidgets.QMessageBox.warning(
@@ -1162,6 +1331,99 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Error",
                 "Failed to switch shot: {}".format(e)
             )
+
+    def _capture_all_light_originals(self):
+        """Snapshot current Maya values for every light in the scene.
+
+        Called once before any gaffer is first applied, so we have a baseline
+        to restore when switching to a shot that has no gaffer.
+
+        Returns:
+            dict: {light_shape: captured_values_dict, ...}
+        """
+        originals = {}
+        try:
+            import maya.cmds as cmds
+            from core.gaffer.manager import GafferManager
+            from core.nodes.wrappers.light_originals import CTXLightOriginalsNode
+
+            # Get or create the persistent originals node
+            try:
+                originals_node = CTXLightOriginalsNode.get_or_create()
+            except Exception:
+                originals_node = None
+
+            light_types = [
+                'aiAreaLight', 'aiSkyDomeLight', 'aiMeshLight', 'aiPhotometricLight',
+                'RedshiftPhysicalLight', 'RedshiftDomeLight', 'RedshiftIESLight',
+                'spotLight', 'pointLight', 'directionalLight', 'areaLight',
+            ]
+            for lt in light_types:
+                for shape in cmds.ls(type=lt) or []:
+                    try:
+                        values = GafferManager.capture_light_values(shape)
+                        originals[shape] = values
+                        # Persist into scene node so shot-switch restore works
+                        # Only store if not already captured (don't overwrite mid-session)
+                        if originals_node and not originals_node.has_light(shape):
+                            originals_node.store_light(shape, values)
+                    except Exception as e:
+                        logger.debug("Could not capture originals for {}: {}".format(shape, e))
+        except Exception as e:
+            logger.warning("Failed to capture original light values: {}".format(e))
+        logger.info("Captured originals for {} lights".format(len(originals)))
+        return originals
+
+    def _restore_light_originals(self, originals):
+        """Restore Maya lights to their pre-gaffer original values.
+
+        Args:
+            originals (dict): {light_shape: captured_values_dict, ...}
+        """
+        try:
+            import maya.cmds as cmds
+
+            for light_shape, values in originals.items():
+                if not cmds.objExists(light_shape):
+                    continue
+
+                transform = (cmds.listRelatives(light_shape, parent=True, fullPath=True) or [None])[0]
+
+                if 'intensity' in values:
+                    if cmds.attributeQuery('intensity', node=light_shape, exists=True):
+                        cmds.setAttr('{}.intensity'.format(light_shape), values['intensity'])
+
+                if 'exposure' in values:
+                    if cmds.attributeQuery('exposure', node=light_shape, exists=True):
+                        cmds.setAttr('{}.exposure'.format(light_shape), values['exposure'])
+
+                if 'colorR' in values:
+                    if cmds.attributeQuery('color', node=light_shape, exists=True):
+                        cmds.setAttr('{}.color'.format(light_shape),
+                                     values['colorR'], values['colorG'], values['colorB'],
+                                     type='double3')
+
+                if 'temperature' in values:
+                    if cmds.attributeQuery('temperature', node=light_shape, exists=True):
+                        cmds.setAttr('{}.temperature'.format(light_shape), values['temperature'])
+
+                if transform:
+                    if 'translateX' in values:
+                        cmds.setAttr('{}.translate'.format(transform),
+                                     values['translateX'], values['translateY'], values['translateZ'],
+                                     type='double3')
+                    if 'rotateX' in values:
+                        cmds.setAttr('{}.rotate'.format(transform),
+                                     values['rotateX'], values['rotateY'], values['rotateZ'],
+                                     type='double3')
+                    if 'scaleX' in values:
+                        cmds.setAttr('{}.scale'.format(transform),
+                                     values['scaleX'], values['scaleY'], values['scaleZ'],
+                                     type='double3')
+
+            logger.info("Restored original values for {} lights".format(len(originals)))
+        except Exception as e:
+            logger.warning("Failed to restore original light values: {}".format(e))
 
     def _update_current_shot_display(self):
         """Update the current shot label."""

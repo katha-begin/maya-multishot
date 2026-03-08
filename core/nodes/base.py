@@ -246,6 +246,12 @@ class NodeWrapper(object):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
+        # Guard: attribute may not exist on nodes created before a schema update
+        if not cmds.attributeQuery(attr_name, node=self.node_name, exists=True):
+            if self.schema:
+                return self.schema.ATTRIBUTES.get(attr_name, {}).get('default')
+            return None
+
         return cmds.getAttr("{}.{}".format(self.node_name, attr_name))
 
     def set_attribute(self, attr_name, value):
@@ -263,6 +269,11 @@ class NodeWrapper(object):
 
         if cmds is None:
             raise RuntimeError("Maya is not available")
+
+        # Auto-create attribute if missing (handles nodes created before schema updates)
+        if not cmds.attributeQuery(attr_name, node=self.node_name, exists=True):
+            if self.schema and attr_name in self.schema.ATTRIBUTES:
+                NodeFactory._add_attribute(self.node_name, attr_name, self.schema.ATTRIBUTES[attr_name])
 
         if self.schema:
             attr_type = self.schema.ATTRIBUTES[attr_name]['type']

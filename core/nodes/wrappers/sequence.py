@@ -39,7 +39,37 @@ class CTXSequenceNode(NodeWrapper):
     """
     
     SCHEMA = CTXSequenceSchema
-    
+
+    @classmethod
+    def create(cls, **kwargs):
+        """Create sequence node with sequence-code-based naming.
+
+        Node name format: CTX_Sequence_{sequenceCode}
+        Example: CTX_Sequence_sq0070
+
+        Args:
+            **kwargs: Initial attribute values. 'sequenceCode' drives the node name.
+
+        Returns:
+            CTXSequenceNode: New sequence node instance
+        """
+        if cmds is None:
+            raise RuntimeError("Maya is not available")
+
+        seq_code = kwargs.get('sequenceCode', '')
+
+        instance = super(CTXSequenceNode, cls).create(**kwargs)
+
+        if seq_code:
+            desired_name = 'CTX_Sequence_{}'.format(seq_code)
+            try:
+                new_name = cmds.rename(instance.node_name, desired_name)
+                instance.node_name = new_name
+            except Exception:
+                pass  # Keep auto-generated name if rename fails
+
+        return instance
+
     def get_sequence_code(self):
         """Get sequence code.
         
@@ -114,8 +144,8 @@ class CTXSequenceNode(NodeWrapper):
 
         # Filter for CTX_Manager nodes
         for conn in connections:
-            if cmds.attributeQuery('ctx_node_type', node=conn, exists=True):
-                node_type = cmds.getAttr('{}.ctx_node_type'.format(conn))
+            if cmds.attributeQuery('ctx_type', node=conn, exists=True):
+                node_type = cmds.getAttr('{}.ctx_type'.format(conn))
                 if node_type == 'CTX_Manager':
                     return conn
 
@@ -132,13 +162,8 @@ class CTXSequenceNode(NodeWrapper):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        from .gaffer import CTXLightGafferNode
-
-        # Get gaffer node name
-        if isinstance(gaffer, CTXLightGafferNode):
-            gaffer_node = gaffer.node_name
-        else:
-            gaffer_node = str(gaffer)
+        # Get gaffer node name — use str check to avoid isinstance failure after reload
+        gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
 
         # Unidirectional connection: gaffer.message → sequence.gaffer
         # Sequence owns gaffer (direct ownership)
@@ -192,10 +217,12 @@ class CTXSequenceNode(NodeWrapper):
         """Get all connected shots.
 
         Returns:
-            list: List of shot node names
+            list: List of CTXShotNode instances
         """
         if cmds is None:
             return []
+
+        from .shot import CTXShotNode
 
         connections = cmds.listConnections(
             "{}.shots".format(self.node_name),
@@ -204,7 +231,7 @@ class CTXSequenceNode(NodeWrapper):
             plugs=False
         ) or []
 
-        return connections
+        return [CTXShotNode(n) for n in connections]
 
     @staticmethod
     def find_by_code(sequence_code):

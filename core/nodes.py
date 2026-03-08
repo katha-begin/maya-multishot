@@ -20,7 +20,24 @@ try:
     MAYA_AVAILABLE = True
 except ImportError:
     MAYA_AVAILABLE = False
-    from core.custom_nodes import cmds  # Use mock cmds
+
+    class _MockCmds(object):
+        def objExists(self, name):
+            return False
+        def referenceQuery(self, node, **kwargs):
+            return False
+        def nodeType(self, node):
+            return ''
+        def getAttr(self, attr, **kwargs):
+            return None
+        def setAttr(self, attr, value, **kwargs):
+            pass
+        def ls(self, *args, **kwargs):
+            return []
+        def listConnections(self, node, **kwargs):
+            return []
+
+    cmds = _MockCmds()
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +187,7 @@ class NodeManager(object):
         Returns:
             CTXAssetNode: Created asset node, or None if failed
         """
-        from core.custom_nodes import CTXAssetNode
+        from core.nodes.wrappers import CTXAssetNode
 
         # Validate Maya node exists
         if not cmds.objExists(maya_node):
@@ -180,8 +197,14 @@ class NodeManager(object):
         if not self.is_valid_node(maya_node):
             return None
 
-        # Create CTX_Asset node
-        asset_node = CTXAssetNode.create_asset(asset_type, asset_name, variant, shot_node)
+        # Create CTX_Asset node and wire to shot
+        asset_node = CTXAssetNode.create(
+            asset_type=asset_type,
+            asset_name=asset_name,
+            variant=variant,
+            namespace='{}_{}_{}'.format(asset_type, asset_name, variant)
+        )
+        shot_node.add_asset(asset_node)
 
         # Store Maya node path
         path = self.get_path(maya_node)
@@ -211,7 +234,7 @@ class NodeManager(object):
             CTXAssetNode: Asset node, or None if not found
         """
         from core.ctx_linker import get_linked_ctx_assets
-        from core.custom_nodes import CTXAssetNode
+        from core.nodes.wrappers import CTXAssetNode
 
         ctx_names = get_linked_ctx_assets(maya_node)
         if ctx_names:

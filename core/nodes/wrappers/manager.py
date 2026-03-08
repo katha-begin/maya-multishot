@@ -120,43 +120,71 @@ class CTXManagerNode(NodeWrapper):
     
     def get_sequences(self):
         """Get all sequence nodes connected to this manager.
-        
+
         Returns:
-            list: List of sequence node names
+            list: List of CTXSequenceNode instances
         """
         if cmds is None:
             raise RuntimeError("Maya is not available")
-        
+
         if not cmds.objExists(self.node_name):
             return []
-        
+
+        from .sequence import CTXSequenceNode
+
         connections = cmds.listConnections(
             "{}.sequences".format(self.node_name),
             source=True,
             destination=False
         ) or []
-        
-        return connections
-    
+
+        return [CTXSequenceNode(n) for n in connections]
+
     def get_shots(self):
-        """Get all shot nodes connected to this manager.
-        
+        """Get all shot nodes directly connected to this manager (backward compat).
+
         Returns:
-            list: List of shot node names
+            list: List of CTXShotNode instances
         """
         if cmds is None:
             raise RuntimeError("Maya is not available")
-        
+
         if not cmds.objExists(self.node_name):
             return []
-        
+
+        from .shot import CTXShotNode
+
         connections = cmds.listConnections(
             "{}.shots".format(self.node_name),
             source=True,
             destination=False
         ) or []
 
-        return connections
+        return [CTXShotNode(n) for n in connections]
+
+    def get_active_shot_id(self):
+        """Get the active shot ID.
+
+        Returns:
+            str: Active shot ID string (e.g., 'Ep04_sq0070_SH0170'), or empty string
+        """
+        return self.get_attribute('active_shot_id') or ''
+
+    def set_active_shot_id(self, shot_id):
+        """Set the active shot ID.
+
+        Args:
+            shot_id (str): Shot ID string (e.g., 'Ep04_sq0070_SH0170')
+        """
+        self.set_attribute('active_shot_id', shot_id)
+
+    def set_config_path(self, path):
+        """Set the project config file path.
+
+        Args:
+            path (str): Path to ctx_config.json
+        """
+        self.set_attribute('config_path', path)
 
     # Discovery methods
 
@@ -168,7 +196,7 @@ class CTXManagerNode(NodeWrapper):
             CTXManagerNode: Existing manager node, or None if not found
         """
         if cmds is None:
-            raise RuntimeError("Maya is not available")
+            return None
 
         all_nodes = cmds.ls(type='network')
         for node in all_nodes:

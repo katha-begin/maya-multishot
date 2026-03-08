@@ -12,25 +12,62 @@ Maya Multishot Pipeline is a Maya plugin that lets artists work on multiple shot
 
 ---
 
-## 2. Current State (2026-03-05)
+## 2. Current State (2026-03-08)
 
 | Phase | Status | Branch |
 |---|---|---|
 | Phase 0–5, Phase 1-schema | ✅ Complete | `feature/gaffer-system` |
-| **Phase 2 (CURRENT)** | **🚧 In Progress** | **`feature/ui-tools-framework`** |
+| Phase 2 — UI & Tools Framework | ✅ Complete | `feature/ui-tools-framework` |
+| Phase 3 — Gaffer System | ✅ Complete (core + UI) | `feature/ui-tools-framework` |
+| **Phase 4 — Production & Automation** | **Not started — decision pending** | TBD |
 
-### Phase 2 Task List (in order)
+### Phase 3 — Complete ✅
 
-1. 🆕 Create `tools/base_manager.py` — `BaseManager` class, `MockCmds`, `MAYA_AVAILABLE`
-2. 🆕 Create `ui/base_dialog.py` — shared Qt boilerplate (`PySide6`/`PySide2` try/except)
-3. 🔄 Migrate `tools/shot_manager.py` — extend `BaseManager`, use schema wrappers
-4. 🔄 Migrate `tools/asset_manager.py` — extend `BaseManager`, use schema wrappers
-5. 🔄 Migrate `ui/main_window.py` — replace `core.custom_nodes` imports with `core.nodes.wrappers`
-6. 🔄 Update `ui/__init__.py` — remove unused entries from `__all__`
-7. 🔄 Update `tools/__init__.py` — expose new manager classes
-8. ❌ Delete 5 unused `ui/` files (after migration verified):
-   - `ui/shot_widget.py`, `ui/asset_widget.py`, `ui/filesystem_discovery.py`
-   - `ui/import_asset_dialog.py`, `ui/convert_scene_dialog.py`
+All gaffer engine + UI work done. System actively tested in Maya.
+
+Key decisions made in Phase 3 (do not revert):
+- **CTX_Light write rule**: CTX nodes written ONLY via `EditMode.commit()` snapshot-diff. Never from UI widgets directly.
+- **Edit mode flow**: All edits (viewport, table, detail panel) apply to Maya live during edit mode via `cmds.setAttr()`. Commit captures changes uniformly via snapshot diff.
+- **`set_target_light()` normalization**: Always resolves to the light shape node (not transform). If a transform is passed, resolves to first child shape. Fixed in `core/nodes/wrappers/light_context.py` and entry point `GafferManager.add_light_to_gaffer()`.
+- **Window parenting**: Gaffer Manager uses `Qt::Tool` flag + parent to Maya main window (`OpenMayaUI.MQtUtil.mainWindow()` + shiboken). Stays above Maya without global topmost.
+- **Table interaction in edit mode**: Intensity/exposure cells gain `ItemIsEditable` only during edit mode. Mute checkbox and color swatch enabled only during edit mode.
+- **Right-click context menu**: Add Light, Remove Light, Clear Override accessible via right-click on lights table.
+- **Clear Override (multi-select)**: Removes a child gaffer's local CTX override, making the light fall back to the inherited parent gaffer value. Supports multi-row selection.
+
+**Completed components:**
+- `core/gaffer/` — `manager.py`, `resolver.py`, `light_ops.py`, `chain_ops.py`, `edit_mode.py`
+- `ui/gaffer_manager_dialog.py` — full gaffer UI with edit mode, right-click menu, clear override
+- `ui/light_editor_panel.py` — per-light detail editor, all widgets disabled outside edit mode
+- `ui/widgets/slider_field.py` — Maya-style QSlider + QDoubleSpinBox composite
+- Shot switching applies correct gaffer chain; originals snapshot on window open
+
+**Known remaining issues (not blocking Phase 4):**
+- `tests/test_asset_manager.py` — 10 pre-existing failures (Phase 4+ renderer work)
+- `core/ctx_converter.py::convert_to_ctx()` — still uses `core.custom_nodes`, not in active path
+
+### Phase 4 — Production & Automation (Decision Pending)
+
+Full analysis at: `spec/PRODUCTION_READINESS.md`
+
+**P1 gaps (blocking mass production):**
+- No headless pipeline API — farm scripts cannot call the tool without knowing internals
+- No scene validator — scene drift is discovered at render time, not before
+- No gaffer JSON export/import — lighting presets cannot be shared between scenes
+- No production tracker integration — shot creation is manual, frame ranges drift
+- No undo/redo — gaffer operations bypass Maya's undo stack entirely
+
+**P2 gaps (significant at scale):**
+- No structured logging (print statements throughout)
+- Gaffer attributes hardcoded in Python (cannot be extended via config)
+- No farm render hook (no pre-render shot-apply for Deadline/Tractor)
+- No background threading (long operations block UI)
+- `CTXLightOriginalsNode` is a single point of failure with no recovery path
+
+**P3 gaps (polish):**
+- No VRay renderer adapter
+- No CI pipeline
+- Five orphaned UI files not yet removed
+- No gaffer-sharing visibility in UI
 
 ---
 
@@ -202,14 +239,63 @@ path = resolver.resolve_path('publishPath', context)
 # Windows: 'V:\\SWA\\all\\scene\\Ep04\\sq0070\\SH0170\\lighting\\publish'
 ```
 
-### Gaffer Attribute Resolution Order
+### Gaffer System — Architecture & Rules
 
+**Gaffer is optional.** If no gaffer exists, lights use their original Maya values.
+
+**Gaffer connections (all unidirectional):**
 ```
-1. Check Shot gaffer → enabled? → use value
-2. Check Sequence gaffer → enabled? → use value
-3. Check Master gaffer → enabled? → use value
-4. Fallback: use light's current value in scene
+# Ownership: gaffer owned by sequence or shot
+gaffer.message  →  CTX_Sequence.gaffer
+gaffer.message  →  CTX_Shot.gaffer
+
+# Inheritance chain: parent feeds INTO child's parentGaffer
+parent_gaffer.message  →  child_gaffer.parentGaffer
+
+# Light membership: context feeds into gaffer's lights array
+light_context.message  →  gaffer.lights[i]  (nextAvailable)
 ```
+
+**Gaffer inheritance rules:**
+- A gaffer can have 0 or 1 parent gaffers (via `parentGaffer`)
+- Child inherits ALL lights from parent; can override any inherited light's values and/or add new lights
+- Same light cannot be added twice to the same gaffer (ValueError)
+- Same light CAN exist in both parent and child (child stores override values)
+- A gaffer can be shared between shots — those shots get identical values
+
+**Shot-switch apply order (in `_on_set_shot`):**
+```
+1. Shot has gaffer?       → apply it  (chain auto-walks to parent for inheritance)
+2. Shot has no gaffer?    → check if shot's sequence has a gaffer → apply that
+3. No gaffer anywhere?    → restore original light values (snapshot taken on window open)
+```
+
+**`AttributeResolver.resolve_attribute` walk order:**
+```
+[shot_gaffer, seq_gaffer, master_gaffer]  (build_chain order)
+First gaffer where {attr}Enabled == True wins → return that value
+If none found → attribute omitted (not applied)
+```
+
+**`isinstance` anti-pattern — DO NOT USE for wrapper classes:**
+```python
+# ❌ WRONG — breaks after module reload (stale class object)
+gaffer_node = gaffer.node_name if isinstance(gaffer, CTXLightGafferNode) else gaffer
+
+# ✅ CORRECT — safe across reloads
+gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
+```
+Apply this pattern everywhere a method accepts `(wrapper_or_str)`.
+
+**Attribute enabled flags naming:**
+- Simple: `intensity` → `intensityEnabled`, `exposure` → `exposureEnabled`
+- Compound: `color` → `colorEnabled`, `translate` → `translateEnabled`, `rotate` → `rotateEnabled`, `scale` → `scaleEnabled`
+- `spread` → `spreadEnabled`, `shadowEnable` → `shadowEnableEnabled`
+
+**Original light snapshot:**
+- `MainWindow._light_original_values` — captured once in `__init__` via `_capture_all_light_originals()`
+- Restored by `_restore_light_originals()` when shot has no gaffer and no sequence gaffer
+- Format: `{light_shape_name: GafferManager.capture_light_values() dict}`
 
 ---
 
@@ -276,6 +362,7 @@ pytest tests/test_gaffer_manager.py -v
 | `spec/DEVELOPMENT_PLAN.md` | Roadmap |
 | `spec/GAFFER_IMPLEMENTATION_PLAN.md` | Gaffer task breakdown |
 | `spec/CTX_lightGaffer_spec.md` | Gaffer specification |
+| `spec/PRODUCTION_READINESS.md` | **Phase 4 decision doc — strengths, gaps, recommendations** |
 | `.claude/memory.md` | **Persistent project state — update as you work** |
 
 ---

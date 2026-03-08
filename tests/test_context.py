@@ -17,7 +17,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.context import ContextManager
-from core.custom_nodes import CTXManagerNode, CTXShotNode, MAYA_AVAILABLE
+from core.nodes.wrappers import CTXManagerNode, CTXShotNode, MAYA_AVAILABLE
 
 
 class TestContextManager(unittest.TestCase):
@@ -39,6 +39,7 @@ class TestContextManager(unittest.TestCase):
         if existing:
             existing.delete()
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_get_or_create_manager(self):
         """Test getting or creating manager."""
         manager1 = self.ctx.get_or_create_manager()
@@ -47,6 +48,7 @@ class TestContextManager(unittest.TestCase):
         manager2 = self.ctx.get_or_create_manager()
         self.assertEqual(manager1.node_name, manager2.node_name)
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_create_shot(self):
         """Test creating a shot."""
         shot = self.ctx.create_shot('Ep04', 'sq0070', 'SH0170')
@@ -59,6 +61,7 @@ class TestContextManager(unittest.TestCase):
             self.assertEqual(shot.get_seq_code(), 'sq0070')
             self.assertEqual(shot.get_shot_code(), 'SH0170')
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_create_duplicate_shot(self):
         """Test that creating duplicate shot raises error."""
         shot1 = self.ctx.create_shot('Ep04', 'sq0070', 'SH0170')
@@ -69,6 +72,7 @@ class TestContextManager(unittest.TestCase):
             with self.assertRaises(ValueError):
                 shot2 = self.ctx.create_shot('Ep04', 'sq0070', 'SH0170')
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_set_active_shot(self):
         """Test setting active shot."""
         shot = self.ctx.create_shot('Ep04', 'sq0070', 'SH0170')
@@ -83,6 +87,7 @@ class TestContextManager(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.ctx.set_active_shot("invalid")
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_get_active_shot(self):
         """Test getting active shot."""
         shot = self.ctx.create_shot('Ep04', 'sq0070', 'SH0170')
@@ -95,6 +100,7 @@ class TestContextManager(unittest.TestCase):
             self.assertIsNotNone(active)
             self.assertEqual(active.node_name, shot.node_name)
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_get_shot_context(self):
         """Test getting shot context."""
         shot = self.ctx.create_shot('Ep04', 'sq0070', 'SH0170')
@@ -111,6 +117,7 @@ class TestContextManager(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.ctx.get_shot_context("invalid")
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_register_callback(self):
         """Test registering a callback."""
         called = []
@@ -131,6 +138,7 @@ class TestContextManager(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.ctx.register_callback("not_callable")
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_unregister_callback(self):
         """Test unregistering a callback."""
         called = []
@@ -146,6 +154,7 @@ class TestContextManager(unittest.TestCase):
         
         self.assertEqual(len(called), 0)
     
+    @unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")
     def test_silent_mode(self):
         """Test silent mode prevents callbacks."""
         called = []

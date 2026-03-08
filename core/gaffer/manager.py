@@ -15,6 +15,7 @@ except ImportError:
 
 from ..nodes.wrappers.gaffer import CTXLightGafferNode
 from ..nodes.wrappers.light_context import CTXLightContextNode
+from ..renderers import get_maya_attr
 
 
 class GafferManager(object):
@@ -42,29 +43,90 @@ class GafferManager(object):
         """
         if cmds is None:
             raise RuntimeError("Maya is not available")
-        
+
         # Convert to wrapper if needed
         if isinstance(gaffer, str):
             gaffer = CTXLightGafferNode(gaffer)
-        
+
+        # Normalize light_shape to the actual shape node (not a transform).
+        # set_target_light() also does this, but we need the resolved name here
+        # so that light_name defaults to the shape rather than the transform.
+        resolved_shape = light_shape
+        if cmds.objExists(light_shape) and cmds.nodeType(light_shape) == 'transform':
+            child_shapes = cmds.listRelatives(light_shape, shapes=True, fullPath=False) or []
+            if not child_shapes:
+                child_shapes = cmds.listRelatives(
+                    light_shape, shapes=True, fullPath=False, allDescendants=True) or []
+            if child_shapes:
+                resolved_shape = child_shapes[0]
+
+        resolved_name = light_name or resolved_shape
+
         # Check if light already exists in this gaffer
         existing_lights = gaffer.get_lights()
         for light_ctx in existing_lights:
-            if light_ctx.get_light_name() == (light_name or light_shape):
+            if light_ctx.get_light_name() == resolved_name:
                 raise ValueError("Light '{}' already exists in gaffer '{}'".format(
-                    light_name or light_shape, gaffer.get_gaffer_name()))
-        
-        # Create light context
+                    resolved_name, gaffer.get_gaffer_name()))
+
+        # Create light context with descriptive node name
         light_ctx = CTXLightContextNode.create(
-            lightName=light_name or light_shape
+            gaffer_name=gaffer.get_gaffer_name(),
+            lightName=resolved_name
         )
-        
+
         # Connect to gaffer
         light_ctx.set_parent_gaffer(gaffer)
-        
-        # Connect to target light
-        light_ctx.set_target_light(light_shape)
-        
+
+        # Connect to target light (set_target_light also normalizes, but we pass
+        # resolved_shape directly so the connection is always the shape node)
+        light_ctx.set_target_light(resolved_shape)
+
+        # Capture current Maya values.
+        # - Store in CTX_LightOriginals node as persistent baseline (once per light).
+        # - Store as enabled overrides in the light context so UI shows real values.
+        try:
+            captured = GafferManager.capture_light_values(resolved_shape)
+
+            # Persist as originals if this light has not been registered before
+            try:
+                from ..nodes.wrappers.light_originals import CTXLightOriginalsNode
+                originals_node = CTXLightOriginalsNode.get_or_create()
+                if not originals_node.has_light(resolved_shape):
+                    originals_node.store_light(resolved_shape, captured)
+            except Exception as orig_err:
+                print("GafferManager: could not store originals for '{}': {}".format(
+                    resolved_shape, orig_err))
+            # Simple scalar attrs
+            _SIMPLE = ['intensity', 'exposure', 'temperature', 'muted',
+                       'spread', 'areaSpread',
+                       'affectDiffuse', 'affectSpecular', 'affectGI', 'shadowEnable',
+                       'diffuseContrib', 'reflectionContrib', 'transmissionContrib',
+                       'singleScatterContrib', 'multiScatterContrib', 'volumeContrib',
+                       'indirectContrib', 'toonDiffuseContrib', 'toonReflectionContrib']
+            for attr in _SIMPLE:
+                if attr in captured:
+                    light_ctx.set_attribute_override(attr, captured[attr], enabled=True)
+
+            # Color (compound stored as three sub-attrs + one enable)
+            if 'colorR' in captured:
+                light_ctx.set_attribute('colorR', captured['colorR'])
+                light_ctx.set_attribute('colorG', captured['colorG'])
+                light_ctx.set_attribute('colorB', captured['colorB'])
+                light_ctx.set_attribute('colorEnabled', True)
+
+            # Transform attrs (compound groups)
+            for group, subs in [('translate', ['translateX', 'translateY', 'translateZ']),
+                                 ('rotate',    ['rotateX', 'rotateY', 'rotateZ']),
+                                 ('scale',     ['scaleX', 'scaleY', 'scaleZ'])]:
+                if subs[0] in captured:
+                    for sub in subs:
+                        light_ctx.set_attribute(sub, captured[sub])
+                    light_ctx.set_attribute('{}Enabled'.format(group), True)
+        except Exception as e:
+            print("GafferManager.add_light_to_gaffer: could not capture values for '{}': {}".format(
+                resolved_shape, e))
+
         return light_ctx
     
     @staticmethod
@@ -140,7 +202,10 @@ class GafferManager(object):
                 raise ValueError("Light '{}' not found in gaffer chain".format(light_name))
             
             # Create new light context in child gaffer
-            light_ctx = CTXLightContextNode.create(lightName=light_name)
+            light_ctx = CTXLightContextNode.create(
+                gaffer_name=child_gaffer.get_gaffer_name(),
+                lightName=light_name
+            )
             light_ctx.set_parent_gaffer(child_gaffer)
             light_ctx.set_target_light(target_light)
         
@@ -266,10 +331,19 @@ class GafferManager(object):
 
         values = {}
 
-        # Get transform node
-        transform = cmds.listRelatives(light_shape, parent=True, fullPath=True)
-        if transform:
-            transform = transform[0]
+        # Resolve shape vs transform.
+        # Callers may pass either the shape node or its transform parent.
+        # We need the SHAPE for attribute queries and the TRANSFORM for translate/rotate/scale.
+        if cmds.nodeType(light_shape) == 'transform':
+            transform = light_shape
+            child_shapes = cmds.listRelatives(light_shape, shapes=True, fullPath=False) or []
+            light_shape = child_shapes[0] if child_shapes else None
+        else:
+            transforms = cmds.listRelatives(light_shape, parent=True, fullPath=True) or []
+            transform = transforms[0] if transforms else None
+
+        if light_shape is None:
+            return values  # transform with no shape — nothing to capture
 
         # Capture intensity (common attribute)
         if cmds.attributeQuery('intensity', node=light_shape, exists=True):
@@ -290,6 +364,36 @@ class GafferManager(object):
         if cmds.attributeQuery('temperature', node=light_shape, exists=True):
             values['temperature'] = cmds.getAttr('{}.temperature'.format(light_shape))
 
+        # Capture muted state (renderer-specific: RS uses .on, others use transform visibility)
+        muted_attr = get_maya_attr(light_shape, 'muted')
+        if muted_attr and cmds.attributeQuery(muted_attr, node=light_shape, exists=True):
+            on_val = cmds.getAttr('{}.{}'.format(light_shape, muted_attr))
+            values['muted'] = not bool(on_val)  # on=0 -> muted=True
+        elif transform and cmds.attributeQuery('visibility', node=transform, exists=True):
+            vis = cmds.getAttr('{}.visibility'.format(transform))
+            values['muted'] = not bool(vis)
+
+        # Capture spread attrs (renderer-specific)
+        for gaffer_attr in ('spread', 'areaSpread'):
+            maya_attr = get_maya_attr(light_shape, gaffer_attr)
+            if maya_attr and cmds.attributeQuery(maya_attr, node=light_shape, exists=True):
+                values[gaffer_attr] = cmds.getAttr('{}.{}'.format(light_shape, maya_attr))
+
+        # Capture bool contribution flags (renderer-specific attr names)
+        for gaffer_attr in ('affectDiffuse', 'affectSpecular', 'affectGI', 'shadowEnable'):
+            maya_attr = get_maya_attr(light_shape, gaffer_attr)
+            if maya_attr and cmds.attributeQuery(maya_attr, node=light_shape, exists=True):
+                raw = cmds.getAttr('{}.{}'.format(light_shape, maya_attr))
+                values[gaffer_attr] = bool(raw)
+
+        # Capture float contribution scales (renderer-specific)
+        for gaffer_attr in ('diffuseContrib', 'reflectionContrib', 'transmissionContrib',
+                            'singleScatterContrib', 'multiScatterContrib', 'volumeContrib',
+                            'indirectContrib', 'toonDiffuseContrib', 'toonReflectionContrib'):
+            maya_attr = get_maya_attr(light_shape, gaffer_attr)
+            if maya_attr and cmds.attributeQuery(maya_attr, node=light_shape, exists=True):
+                values[gaffer_attr] = cmds.getAttr('{}.{}'.format(light_shape, maya_attr))
+
         # Capture transform
         if transform:
             translate = cmds.getAttr('{}.translate'.format(transform))[0]
@@ -301,6 +405,11 @@ class GafferManager(object):
             values['rotateX'] = rotate[0]
             values['rotateY'] = rotate[1]
             values['rotateZ'] = rotate[2]
+
+            scale = cmds.getAttr('{}.scale'.format(transform))[0]
+            values['scaleX'] = scale[0]
+            values['scaleY'] = scale[1]
+            values['scaleZ'] = scale[2]
 
         return values
 

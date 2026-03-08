@@ -227,21 +227,26 @@ class ShotSwitcher(object):
     def _deactivate_other_shots(self, active_shot_node, manager_node):
         """Deactivate all other CTX_Shot nodes.
 
-        This will automatically hide their display layers via the is_active connection.
+        Scans all network nodes for CTX_Shot type so shots in the new
+        Manager -> Sequence -> Shot hierarchy are found, not just those
+        connected directly to the manager.
 
         Args:
             active_shot_node (str): Active shot node name to keep active
             manager_node (str): CTX_Manager node name
         """
-        # Get all shot nodes connected to manager
-        all_shots = cmds.listConnections("{}.shots".format(manager_node), source=True, destination=False) or []
-
-        # Deactivate all except the active one
-        for shot in all_shots:
-            if shot != active_shot_node:
-                if cmds.objExists("{}.is_active".format(shot)):
-                    cmds.setAttr("{}.is_active".format(shot), False)
-                    logger.info("Set {}.is_active = False".format(shot))
+        all_nodes = cmds.ls(type='network') or []
+        for node in all_nodes:
+            if node == active_shot_node:
+                continue
+            try:
+                if cmds.attributeQuery('ctx_type', node=node, exists=True):
+                    if cmds.getAttr('{}.ctx_type'.format(node)) == 'CTX_Shot':
+                        if cmds.attributeQuery('is_active', node=node, exists=True):
+                            cmds.setAttr('{}.is_active'.format(node), False)
+                            logger.info("Set {}.is_active = False".format(node))
+            except Exception as e:
+                logger.warning("Failed to deactivate shot {}: {}".format(node, e))
 
     def _add_to_history(self, shot_node):
         """Add shot to history.

@@ -17,15 +17,49 @@ class CTXShotNode(NodeWrapper):
     """Wrapper for CTX_Shot node.
 
     Provides methods for:
-    - Creating shot nodes
+    - Creating shot nodes (named CTX_Shot_{ep}_{seq}_{shot})
     - Manual wiring to sequences and managers
     - Managing assets
-    - Managing shot-level gaffer (direct ownership - NEW!)
+    - Managing shot-level gaffer (direct ownership)
     - Frame range operations
     """
-    
+
     SCHEMA = CTXShotSchema
-    
+
+    @classmethod
+    def create(cls, **kwargs):
+        """Create shot node with legacy-compatible naming.
+
+        Node name format: CTX_Shot_{ep_code}_{seq_code}_{shot_code}
+        Example: CTX_Shot_Ep04_sq0070_SH0170
+
+        Args:
+            **kwargs: Initial attribute values (ep_code, seq_code, shot_code, etc.)
+
+        Returns:
+            CTXShotNode: New shot node instance
+        """
+        if cmds is None:
+            raise RuntimeError("Maya is not available")
+
+        ep_code = kwargs.get('ep_code', '')
+        seq_code = kwargs.get('seq_code', '')
+        shot_code = kwargs.get('shot_code', '')
+
+        # Create node using parent class (gets auto-prefixed name)
+        instance = super(CTXShotNode, cls).create(**kwargs)
+
+        # Rename to specific pattern if all codes are provided
+        if ep_code and seq_code and shot_code:
+            desired_name = 'CTX_Shot_{}_{}_{}'.format(ep_code, seq_code, shot_code)
+            try:
+                new_name = cmds.rename(instance.node_name, desired_name)
+                instance.node_name = new_name
+            except Exception:
+                pass  # Keep auto-generated name if rename fails
+
+        return instance
+
     # Manual wiring methods
     
     def set_parent_sequence(self, sequence):
@@ -135,13 +169,8 @@ class CTXShotNode(NodeWrapper):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        from .gaffer import CTXLightGafferNode
-
-        # Get gaffer node name
-        if isinstance(gaffer, CTXLightGafferNode):
-            gaffer_node = gaffer.node_name
-        else:
-            gaffer_node = str(gaffer)
+        # Get gaffer node name — use str check to avoid isinstance failure after reload
+        gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
 
         # Verify nodes exist
         if not cmds.objExists(self.node_name):
@@ -229,7 +258,7 @@ class CTXShotNode(NodeWrapper):
         """Get all asset nodes connected to this shot.
 
         Returns:
-            list: List of asset node names
+            list: List of CTXAssetNode instances
         """
         if cmds is None:
             raise RuntimeError("Maya is not available")
@@ -237,13 +266,15 @@ class CTXShotNode(NodeWrapper):
         if not cmds.objExists(self.node_name):
             return []
 
+        from .asset import CTXAssetNode
+
         connections = cmds.listConnections(
             "{}.assets".format(self.node_name),
             source=True,
             destination=False
         ) or []
 
-        return connections
+        return [CTXAssetNode(n) for n in connections]
 
     def get_gaffer(self):
         """Get connected shot-level gaffer (NEW!).
@@ -266,6 +297,74 @@ class CTXShotNode(NodeWrapper):
 
         return connections[0] if connections else None
 
+    def get_frame_range(self):
+        """Get shot frame range.
+
+        Returns:
+            tuple: (start_frame, end_frame)
+        """
+        start = self.get_attribute('start_frame')
+        end = self.get_attribute('end_frame')
+        return (start, end)
+
+    def set_frame_range(self, start, end):
+        """Set shot frame range.
+
+        Args:
+            start (int): Start frame
+            end (int): End frame
+        """
+        self.set_attribute('start_frame', int(start))
+        self.set_attribute('end_frame', int(end))
+
+    def set_fps(self, fps):
+        """Set frames per second.
+
+        Args:
+            fps (float): Frames per second
+        """
+        self.set_attribute('fps', float(fps))
+
+    def get_ep_code(self):
+        """Get episode code.
+
+        Returns:
+            str: Episode code (e.g., 'Ep04')
+        """
+        return self.get_attribute('ep_code')
+
+    def get_seq_code(self):
+        """Get sequence code.
+
+        Returns:
+            str: Sequence code (e.g., 'sq0070')
+        """
+        return self.get_attribute('seq_code')
+
+    def get_shot_code(self):
+        """Get shot code.
+
+        Returns:
+            str: Shot code (e.g., 'SH0170')
+        """
+        return self.get_attribute('shot_code')
+
+    def is_active(self):
+        """Check whether this shot is currently active.
+
+        Returns:
+            bool: True if active
+        """
+        return bool(self.get_attribute('is_active'))
+
+    def set_active(self, state):
+        """Set the active state of this shot.
+
+        Args:
+            state (bool): True to mark as active, False to deactivate
+        """
+        self.set_attribute('is_active', bool(state))
+
     def get_shot_id(self):
         """Get full shot ID.
 
@@ -275,7 +374,7 @@ class CTXShotNode(NodeWrapper):
         ep = self.get_attribute('ep_code')
         seq = self.get_attribute('seq_code')
         shot = self.get_attribute('shot_code')
-        return "{}_{}_{}" .format(ep, seq, shot)
+        return "{}_{}_{}".format(ep, seq, shot)
 
     # Discovery methods
 
@@ -314,7 +413,7 @@ class CTXShotNode(NodeWrapper):
             list: List of CTXShotNode instances
         """
         if cmds is None:
-            raise RuntimeError("Maya is not available")
+            return []
 
         shots = []
         all_nodes = cmds.ls(type='network')

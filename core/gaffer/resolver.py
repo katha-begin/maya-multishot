@@ -30,6 +30,12 @@ class AttributeResolver(object):
         'muted',
         'translate',
         'rotate',
+        'scale',
+        'spread',
+        'affectDiffuse',
+        'affectSpecular',
+        'affectGI',
+        'shadowEnable',
     ]
     
     @staticmethod
@@ -117,6 +123,12 @@ class AttributeResolver(object):
                 light_ctx.get_attribute('rotateX'),
                 light_ctx.get_attribute('rotateY'),
                 light_ctx.get_attribute('rotateZ')
+            )
+        elif attribute == 'scale':
+            return (
+                light_ctx.get_attribute('scaleX'),
+                light_ctx.get_attribute('scaleY'),
+                light_ctx.get_attribute('scaleZ')
             )
         else:
             return light_ctx.get_attribute(attribute)

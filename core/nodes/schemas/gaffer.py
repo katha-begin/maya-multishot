@@ -83,11 +83,11 @@ class CTXLightGafferSchema(NodeSchema):
             'description': 'Child gaffers that inherit from this gaffer'
         },
 
-        # Light context connections (OUTPUT MULTI - for querying lights)
+        # Light context connections (INPUT MULTI - receives from CTX_LightContext.message)
         'lights': {
             'type': 'message',
             'multi': True,
-            'direction': 'output',
+            'direction': 'input',
             'description': 'Light context nodes managed by this gaffer'
         },
 

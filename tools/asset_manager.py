@@ -82,9 +82,8 @@ class AssetManager(BaseManager):
         Raises:
             ValueError: If shot node doesn't exist or file doesn't exist
         """
-        from core.custom_nodes import CTXAssetNode, CTXShotNode
-        from core.ctx_linker import link_to_maya_node
-        from core.nodes import create_standin_with_namespace, create_redshift_proxy_with_namespace
+        from core.nodes.wrappers import CTXAssetNode, CTXShotNode
+        from core.ctx_converter import CTXConverter
 
         # Validate shot exists
         if not cmds.objExists(shot_node):
@@ -96,21 +95,24 @@ class AssetManager(BaseManager):
 
         # Wrap shot node
         shot_node_obj = CTXShotNode(shot_node)
+        shot_code = shot_node_obj.get_shot_code() or ''
 
-        # Create CTX_Asset node using proper method (this handles shot connection)
-        asset_node_obj = CTXAssetNode.create_asset(
+        # Build namespace: CHAR_ToriiMechSuit_001
+        namespace = "{}_{}_{}".format(asset_type, asset_name, variant)
+
+        # Create CTX_Asset node with per-shot naming
+        asset_node_obj = CTXAssetNode.create(
             asset_type=asset_type,
             asset_name=asset_name,
             variant=variant,
-            shot_node=shot_node_obj
+            namespace=namespace,
+            shot_code=shot_code
         )
+        shot_node_obj.add_asset(asset_node_obj)
 
         # Set file path and version
         asset_node_obj.set_file_path(file_path)
         asset_node_obj.set_version(version)
-
-        # Build namespace: CHAR_ToriiMechSuit_001
-        namespace = "{}_{}_{}".format(asset_type, asset_name, variant)
 
         # Determine node type from file extension and create Maya node
         ext = os.path.splitext(file_path)[1].lower()
@@ -118,12 +120,10 @@ class AssetManager(BaseManager):
         shape_node = None
 
         if ext == '.abc':
-            # Create Arnold StandIn with namespace
+            # Create Arnold StandIn with namespace (Phase 3)
+            from core.nodes import create_standin_with_namespace
             transform_node, shape_node = create_standin_with_namespace(namespace, file_path)
             maya_node = transform_node  # Store transform for display layer
-
-            # Link shape node to CTX_Asset via message attribute
-            link_to_maya_node(asset_node_obj.node_name, shape_node)
 
         elif ext in ['.ma', '.mb']:
             # Create Reference with namespace
@@ -131,22 +131,21 @@ class AssetManager(BaseManager):
             ref_node = reference_file(file_path, namespace)
             if ref_node:
                 maya_node = ref_node
-                # Link reference node to CTX_Asset
-                link_to_maya_node(asset_node_obj.node_name, ref_node)
 
         elif ext == '.rs':
-            # Create Redshift Proxy with namespace
+            # Create Redshift Proxy with namespace (Phase 3)
+            from core.nodes import create_redshift_proxy_with_namespace
             transform_node, shape_node = create_redshift_proxy_with_namespace(namespace, file_path)
             maya_node = transform_node  # Store transform for display layer
 
-            # Link shape node to CTX_Asset via message attribute
-            link_to_maya_node(asset_node_obj.node_name, shape_node)
+        # Link ALL CTX_Asset nodes sharing this namespace to the Maya reference
+        CTXConverter().link_all_by_namespace(namespace)
 
         # Assign to display layer if available
         if self.layer_manager and maya_node:
-            ep = cmds.getAttr("{}.ep".format(shot_node))
-            seq = cmds.getAttr("{}.seq".format(shot_node))
-            shot = cmds.getAttr("{}.shot".format(shot_node))
+            ep = shot_node_obj.get_ep_code()
+            seq = shot_node_obj.get_seq_code()
+            shot = shot_node_obj.get_shot_code()
             layer = self.layer_manager.get_layer_for_shot(ep, seq, shot)
             if layer:
                 self.layer_manager.assign_to_layer(maya_node, layer)

@@ -73,11 +73,14 @@ class AddLightDialog(QtWidgets.QDialog):
         
         self._filter_combo = QtWidgets.QComboBox()
         self._filter_combo.addItem("All Lights", None)
-        self._filter_combo.addItem("Area Lights", "aiAreaLight")
+        self._filter_combo.addItem("Area Lights (Arnold)", "aiAreaLight")
         self._filter_combo.addItem("Spot Lights", "spotLight")
         self._filter_combo.addItem("Point Lights", "pointLight")
         self._filter_combo.addItem("Directional Lights", "directionalLight")
         self._filter_combo.addItem("Volume Lights", "volumeLight")
+        self._filter_combo.addItem("Redshift Physical", "RedshiftPhysicalLight")
+        self._filter_combo.addItem("Redshift Dome", "RedshiftDomeLight")
+        self._filter_combo.addItem("Redshift IES", "RedshiftIESLight")
         self._filter_combo.currentIndexChanged.connect(self._on_filter_changed)
         filter_layout.addWidget(self._filter_combo)
         
@@ -158,14 +161,15 @@ class AddLightDialog(QtWidgets.QDialog):
             light_types = [
                 'aiAreaLight', 'spotLight', 'pointLight',
                 'directionalLight', 'volumeLight', 'aiSkyDomeLight',
-                'aiPhotometricLight', 'aiLightPortal'
+                'aiPhotometricLight', 'aiLightPortal',
+                'RedshiftPhysicalLight', 'RedshiftDomeLight', 'RedshiftIESLight'
             ]
 
             # Get existing lights in gaffer
             existing_lights = GafferManager.get_lights_in_gaffer(self._gaffer, include_inherited=False)
             existing_light_names = set()
-            for light_ctx in existing_lights:
-                existing_light_names.add(light_ctx.get_light_name())
+            for light_info in existing_lights:
+                existing_light_names.add(light_info['name'])
 
             # Find all lights in scene
             for light_type in light_types:

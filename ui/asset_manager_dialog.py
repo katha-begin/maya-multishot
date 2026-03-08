@@ -67,7 +67,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
         except ImportError:
             from tests.mock_maya import cmds
 
-        from core.custom_nodes import CTXShotNode
+        from core.nodes.wrappers import CTXShotNode
 
         shot_code = self._shot_data.get('shot')  # e.g., 'SH0140'
 
@@ -577,21 +577,33 @@ class AssetManagerDialog(QtWidgets.QDialog):
                     current_version, asset_data['latest']))
 
     def _auto_link_if_needed(self, ctx_node, maya_node):
-        """Auto-link CTX_Asset to Maya node if not already linked.
+        """Auto-link all CTX_Asset nodes sharing the same namespace to the Maya reference.
+
+        Uses the namespace attribute on ctx_node to find all sibling CTX_Asset nodes
+        and links them all to the reference in one operation.
 
         Args:
-            ctx_node (str): CTX_Asset node name
-            maya_node (str): Maya reference node name
+            ctx_node (str): CTX_Asset node name (used to read namespace attribute)
+            maya_node (str): Maya reference node name (unused — reference is found via namespace)
         """
-        from core.ctx_linker import link_to_maya_node, get_linked_maya_node
+        from core.ctx_converter import CTXConverter
+        from maya import cmds as _cmds
 
-        existing = get_linked_maya_node(ctx_node)
-        if existing == maya_node:
-            return  # Already linked
+        namespace = None
+        try:
+            if _cmds.attributeQuery('namespace', node=ctx_node, exists=True):
+                namespace = _cmds.getAttr('{}.namespace'.format(ctx_node))
+        except Exception:
+            pass
 
-        linked = link_to_maya_node(ctx_node, maya_node)
-        if linked:
-            logger.info("      Auto-linked {} -> {}".format(ctx_node, maya_node))
+        if not namespace:
+            return
+
+        converter = CTXConverter()
+        linked_count = converter.link_all_by_namespace(namespace)
+        if linked_count > 0:
+            logger.info("      Auto-linked {} node(s) for namespace '{}'".format(
+                linked_count, namespace))
 
     def _populate_asset_table(self):
         """Populate asset table with asset data."""
@@ -853,7 +865,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
         if version:
             from maya import cmds
-            from core.custom_nodes import CTXAssetNode, CTXManagerNode
+            from core.nodes.wrappers import CTXAssetNode, CTXManagerNode
             from core.nodes import NodeManager
             from config.platform_config import PlatformConfig
 
@@ -926,7 +938,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
                             node_manager = NodeManager()
 
                             # Get shot node
-                            from core.custom_nodes import CTXShotNode
+                            from core.nodes.wrappers import CTXShotNode
                             logger.info("Getting shot node: {}".format(shot_node_name))
                             shot_node = CTXShotNode(shot_node_name)
 
@@ -1102,7 +1114,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
             row: Table row index
         """
         from maya import cmds
-        from core.custom_nodes import CTXAssetNode
+        from core.nodes.wrappers import CTXAssetNode
 
         asset_data = self._assets[row]
         # Special handling for cameras: namespace is just the asset name
@@ -1218,7 +1230,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
         logger.info("Update All to Latest clicked")
 
         from maya import cmds
-        from core.custom_nodes import CTXAssetNode, CTXManagerNode, CTXShotNode
+        from core.nodes.wrappers import CTXAssetNode, CTXManagerNode, CTXShotNode
         from core.nodes import NodeManager
         from config.platform_config import PlatformConfig
 
@@ -1836,7 +1848,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
         except ImportError:
             from tests.mock_maya import cmds
 
-        from core.custom_nodes import CTXAssetNode, CTXShotNode
+        from core.nodes.wrappers import CTXAssetNode, CTXShotNode
 
         asset_data = self._assets[row]
 
@@ -1929,76 +1941,67 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
                 # If still no matching shot node found, create a new one
                 if not shot_node_obj:
-                    logger.info("DEBUG: No matching CTX_Shot node found, creating new one for shot: {}".format(shot_code))
-                    shot_node_obj = CTXShotNode.create_shot(
+                    logger.info("No matching CTX_Shot node found, creating new one for shot: {}".format(shot_code))
+                    shot_node_obj = CTXShotNode.create(
                         ep_code=ep_code,
                         seq_code=seq_code,
                         shot_code=shot_code
                     )
-                    logger.info("DEBUG: Created new CTX_Shot node: {}".format(shot_node_obj.node_name))
+                    logger.info("Created new CTX_Shot node: {}".format(shot_node_obj.node_name))
+
+                    # Wire to manager if one exists
+                    from core.nodes.wrappers import CTXManagerNode
+                    manager = CTXManagerNode.get_manager()
+                    if manager:
+                        try:
+                            shot_node_obj.set_manager(manager)
+                            logger.info("Wired new shot to manager: {}".format(manager.node_name))
+                        except Exception as e:
+                            logger.warning("Could not wire shot to manager: {}".format(e))
 
                     # Store shot node in shot_data for future use
                     self._shot_data['shot_node'] = shot_node_obj.node_name
 
-            # Create CTX_Asset node
-            logger.info("DEBUG: Calling CTXAssetNode.create_asset() with type={}, name={}, variant={}, shot_node={}".format(
-                asset_data['type'], asset_data['name'], asset_data['var'], shot_node_obj))
+            # Create CTX_Asset node using the new schema-based API.
+            # Node name: CTX_Asset_{assetType}_{assetName}_{shotCode}
+            # e.g., CTX_Asset_CHAR_CatStompie_SH0140
+            shot_code_for_name = self._shot_data.get('shot', '')
+            logger.info("Creating CTX_Asset: type={}, name={}, variant={}, shot={}".format(
+                asset_data['type'], asset_data['name'], asset_data['var'], shot_code_for_name))
 
-            ctx_asset_obj = CTXAssetNode.create_asset(
+            ctx_asset_obj = CTXAssetNode.create(
                 asset_type=asset_data['type'],
                 asset_name=asset_data['name'],
                 variant=asset_data['var'],
-                shot_node=shot_node_obj
+                namespace=namespace,
+                shot_code=shot_code_for_name
             )
-
-            if not ctx_asset_obj:
-                logger.error("Failed to create CTX_Asset node")
-                return
+            shot_node_obj.add_asset(ctx_asset_obj)
 
             ctx_asset_name = ctx_asset_obj.node_name
-            logger.info("DEBUG: CTX_Asset node created: {}".format(ctx_asset_name))
+            logger.info("CTX_Asset node created: {}".format(ctx_asset_name))
 
-            # Set additional attributes (same as shot import workflow)
-            # Department is determined from the shot's current department
-            dept = self._shot_data.get('dept', 'anim')  # Default to 'anim' if not set
+            # Set additional attributes
+            dept = self._shot_data.get('dept', 'anim')
             ctx_asset_obj.set_department(dept)
-
-            # Set version and file path
             ctx_asset_obj.set_version(asset_data['current'])
             ctx_asset_obj.set_file_path(asset_data['file_path'])
-
-            # Note: namespace is already set by create_asset() based on asset type
-            # CAM: just the name, Others: TYPE_Name_Variant
 
             logger.info("Created new CTX_Asset: {} (dept: {}, version: {})".format(
                 ctx_asset_name, dept, asset_data['current']))
         else:
             logger.info("Using existing CTX_Asset: {}".format(ctx_asset_name))
 
-        # Link CTX_Asset to Maya node using the standard linking function
-        # This is the same function used when adding shots to scenes with existing assets
-        from core.ctx_linker import link_to_maya_node, get_linked_maya_node
-
-        logger.info("Attempting to link CTX_Asset {} to Maya node {}".format(ctx_asset_name, maya_node))
-
-        if not cmds.objExists(maya_node):
-            logger.error("Maya node does not exist: {}".format(maya_node))
-            return
-
-        # Check if already linked
-        existing = get_linked_maya_node(ctx_asset_name)
-        if existing == maya_node:
-            logger.info("CTX_Asset {} already linked to Maya node {}".format(ctx_asset_name, maya_node))
+        # Link ALL CTX_Asset nodes sharing this namespace to the Maya reference.
+        # Uses namespace attribute-based lookup — handles multiple shots sharing
+        # the same physical reference automatically.
+        logger.info("Linking all CTX_Asset nodes for namespace '{}'".format(namespace))
+        linked_count = self._converter.link_all_by_namespace(namespace)
+        if linked_count > 0:
+            logger.info("Linked {} CTX_Asset node(s) for namespace '{}'".format(
+                linked_count, namespace))
         else:
-            # Link using the standard function (same as _auto_link_if_needed)
-            try:
-                linked = link_to_maya_node(ctx_asset_name, maya_node)
-                if linked:
-                    logger.info("Successfully linked CTX_Asset {} to Maya node {}".format(ctx_asset_name, maya_node))
-                else:
-                    logger.warning("Linked using fallback method for {} -> {}".format(ctx_asset_name, maya_node))
-            except Exception as e:
-                logger.error("Failed to link CTX_Asset to Maya node: {}".format(e))
+            logger.warning("No reference found for namespace '{}' — link skipped".format(namespace))
 
         # Update asset data in the table
         asset_data['ctx_node'] = ctx_asset_name

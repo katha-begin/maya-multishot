@@ -61,7 +61,7 @@ class CTXLightGafferNode(NodeWrapper):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        parent_node = parent_gaffer.node_name if isinstance(parent_gaffer, CTXLightGafferNode) else parent_gaffer
+        parent_node = parent_gaffer if isinstance(parent_gaffer, str) else parent_gaffer.node_name
 
         # Unidirectional connection: parent_gaffer.message → child_gaffer.parentGaffer
         # This creates the inheritance chain for attribute resolution
@@ -123,14 +123,14 @@ class CTXLightGafferNode(NodeWrapper):
         
         connections = cmds.listConnections(
             "{}.lights".format(self.node_name),
-            source=False,
-            destination=True,
+            source=True,
+            destination=False,
             plugs=False
         )
-        
+
         if not connections:
             return []
-        
+
         return [CTXLightContextNode(node) for node in connections]
     
     def build_chain(self):
