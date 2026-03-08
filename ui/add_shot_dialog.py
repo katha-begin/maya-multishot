@@ -19,27 +19,38 @@ logger = logging.getLogger(__name__)
 class AddShotDialog(QtWidgets.QDialog):
     def __init__(self, config, parent=None):
         super(AddShotDialog, self).__init__(parent)
-        
+
         self._config = config
         self._selected_shots = []
-        
+        self._existing_shots = set()  # Store existing shots for persistent checkboxes
+
         self._setup_ui()
         self._connect_signals()
+        self._load_existing_shots()
         self._discover_shots()
     
     def _setup_ui(self):
         self.setWindowTitle("Add Shots")
         self.setModal(True)
         self.setMinimumSize(600, 500)
-        
+
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(10, 10, 10, 10)
         main_layout.setSpacing(10)
-        
+
         instructions = QtWidgets.QLabel("Select shots to add to the scene. Use checkboxes to select multiple shots.")
         instructions.setWordWrap(True)
         main_layout.addWidget(instructions)
-        
+
+        # Add filter text box
+        filter_layout = QtWidgets.QHBoxLayout()
+        filter_label = QtWidgets.QLabel("Filter:")
+        filter_layout.addWidget(filter_label)
+        self.filter_edit = QtWidgets.QLineEdit()
+        self.filter_edit.setPlaceholderText("Type to filter shots...")
+        filter_layout.addWidget(self.filter_edit)
+        main_layout.addLayout(filter_layout)
+
         self.tree_widget = QtWidgets.QTreeWidget()
         self.tree_widget.setHeaderLabels(["Project / Episode / Sequence / Shot"])
         self.tree_widget.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
@@ -71,6 +82,7 @@ class AddShotDialog(QtWidgets.QDialog):
         self.add_btn.clicked.connect(self._on_add_selected)
         self.cancel_btn.clicked.connect(self.reject)
         self.tree_widget.itemChanged.connect(self._on_item_changed)
+        self.filter_edit.textChanged.connect(self._on_filter_changed)
     
     def _discover_shots(self):
         if not self._config:
@@ -96,8 +108,12 @@ class AddShotDialog(QtWidgets.QDialog):
             self.tree_widget.addTopLevelItem(project_item)
             
             self._discover_episodes(base_path, project_item, project_code)
-            self.tree_widget.expandAll()
-            
+            # Don't expand all - keep tree collapsed by default
+            # self.tree_widget.expandAll()  # REMOVED - tree should start collapsed
+
+            # Mark existing shots after discovery
+            self._mark_existing_shots()
+
         except Exception as e:
             logger.error("Failed to discover shots: %s", e)
     
@@ -151,6 +167,23 @@ class AddShotDialog(QtWidgets.QDialog):
             seq_item.addChild(shot_item)
     
     def _on_item_changed(self, item, column):
+        # Set orange color when checked
+        if item.checkState(column) == QtCore.Qt.Checked:
+            item.setBackground(column, QtGui.QBrush(QtGui.QColor(255, 165, 0)))
+            item.setForeground(column, QtGui.QBrush(QtGui.QColor(0, 0, 0)))  # Black text
+        else:
+            # Only clear color if shot is not in existing shots
+            shot_data = item.data(0, QtCore.Qt.UserRole)
+            if shot_data:
+                key = (shot_data['ep'], shot_data['seq'], shot_data['shot'])
+                if key not in self._existing_shots:
+                    item.setBackground(column, QtGui.QBrush(QtCore.Qt.Transparent))
+                    item.setForeground(column, QtGui.QBrush(QtGui.QColor()))  # Default text color
+            else:
+                item.setBackground(column, QtGui.QBrush(QtCore.Qt.Transparent))
+                item.setForeground(column, QtGui.QBrush(QtGui.QColor()))  # Default text color
+
+        # Propagate to children
         if item.childCount() > 0:
             state = item.checkState(column)
             for i in range(item.childCount()):
@@ -192,3 +225,123 @@ class AddShotDialog(QtWidgets.QDialog):
     
     def get_selected_shots(self):
         return self._selected_shots
+
+    def _load_existing_shots(self):
+        """Load existing shots from the scene to mark them as already added."""
+        try:
+            from core.context import ContextManager
+            ctx = ContextManager()
+            existing_shots = ctx.get_all_shots()
+
+            print("=== DEBUG: Loading existing shots ===")
+            print("Found {} shots in scene".format(len(existing_shots)))
+
+            # Build set of existing shot identifiers (ep, seq, shot)
+            for shot in existing_shots:
+                ep = shot.get_ep_code()
+                seq = shot.get_seq_code()
+                shot_code = shot.get_shot_code()
+                self._existing_shots.add((ep, seq, shot_code))
+                print("  Existing shot: ep='{}', seq='{}', shot='{}'".format(ep, seq, shot_code))
+                logger.debug("Loaded existing shot: {} / {} / {}".format(ep, seq, shot_code))
+
+            print("Total existing shots loaded: {}".format(len(self._existing_shots)))
+            print("Existing shots set: {}".format(self._existing_shots))
+            logger.info("Loaded {} existing shots from scene: {}".format(
+                len(self._existing_shots), self._existing_shots))
+        except Exception as e:
+            print("ERROR loading existing shots: {}".format(e))
+            import traceback
+            traceback.print_exc()
+            logger.warning("Failed to load existing shots: {}".format(e))
+
+    def _mark_existing_shots(self):
+        """Mark tree items for shots that already exist in the scene."""
+        logger.info("Starting to mark {} existing shots in tree".format(len(self._existing_shots)))
+        self._mark_tree_items(self.tree_widget.invisibleRootItem())
+        logger.info("Finished marking existing shots")
+
+    def _mark_tree_items(self, parent_item):
+        """Recursively mark tree items that match existing shots.
+
+        Args:
+            parent_item: Parent tree widget item to process
+        """
+        for i in range(parent_item.childCount()):
+            item = parent_item.child(i)
+            shot_data = item.data(0, QtCore.Qt.UserRole)
+
+            if shot_data:
+                # This is a shot item
+                key = (shot_data['ep'], shot_data['seq'], shot_data['shot'])
+                print("  Checking tree item: ep='{}', seq='{}', shot='{}'".format(
+                    shot_data['ep'], shot_data['seq'], shot_data['shot']))
+                print("    Key: {}".format(key))
+                print("    In existing_shots? {}".format(key in self._existing_shots))
+
+                logger.debug("Checking shot item: {} / {} / {}".format(
+                    shot_data['ep'], shot_data['seq'], shot_data['shot']))
+
+                if key in self._existing_shots:
+                    print("    >>> MARKING AS CHECKED AND ORANGE <<<")
+                    logger.info("Marking existing shot as checked: {} / {} / {}".format(
+                        shot_data['ep'], shot_data['seq'], shot_data['shot']))
+                    # Block signals to avoid triggering itemChanged
+                    self.tree_widget.blockSignals(True)
+                    item.setCheckState(0, QtCore.Qt.Checked)
+                    # Set orange background with black text
+                    item.setBackground(0, QtGui.QBrush(QtGui.QColor(255, 165, 0)))
+                    item.setForeground(0, QtGui.QBrush(QtGui.QColor(0, 0, 0)))  # Black text
+                    self.tree_widget.blockSignals(False)
+
+            # Recurse to children
+            if item.childCount() > 0:
+                self._mark_tree_items(item)
+
+    def _on_filter_changed(self, text):
+        """Handle filter text change.
+
+        Args:
+            text (str): Filter text
+        """
+        filter_text = text.lower()
+        self._filter_tree_items(self.tree_widget.invisibleRootItem(), filter_text)
+
+    def _filter_tree_items(self, parent_item, filter_text):
+        """Recursively filter tree items based on text.
+
+        Args:
+            parent_item: Parent tree widget item to process
+            filter_text (str): Lowercase filter text
+
+        Returns:
+            bool: True if this item or any child should be visible
+        """
+        has_visible_child = False
+
+        for i in range(parent_item.childCount()):
+            item = parent_item.child(i)
+            item_text = item.text(0).lower()
+
+            # Check if this item matches
+            matches = filter_text in item_text if filter_text else True
+
+            # Check children recursively
+            child_visible = False
+            if item.childCount() > 0:
+                child_visible = self._filter_tree_items(item, filter_text)
+
+            # Item is visible if it matches OR has visible children
+            is_visible = matches or child_visible
+            item.setHidden(not is_visible)
+
+            if is_visible:
+                has_visible_child = True
+                # Expand item if filter is active and it has visible children
+                if filter_text and child_visible:
+                    item.setExpanded(True)
+            else:
+                # Collapse hidden items
+                item.setExpanded(False)
+
+        return has_visible_child

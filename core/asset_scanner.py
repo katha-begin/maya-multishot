@@ -48,7 +48,7 @@ class AssetScanner(object):
         Returns:
             list: List of created CTXAssetNode instances
         """
-        from core.custom_nodes import CTXAssetNode
+        from core.nodes.wrappers import CTXAssetNode
         
         if not self.config:
             logger.warning("No config available for asset scanning")
@@ -101,7 +101,7 @@ class AssetScanner(object):
         Returns:
             list: List of created CTXAssetNode instances
         """
-        from core.custom_nodes import CTXAssetNode
+        from core.nodes.wrappers import CTXAssetNode
 
         # Build publish path manually from config
         # Template: $projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish
@@ -178,37 +178,40 @@ class AssetScanner(object):
 
         # Now create CTX_Asset nodes for all unique assets
         created_assets = []
-        existing_assets = shot_node.get_assets()
+        existing_shot_assets = shot_node.get_assets()
 
         for asset_key, asset_data in unique_assets.items():
             asset_type, asset_name, variant = asset_key
             asset_info = asset_data['info']
 
-            # Check if asset already exists
-            asset_exists = False
-            for existing in existing_assets:
-                if (existing.get_asset_type() == asset_type and
-                    existing.get_asset_name() == asset_name and
-                    existing.get_variant() == variant and
-                    existing.get_department() == dept):
-                    asset_exists = True
-                    logger.info("Asset already exists, skipping: {} {} {}".format(
-                        asset_type, asset_name, variant))
-                    break
-
-            if asset_exists:
+            # Skip if this shot already has this asset+department combination
+            already_linked = any(
+                a.get_asset_type() == asset_type and
+                a.get_asset_name() == asset_name and
+                a.get_variant() == variant and
+                a.get_department() == dept
+                for a in existing_shot_assets
+            )
+            if already_linked:
+                logger.info("Asset already linked to this shot, skipping: {} {} {}".format(
+                    asset_type, asset_name, variant))
                 continue
 
-            # Create CTX_Asset node
+            # Create a per-shot CTX_Asset node.
+            # Node name: CTX_Asset_{assetType}_{assetName}_{shotCode}
+            # Multiple shots can share the same Maya reference (same namespace attribute)
+            # linked via ReferenceNode.message -> CTX_Asset.targetNode.
             logger.info("Creating CTX_Asset node: {} {} {} (version: {})".format(
                 asset_type, asset_name, variant, asset_data['version']))
 
-            asset_node = CTXAssetNode.create_asset(
-                asset_type,
-                asset_name,
-                variant,
-                shot_node
+            asset_node = CTXAssetNode.create(
+                asset_type=asset_type,
+                asset_name=asset_name,
+                variant=variant,
+                namespace='{}_{}_{}'.format(asset_type, asset_name, variant),
+                shot_code=shot
             )
+            shot_node.add_asset(asset_node)
 
             # Set additional attributes
             asset_node.set_department(dept)
@@ -246,24 +249,21 @@ class AssetScanner(object):
             # Cache the resolved file_path (for display / initial state)
             asset_node.set_file_path(asset_data['file_path'])
 
-            # Auto-link to Maya reference by namespace
-            # The namespace attribute (e.g., 'CHAR_CatStompie_001') matches
-            # the Maya reference namespace exactly
+            # Link this asset AND all sibling CTX_Asset nodes sharing the same
+            # namespace to the Maya reference in one bulk operation.
+            # Uses namespace attribute (not node name) to find both the reference
+            # and all CTX_Asset nodes, then connects reference.message -> targetNode.
             from core.ctx_converter import CTXConverter
             converter = CTXConverter()
+            namespace_val = asset_node.get_namespace()
             logger.info("=" * 80)
-            logger.info("ASSET #{} - Attempting to link {} to scene...".format(
-                len(created_assets) + 1, asset_node.node_name))
-            logger.info("  Asset namespace: {}".format(asset_node.get_namespace()))
-            logger.info("  Asset type: {}".format(asset_node.get_asset_type()))
-            logger.info("  Asset name: {}".format(asset_node.get_asset_name()))
+            logger.info("ASSET #{} - Linking all CTX_Asset nodes for namespace '{}'".format(
+                len(created_assets) + 1, namespace_val))
             logger.info("=" * 80)
-            linked = converter.link_ctx_asset_to_scene(asset_node.node_name)
-            logger.info("Link result for {}: {}".format(asset_node.node_name, linked))
+            linked_count = converter.link_all_by_namespace(namespace_val)
+            linked = linked_count > 0
 
             if linked:
-                logger.info("Auto-linked {} to Maya reference by namespace".format(
-                    asset_node.node_name))
 
                 # Add Maya node to display layer if layer manager is available
                 logger.info("+" * 80)

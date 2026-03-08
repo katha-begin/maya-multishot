@@ -342,6 +342,70 @@ class CTXConverter(object):
             ctx_asset_node, maya_node, namespace))
         return True
     
+    def link_all_by_namespace(self, namespace):
+        """Find a Maya reference node and link ALL CTX_Asset nodes sharing that namespace.
+
+        This is the canonical bulk-linking method. It:
+        1. Finds the reference node whose Maya namespace equals the given namespace string
+           (uses cmds.referenceQuery(ref, namespace=True) — attribute-based, not name-based)
+        2. Finds every CTX_Asset node whose 'namespace' attribute equals that string
+        3. Connects reference.message -> CTX_Asset.targetNode for all of them
+
+        This correctly handles multiple shots sharing the same physical Maya reference:
+        both CTX_Asset_CHAR_CatStompie_SH0140 and CTX_Asset_CHAR_CatStompie_SH0150 will
+        receive the connection as long as their 'namespace' attribute is 'CHAR_CatStompie_001'.
+
+        Args:
+            namespace (str): Maya namespace string, e.g. 'CHAR_CatStompie_001'
+
+        Returns:
+            int: Number of CTX_Asset nodes successfully linked (0 if reference not in scene)
+        """
+        if not namespace:
+            return 0
+
+        # Step 1: find the reference node whose namespace attribute matches
+        ref_node = self.find_maya_node_by_namespace(namespace)
+        if not ref_node:
+            logger.debug("link_all_by_namespace: no reference found for '{}'".format(namespace))
+            return 0
+
+        # Step 2: find every CTX_Asset node with a matching namespace attribute
+        ctx_nodes = self.find_all_ctx_nodes_by_namespace(namespace)
+        if not ctx_nodes:
+            logger.debug("link_all_by_namespace: no CTX_Asset nodes for '{}'".format(namespace))
+            return 0
+
+        logger.info("link_all_by_namespace: linking {} node(s) to {} (namespace: {})".format(
+            len(ctx_nodes), ref_node, namespace))
+
+        # Step 3: connect reference.message -> each CTX_Asset.targetNode
+        linked_count = 0
+        for ctx_node in ctx_nodes:
+            if not cmds.objExists(ctx_node):
+                continue
+
+            # Ensure the targetNode attribute exists on this CTX_Asset
+            if not cmds.attributeQuery('targetNode', node=ctx_node, exists=True):
+                cmds.addAttr(ctx_node, longName='targetNode', attributeType='message')
+                logger.debug("  Added targetNode attribute to {}".format(ctx_node))
+
+            try:
+                cmds.connectAttr(
+                    '{}.message'.format(ref_node),
+                    '{}.targetNode'.format(ctx_node),
+                    force=True
+                )
+                logger.info("  Connected: {}.message -> {}.targetNode".format(ref_node, ctx_node))
+                linked_count += 1
+            except RuntimeError as e:
+                logger.warning("  Failed to connect {} -> {}.targetNode: {}".format(
+                    ref_node, ctx_node, str(e)))
+
+        logger.info("link_all_by_namespace: linked {}/{} nodes for '{}'".format(
+            linked_count, len(ctx_nodes), namespace))
+        return linked_count
+
     def _find_ctx_node_by_identity(self, asset_type, asset_name, variant, shot_code):
         """Find CTX_Asset node by asset identity (type + name + variant + shot).
 

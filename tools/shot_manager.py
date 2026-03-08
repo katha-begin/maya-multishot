@@ -23,55 +23,10 @@ import re
 import json
 import os
 
-try:
-    import maya.cmds as cmds
-    MAYA_AVAILABLE = True
-except ImportError:
-    # Mock Maya commands for testing outside Maya
-    class MockCmds(object):
-        """Mock Maya commands for testing."""
-        
-        def objExists(self, name):
-            """Mock objExists."""
-            return False
-        
-        def createNode(self, node_type, name=None):
-            """Mock createNode."""
-            return name if name else "node1"
-        
-        def delete(self, *nodes):
-            """Mock delete."""
-            pass
-        
-        def getAttr(self, attr):
-            """Mock getAttr."""
-            return None
-        
-        def setAttr(self, attr, value, **kwargs):
-            """Mock setAttr."""
-            pass
-        
-        def listConnections(self, node, **kwargs):
-            """Mock listConnections."""
-            return []
-        
-        def ls(self, *args, **kwargs):
-            """Mock ls."""
-            return []
-        
-        def connectAttr(self, src, dst, **kwargs):
-            """Mock connectAttr."""
-            pass
-        
-        def addAttr(self, node, **kwargs):
-            """Mock addAttr."""
-            pass
-    
-    cmds = MockCmds()
-    MAYA_AVAILABLE = False
+from tools.base_manager import cmds, MAYA_AVAILABLE, BaseManager
 
 
-class ShotManager(object):
+class ShotManager(BaseManager):
     """High-level shot management tool.
     
     This class provides utilities to:
@@ -105,11 +60,12 @@ class ShotManager(object):
     
     def __init__(self, custom_nodes=None, display_layer_manager=None):
         """Initialize shot manager.
-        
+
         Args:
             custom_nodes (dict, optional): Dict with 'manager', 'shot', 'asset' node classes
             display_layer_manager (DisplayLayerManager, optional): Display layer manager
         """
+        super(ShotManager, self).__init__()
         self.custom_nodes = custom_nodes or {}
         self.layer_manager = display_layer_manager
     
@@ -264,9 +220,9 @@ class ShotManager(object):
         # Get attributes
         info = {
             'node': shot_node,
-            'ep': cmds.getAttr("{}.ep_code".format(shot_node)),
-            'seq': cmds.getAttr("{}.seq_code".format(shot_node)),
-            'shot': cmds.getAttr("{}.shot_code".format(shot_node)),
+            'ep': cmds.getAttr("{}.ep".format(shot_node)),
+            'seq': cmds.getAttr("{}.seq".format(shot_node)),
+            'shot': cmds.getAttr("{}.shot".format(shot_node)),
             'dept': cmds.getAttr("{}.dept".format(shot_node)) if cmds.attributeQuery('dept', node=shot_node, exists=True) else '',
         }
 

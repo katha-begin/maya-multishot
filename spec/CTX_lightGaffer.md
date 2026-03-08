@@ -35,21 +35,31 @@
 |                                                                           |
 |                           CTX_Manager                                     |
 |                               |                                           |
-|           +-------------------+-------------------+                       |
-|           |                   |                   |                       |
-|           v                   v                   v                       |
-|      CTX_Shot            CTX_Shot            CTX_Shot                    |
-|      SH0010              SH0020              SH0030                      |
-|           |                   |                   |                       |
-|     +-----+-----+       +-----+-----+       +-----+-----+                |
-|     |           |       |           |       |           |                |
-|     v           v       v           v       v           v                |
-| CTX_Asset  CTX_Light  CTX_Asset  CTX_Light  CTX_Asset  CTX_Light        |
-| (proxies)  Gaffer     (proxies)  Gaffer    (proxies)  Gaffer            |
-|              |                     |                     |               |
-|              v                     v                     v               |
-|         CTX_Light            CTX_Light            CTX_Light             |
-|         Context              Context              Context               |
+|                   +-----------+-----------+                               |
+|                   |                       |                               |
+|                   v                       v                               |
+|          CTX_LightGaffer_Master   CTX_Sequence_sq0070                   |
+|          (Base Light Rig)                 |                               |
+|                   |               +-------+-------+                       |
+|                   |               |               |                       |
+|                   v               v               v                       |
+|          CTX_LightGaffer_Seq  CTX_Shot      CTX_Shot                    |
+|          (Sequence Look)      SH0010        SH0020                       |
+|                   |               |               |                       |
+|                   |         +-----+-----+   +-----+-----+                |
+|                   |         |           |   |           |                |
+|                   v         v           v   v           v                |
+|          CTX_LightGaffer  CTX_Asset  CTX_LightGaffer  CTX_Asset        |
+|          _Shot_SH0010     (proxies)  _Shot_SH0020     (proxies)         |
+|                   |                       |                               |
+|                   v                       v                               |
+|         CTX_LightContext          CTX_LightContext                       |
+|         (sparse overrides)        (sparse overrides)                     |
+|                                                                           |
++===========================================================================+
+|                                                                           |
+|  GAFFER CHAIN (Dynamic Inheritance)                                       |
+|  Shot_SH0020 → Seq_sq0070 → Master                                       |
 |                                                                           |
 +===========================================================================+
 |                                                                           |
@@ -79,10 +89,11 @@
 
 | Node Type | Purpose | Count per Scene |
 |-----------|---------|-----------------|
-| CTX_Manager | Central controller, stores active context | 1 |
-| CTX_Shot | Shot container, links assets and lights | N (one per shot) |
+| CTX_Manager | Central controller, stores active context, owns master gaffer | 1 |
+| CTX_Sequence | Sequence container, organizes shots, owns sequence gaffer | S (one per sequence) |
+| CTX_Shot | Shot container, owns shot gaffer and assets | N (one per shot) |
 | CTX_Asset | Asset data per shot (proxy, reference) | N x M (shots x assets) |
-| CTX_LightGaffer | Light container for scope (Master/Seq/Shot) | 1 + S + N (Master + Seqs + Shots) |
+| CTX_LightGaffer | Light container for scope (Master/Seq/Shot/Custom) | 1 + S + N + C (Master + Seqs + Shots + Custom) |
 | CTX_LightContext | Light data within gaffer | Variable (sparse) |
 
 ### 2.2 Node Hierarchy
@@ -90,21 +101,30 @@
 ```
 CTX_Manager (1)
 |
-+-- CTX_Shot (N)
-|   |
-|   +-- CTX_Asset (per shot, per asset)
-|   |
-|   +-- CTX_LightGaffer_Shot (per shot)
-|       |
-|       +-- CTX_LightContext (sparse)
++-- masterGaffer ──→ CTX_LightGaffer_Master (1)
+|                        |
+|                        +-- CTX_LightContext (all lights)
 |
-+-- CTX_LightGaffer_Master (1)
-|   |
-|   +-- CTX_LightContext (all lights)
-|
-+-- CTX_LightGaffer_Seq (per sequence)
-    |
-    +-- CTX_LightContext (sparse)
++-- sequences ──→ CTX_Sequence (S)
+                      |
+                      +-- gaffer ──→ CTX_LightGaffer_Seq (per sequence)
+                      |                  |
+                      |                  +-- CTX_LightContext (sparse)
+                      |
+                      +-- shots ──→ CTX_Shot (N)
+                                        |
+                                        +-- gaffer ──→ CTX_LightGaffer_Shot (per shot)
+                                        |                  |
+                                        |                  +-- CTX_LightContext (sparse)
+                                        |
+                                        +-- assets ──→ CTX_Asset (per shot, per asset)
+```
+
+**Gaffer Chain (Dynamic Inheritance):**
+```
+Shot_Gaffer → Seq_Gaffer → Master_Gaffer
+(or with custom gaffers)
+Shot_Gaffer → Custom_Gaffer → Seq_Gaffer → Master_Gaffer
 ```
 
 ### 2.3 Associated Maya Nodes
@@ -138,7 +158,7 @@ Only one per scene.
 | ctxVersion | string | "1.0" | System version for compatibility |
 | project | string | "" | Project code (e.g., "SWA") |
 | episode | string | "" | Episode code (e.g., "Ep04") |
-| sequence | string | "" | Active sequence code (e.g., "sq0070") |
+| activeSequence | string | "" | Active sequence code (e.g., "sq0070") |
 | activeShot | string | "" | Active shot code (e.g., "SH0010") |
 | activeShotIndex | int | 0 | Index of active shot in list |
 | configPath | string | "" | Path to project config file |
@@ -148,9 +168,8 @@ Only one per scene.
 
 | Attribute | Direction | Connected To |
 |-----------|-----------|--------------|
-| shots | outgoing | CTX_Shot nodes |
+| sequences | outgoing | CTX_Sequence nodes |
 | masterGaffer | outgoing | CTX_LightGaffer_Master |
-| seqGaffers | outgoing | CTX_LightGaffer_Seq_* nodes |
 
 ### 3.5 Attribute Definitions
 
@@ -159,7 +178,7 @@ MANAGER_ATTRS = {
     "ctxVersion": {"type": "string", "default": "1.0"},
     "project": {"type": "string", "default": ""},
     "episode": {"type": "string", "default": ""},
-    "sequence": {"type": "string", "default": ""},
+    "activeSequence": {"type": "string", "default": ""},
     "activeShot": {"type": "string", "default": ""},
     "activeShotIndex": {"type": "long", "default": 0},
     "configPath": {"type": "string", "default": ""},
@@ -169,11 +188,55 @@ MANAGER_ATTRS = {
 
 ---
 
-## 4. CTX_Shot Node
+## 4. CTX_Sequence Node
 
 ### 4.1 Purpose
 
-Container for shot-specific data. Links to assets and light gaffer for this shot.
+Container for sequence-level organization. Groups shots within a sequence and owns the sequence-level light gaffer.
+
+### 4.2 Node Name Pattern
+
+```
+CTX_Sequence_{sequenceCode}
+```
+
+Example: `CTX_Sequence_sq0070`
+
+### 4.3 Attributes
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| sequenceCode | string | "" | Sequence code (e.g., "sq0070") |
+| sequenceName | string | "" | Human-readable sequence name |
+| frameStart | int | 1001 | Sequence start frame |
+| frameEnd | int | 2000 | Sequence end frame |
+
+### 4.4 Message Connections
+
+| Attribute | Direction | Connected To |
+|-----------|-----------|--------------|
+| parentManager | incoming | CTX_Manager |
+| shots | outgoing | CTX_Shot nodes |
+| gaffer | outgoing | CTX_LightGaffer_Seq |
+
+### 4.5 Attribute Definitions
+
+```python
+SEQUENCE_ATTRS = {
+    "sequenceCode": {"type": "string", "default": ""},
+    "sequenceName": {"type": "string", "default": ""},
+    "frameStart": {"type": "long", "default": 1001},
+    "frameEnd": {"type": "long", "default": 2000},
+}
+```
+
+---
+
+## 5. CTX_Shot Node
+
+### 5.1 Purpose
+
+Container for shot-specific data. Owns both shot gaffer and assets at the same level (siblings).
 
 ### 4.2 Node Name Pattern
 
@@ -186,26 +249,28 @@ CTX_Shot_SH0020
 CTX_Shot_SH0030
 ```
 
-### 4.3 Attributes
+### 5.3 Attributes
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | shotCode | string | "" | Shot code (e.g., "SH0010") |
-| shotIndex | int | 0 | Index in shot list |
+| shotIndex | int | 0 | Index in shot list within sequence |
 | frameStart | int | 1001 | Start frame |
 | frameEnd | int | 1100 | End frame |
 | displayLayer | string | "" | Associated display layer name |
-| sequenceCode | string | "" | Parent sequence code |
+| isActive | bool | false | Whether this shot is currently active |
 
-### 4.4 Message Connections
+### 5.4 Message Connections
 
 | Attribute | Direction | Connected To |
 |-----------|-----------|--------------|
-| parentManager | incoming | CTX_Manager |
-| assets | outgoing | CTX_Asset nodes |
-| lightGaffer | outgoing | CTX_LightGaffer_Shot_* |
+| parentSequence | incoming | CTX_Sequence |
+| assets | outgoing | CTX_Asset nodes (siblings to gaffer) |
+| gaffer | outgoing | CTX_LightGaffer_Shot_* (sibling to assets) |
 
-### 4.5 Attribute Definitions
+**Note:** Assets and gaffer are at the same level - both are "content" of the shot.
+
+### 5.5 Attribute Definitions
 
 ```python
 SHOT_ATTRS = {
@@ -214,19 +279,19 @@ SHOT_ATTRS = {
     "frameStart": {"type": "long", "default": 1001},
     "frameEnd": {"type": "long", "default": 1100},
     "displayLayer": {"type": "string", "default": ""},
-    "sequenceCode": {"type": "string", "default": ""},
+    "isActive": {"type": "bool", "default": False},
 }
 ```
 
 ---
 
-## 5. CTX_Asset Node
+## 6. CTX_Asset Node
 
-### 5.1 Purpose
+### 6.1 Purpose
 
 Stores asset data (path template, version) for a specific shot. Links to actual Maya node (proxy, reference).
 
-### 5.2 Node Name Pattern
+### 6.2 Node Name Pattern
 
 ```
 CTX_Asset_{asset_type}_{asset_name}_{variant}_{shot_code}
@@ -237,7 +302,7 @@ CTX_Asset_CHAR_CatStompie_001_SH0020
 CTX_Asset_PROP_TreeBig_001_SH0010
 ```
 
-### 5.3 Attributes
+### 6.3 Attributes
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -251,14 +316,14 @@ CTX_Asset_PROP_TreeBig_001_SH0010
 | nodeType | string | "" | Target node type |
 | enabled | bool | true | Whether asset is active |
 
-### 5.4 Message Connections
+### 6.4 Message Connections
 
 | Attribute | Direction | Connected To |
 |-----------|-----------|--------------|
 | parentShot | incoming | CTX_Shot |
 | targetNode | outgoing | Actual Maya node (aiStandIn, etc.) |
 
-### 5.5 Attribute Definitions
+### 6.5 Attribute Definitions
 
 ```python
 ASSET_ATTRS = {
@@ -274,7 +339,7 @@ ASSET_ATTRS = {
 }
 ```
 
-### 5.6 Supported Target Node Types
+### 6.6 Supported Target Node Types
 
 | nodeType Value | Maya Node Type | Path Attribute |
 |----------------|----------------|----------------|
@@ -284,73 +349,95 @@ ASSET_ATTRS = {
 
 ---
 
-## 6. CTX_LightGaffer Node
+## 7. CTX_LightGaffer Node
 
-### 6.1 Purpose
+### 7.1 Purpose
 
-Container for light contexts at a specific scope (Master, Sequence, or Shot).
+Container for light contexts at a specific scope (Master, Sequence, Shot, or Custom). Supports dynamic gaffer chains with flexible inheritance.
 
-### 6.2 Node Name Pattern
+### 7.2 Node Name Pattern
 
 ```
 CTX_LightGaffer_{scope}
 CTX_LightGaffer_Seq_{seq_code}
 CTX_LightGaffer_Shot_{shot_code}
+CTX_LightGaffer_Custom_{name}
 
 Examples:
 CTX_LightGaffer_Master
 CTX_LightGaffer_Seq_sq0070
 CTX_LightGaffer_Shot_SH0010
+CTX_LightGaffer_Custom_Morning
 ```
 
-### 6.3 Attributes
+### 7.3 Attributes
 
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
-| gafferType | string | "master" | "master", "seq", or "shot" |
 | gafferName | string | "" | Display name |
+| gafferType | string | "custom" | "master", "seq", "shot", or "custom" |
 | scopeCode | string | "" | Sequence or shot code |
 | enabled | bool | true | Whether gaffer is active |
+| priority | int | 0 | Manual priority override |
+| description | string | "" | Human-readable description |
+| color | float3 | (0.5, 0.5, 0.5) | UI color coding |
 
-### 6.4 Message Connections
+### 7.4 Message Connections (Dual Connection Pattern)
 
-| Attribute | Direction | Connected To |
-|-----------|-----------|--------------|
-| parentManager | incoming | CTX_Manager (for Master) |
-| parentShot | incoming | CTX_Shot (for Shot gaffer) |
-| parentGaffer | incoming | Parent gaffer (for inheritance) |
-| lights | outgoing | CTX_LightContext nodes |
+| Attribute | Direction | Connected To | Purpose |
+|-----------|-----------|--------------|---------|
+| parentNode | incoming | CTX_Manager/Sequence/Shot | Hierarchy ownership |
+| parentGaffer | incoming | Parent gaffer | Inheritance chain |
+| childGaffers | outgoing | Child gaffers | Inheritance chain |
+| lights | outgoing | CTX_LightContext nodes | Light overrides |
 
-### 6.5 Attribute Definitions
+**Dual Connection Explanation:**
+- `parentNode`: Defines which hierarchy node owns this gaffer (Manager owns Master, Sequence owns Seq gaffer, Shot owns Shot gaffer)
+- `parentGaffer`: Defines inheritance chain for attribute resolution (Shot → Seq → Master, or Shot → Custom → Seq → Master)
+
+### 7.5 Attribute Definitions
 
 ```python
 GAFFER_ATTRS = {
-    "gafferType": {"type": "string", "default": "master"},
     "gafferName": {"type": "string", "default": ""},
+    "gafferType": {"type": "string", "default": "custom"},
     "scopeCode": {"type": "string", "default": ""},
     "enabled": {"type": "bool", "default": True},
+    "priority": {"type": "long", "default": 0},
+    "description": {"type": "string", "default": ""},
+    "color": {"type": "float3", "default": (0.5, 0.5, 0.5)},
 }
 ```
 
-### 6.6 Gaffer Hierarchy
+### 7.6 Dynamic Gaffer Chain
 
+**Default 3-Layer Chain:**
 ```
 CTX_LightGaffer_Master (base)
-        ^
-        | parentGaffer
-        |
+        ↑ parentGaffer
 CTX_LightGaffer_Seq_sq0070 (inherits from Master)
-        ^
-        | parentGaffer
-        |
+        ↑ parentGaffer
 CTX_LightGaffer_Shot_SH0010 (inherits from Seq)
 ```
 
+**With Custom Gaffer Inserted:**
+```
+CTX_LightGaffer_Master (base)
+        ↑ parentGaffer
+CTX_LightGaffer_Custom_Morning (time of day)
+        ↑ parentGaffer
+CTX_LightGaffer_Seq_sq0070 (inherits from Morning)
+        ↑ parentGaffer
+CTX_LightGaffer_Shot_SH0010 (inherits from Seq)
+```
+
+**Resolution Order:** Shot → Seq → Custom → Master (highest priority first)
+
 ---
 
-## 7. CTX_LightContext Node
+## 8. CTX_LightContext Node
 
-### 7.1 Purpose
+### 8.1 Purpose
 
 Stores light attribute values for a single light within a gaffer. Sparse storage - only stores enabled overrides.
 
@@ -493,13 +580,13 @@ LIGHT_CONTEXT_ATTRS = {
 
 ---
 
-## 8. Display Layer Integration
+## 9. Display Layer Integration
 
-### 8.1 Purpose
+### 9.1 Purpose
 
 Display layers control asset visibility per shot. Each shot has an associated display layer.
 
-### 8.2 Naming Convention
+### 9.2 Naming Convention
 
 ```
 CTX_{shot_code}
@@ -510,7 +597,7 @@ CTX_SH0020
 CTX_SH0030
 ```
 
-### 8.3 Display Layer Attributes
+### 9.3 Display Layer Attributes
 
 | Attribute | Value | Description |
 |-----------|-------|-------------|
@@ -519,7 +606,7 @@ CTX_SH0030
 | hideOnPlayback | 0 | Show during playback |
 | texturing | 1 | Enable textures |
 
-### 8.4 Visibility Logic
+### 9.4 Visibility Logic
 
 ```
 When shot SH0020 is active:
@@ -529,7 +616,7 @@ CTX_SH0020.visibility = 1 (visible)
 CTX_SH0030.visibility = 0 (hidden)
 ```
 
-### 8.5 Asset Layer Assignment
+### 9.5 Asset Layer Assignment
 
 ```
 Asset CatStompie_001:
@@ -543,43 +630,52 @@ Asset TreeBig_001:
 
 ---
 
-## 9. Node Relationships
+## 10. Node Relationships
 
-### 9.1 Message Connection Diagram
+### 10.1 Message Connection Diagram (Unified Hierarchy)
 
 ```
 CTX_Manager
 |
-+-- [shots] -----------------> CTX_Shot_SH0010
-|                              |
-|                              +-- [assets] ---------> CTX_Asset_CHAR_CatStompie_001_SH0010
-|                              |                       |
-|                              |                       +-- [targetNode] --> aiStandIn1
-|                              |
-|                              +-- [lightGaffer] ----> CTX_LightGaffer_Shot_SH0010
-|                                                      |
-|                                                      +-- [lights] --> CTX_LightContext_keyLight1_SH0010
-|                                                                       |
-|                                                                       +-- [targetLight] --> aiAreaLight1
-|
 +-- [masterGaffer] ----------> CTX_LightGaffer_Master
 |                              |
-|                              +-- [lights] ---------> CTX_LightContext_keyLight1_Master
-|                              |                       |
-|                              |                       +-- [targetLight] --> aiAreaLight1
-|                              |
-|                              +-- [lights] ---------> CTX_LightContext_fillLight1_Master
-|                                                      |
-|                                                      +-- [targetLight] --> aiAreaLight2
+|                              +-- [parentNode] -------> CTX_Manager
+|                              +-- [parentGaffer] -----> None
+|                              +-- [lights] -----------> CTX_LightContext_keyLight1_Master
+|                                                        |
+|                                                        +-- [targetLight] --> aiAreaLight1
 |
-+-- [seqGaffers] ------------> CTX_LightGaffer_Seq_sq0070
++-- [sequences] -------------> CTX_Sequence_sq0070
                                |
-                               +-- [parentGaffer] --> CTX_LightGaffer_Master
+                               +-- [parentManager] ----> CTX_Manager
                                |
-                               +-- [lights] --------> CTX_LightContext_keyLight1_sq0070
+                               +-- [gaffer] -----------> CTX_LightGaffer_Seq_sq0070
+                               |                         |
+                               |                         +-- [parentNode] -------> CTX_Sequence_sq0070
+                               |                         +-- [parentGaffer] -----> CTX_LightGaffer_Master
+                               |                         +-- [lights] -----------> CTX_LightContext_keyLight1_sq0070
+                               |
+                               +-- [shots] ------------> CTX_Shot_SH0010
+                                                         |
+                                                         +-- [parentSequence] ---> CTX_Sequence_sq0070
+                                                         |
+                                                         +-- [gaffer] -----------> CTX_LightGaffer_Shot_SH0010
+                                                         |                         |
+                                                         |                         +-- [parentNode] -------> CTX_Shot_SH0010
+                                                         |                         +-- [parentGaffer] -----> CTX_LightGaffer_Seq_sq0070
+                                                         |                         +-- [lights] -----------> CTX_LightContext_keyLight1_SH0010
+                                                         |                                                   |
+                                                         |                                                   +-- [targetLight] --> aiAreaLight1
+                                                         |
+                                                         +-- [assets] -----------> CTX_Asset_CHAR_CatStompie_001_SH0010
+                                                                                   |
+                                                                                   +-- [parentShot] --------> CTX_Shot_SH0010
+                                                                                   +-- [targetNode] ---------> aiStandIn1
 ```
 
-### 9.2 Shared Node Concept
+**Note:** Gaffer and Assets are siblings under CTX_Shot - both are "content" of the shot.
+
+### 10.2 Shared Node Concept
 
 Multiple CTX nodes can reference the same Maya node:
 
@@ -603,9 +699,9 @@ aiStandIn1 (actual proxy)
 
 ---
 
-## 10. Complete Scene Example
+## 11. Complete Scene Example
 
-### 10.1 Scenario
+### 11.1 Scenario
 
 - Project: SWA
 - Episode: Ep04
@@ -613,73 +709,27 @@ aiStandIn1 (actual proxy)
 - Shots: SH0010, SH0020
 - Assets: CatStompie_001, TreeBig_001
 - Lights: keyLight1, fillLight1, skyDome
+- Custom Gaffer: Morning (time of day look)
 
-### 10.2 Full Node Graph
+### 11.2 Full Node Graph (with Dynamic Gaffer Chain)
 
 ```
 +===========================================================================+
-|  MAYA SCENE                                                               |
+|  MAYA SCENE (Unified Hierarchy with Dynamic Gaffer Chain)                |
 +===========================================================================+
 
 CTX_Manager
 |-- ctxVersion: "1.0"
 |-- project: "SWA"
 |-- episode: "Ep04"
-|-- sequence: "sq0070"
+|-- activeSequence: "sq0070"
 |-- activeShot: "SH0010"
-|-- activeShotIndex: 0
-|
-|-- [shots] --> CTX_Shot_SH0010
-|               |-- shotCode: "SH0010"
-|               |-- shotIndex: 0
-|               |-- frameStart: 1001
-|               |-- frameEnd: 1050
-|               |-- displayLayer: "CTX_SH0010"
-|               |
-|               |-- [assets] --> CTX_Asset_CHAR_CatStompie_001_SH0010
-|               |                |-- assetName: "CatStompie"
-|               |                |-- assetType: "CHAR"
-|               |                |-- variant: "001"
-|               |                |-- version: "v003"
-|               |                |-- template: "$root/.../SH0010/...abc"
-|               |                |-- [targetNode] --> aiStandIn1
-|               |
-|               |-- [assets] --> CTX_Asset_PROP_TreeBig_001_SH0010
-|               |                |-- assetName: "TreeBig"
-|               |                |-- version: "v001"
-|               |                |-- [targetNode] --> aiStandIn2
-|               |
-|               |-- [lightGaffer] --> CTX_LightGaffer_Shot_SH0010
-|                                     |-- gafferType: "shot"
-|                                     |-- [parentGaffer] --> CTX_LightGaffer_Seq_sq0070
-|                                     |
-|                                     |-- [lights] --> CTX_LightContext_keyLight1_SH0010
-|                                                      |-- intensity: 1.2
-|                                                      |-- intensityEnabled: true
-|                                                      |-- [targetLight] --> aiAreaLight1
-|
-|-- [shots] --> CTX_Shot_SH0020
-|               |-- shotCode: "SH0020"
-|               |-- shotIndex: 1
-|               |-- frameStart: 1001
-|               |-- frameEnd: 1080
-|               |-- displayLayer: "CTX_SH0020"
-|               |
-|               |-- [assets] --> CTX_Asset_CHAR_CatStompie_001_SH0020
-|               |                |-- version: "v004"  <-- different version!
-|               |                |-- [targetNode] --> aiStandIn1  <-- same node!
-|               |
-|               |-- [lightGaffer] --> CTX_LightGaffer_Shot_SH0020
-|                                     |-- [lights] --> CTX_LightContext_keyLight1_SH0020
-|                                     |                |-- intensity: 1.5
-|                                     |                |-- exposure: 0.3
-|                                     |
-|                                     |-- [lights] --> CTX_LightContext_fillLight1_SH0020
-|                                                      |-- muted: true
-|                                                      |-- mutedEnabled: true
 |
 |-- [masterGaffer] --> CTX_LightGaffer_Master
+|                      |-- gafferName: "Master"
 |                      |-- gafferType: "master"
+|                      |-- [parentNode] --> CTX_Manager
+|                      |-- [parentGaffer] --> None
 |                      |
 |                      |-- [lights] --> CTX_LightContext_keyLight1_Master
 |                      |                |-- intensity: 1.0
@@ -696,16 +746,95 @@ CTX_Manager
 |                                       |-- intensity: 1.0
 |                                       |-- [targetLight] --> aiSkyDomeLight1
 |
-|-- [seqGaffers] --> CTX_LightGaffer_Seq_sq0070
-                     |-- gafferType: "seq"
-                     |-- scopeCode: "sq0070"
-                     |-- [parentGaffer] --> CTX_LightGaffer_Master
-                     |
-                     |-- [lights] --> CTX_LightContext_keyLight1_sq0070
-                                      |-- colorR: 0.8
-                                      |-- colorG: 0.85
-                                      |-- colorB: 1.0
-                                      |-- colorEnabled: true
+|-- [sequences] --> CTX_Sequence_sq0070
+                    |-- sequenceCode: "sq0070"
+                    |-- sequenceName: "Sequence 70"
+                    |-- frameStart: 1001
+                    |-- frameEnd: 2000
+                    |-- [parentManager] --> CTX_Manager
+                    |
+                    |-- [gaffer] --> CTX_LightGaffer_Seq_sq0070
+                    |                |-- gafferName: "Seq_sq0070"
+                    |                |-- gafferType: "seq"
+                    |                |-- scopeCode: "sq0070"
+                    |                |-- [parentNode] --> CTX_Sequence_sq0070
+                    |                |-- [parentGaffer] --> CTX_LightGaffer_Master
+                    |                |
+                    |                |-- [lights] --> CTX_LightContext_keyLight1_sq0070
+                    |                                 |-- intensity: 0.8
+                    |                                 |-- intensityEnabled: true
+                    |
+                    |-- [shots] --> CTX_Shot_SH0010
+                    |               |-- shotCode: "SH0010"
+                    |               |-- shotIndex: 0
+                    |               |-- frameStart: 1001
+                    |               |-- frameEnd: 1050
+                    |               |-- displayLayer: "CTX_SH0010"
+                    |               |-- [parentSequence] --> CTX_Sequence_sq0070
+                    |               |
+                    |               |-- [gaffer] --> CTX_LightGaffer_Shot_SH0010
+                    |               |                |-- gafferName: "Shot_SH0010"
+                    |               |                |-- gafferType: "shot"
+                    |               |                |-- scopeCode: "SH0010"
+                    |               |                |-- [parentNode] --> CTX_Shot_SH0010
+                    |               |                |-- [parentGaffer] --> CTX_LightGaffer_Seq_sq0070
+                    |               |                |
+                    |               |                |-- [lights] --> CTX_LightContext_keyLight1_SH0010
+                    |               |                                 |-- intensity: 1.2
+                    |               |                                 |-- intensityEnabled: true
+                    |               |                                 |-- [targetLight] --> aiAreaLight1
+                    |               |
+                    |               |-- [assets] --> CTX_Asset_CHAR_CatStompie_001_SH0010
+                    |               |                |-- assetName: "CatStompie"
+                    |               |                |-- assetType: "CHAR"
+                    |               |                |-- variant: "001"
+                    |               |                |-- version: "v003"
+                    |               |                |-- [parentShot] --> CTX_Shot_SH0010
+                    |               |                |-- [targetNode] --> aiStandIn1
+                    |               |
+                    |               |-- [assets] --> CTX_Asset_PROP_TreeBig_001_SH0010
+                    |                                |-- assetName: "TreeBig"
+                    |                                |-- version: "v001"
+                    |                                |-- [parentShot] --> CTX_Shot_SH0010
+                    |                                |-- [targetNode] --> aiStandIn2
+                    |
+                    |-- [shots] --> CTX_Shot_SH0020
+                                    |-- shotCode: "SH0020"
+                                    |-- shotIndex: 1
+                                    |-- frameStart: 1001
+                                    |-- frameEnd: 1080
+                                    |-- displayLayer: "CTX_SH0020"
+                                    |-- [parentSequence] --> CTX_Sequence_sq0070
+                                    |
+                                    |-- [gaffer] --> CTX_LightGaffer_Shot_SH0020
+                                    |                |-- gafferName: "Shot_SH0020"
+                                    |                |-- gafferType: "shot"
+                                    |                |-- [parentNode] --> CTX_Shot_SH0020
+                                    |                |-- [parentGaffer] --> CTX_LightGaffer_Seq_sq0070
+                                    |                |
+                                    |                |-- [lights] --> CTX_LightContext_keyLight1_SH0020
+                                    |                |                |-- intensity: 1.5
+                                    |                |                |-- exposure: 0.3
+                                    |                |
+                                    |                |-- [lights] --> CTX_LightContext_fillLight1_SH0020
+                                    |                                 |-- muted: true
+                                    |                                 |-- mutedEnabled: true
+                                    |
+                                    |-- [assets] --> CTX_Asset_CHAR_CatStompie_001_SH0020
+                                                     |-- version: "v004"  <-- different version!
+                                                     |-- [parentShot] --> CTX_Shot_SH0020
+                                                     |-- [targetNode] --> aiStandIn1  <-- same node!
+
+
++-- GAFFER CHAIN (for Shot SH0010) --+
+
+Resolution Order: Shot_SH0010 → Seq_sq0070 → Master
+
+CTX_LightGaffer_Shot_SH0010
+        ↑ parentGaffer
+CTX_LightGaffer_Seq_sq0070
+        ↑ parentGaffer
+CTX_LightGaffer_Master
 
 
 +-- DISPLAY LAYERS --+
@@ -728,21 +857,24 @@ aiStandIn2 (TreeBig_001)
 |-- dso: "V:/SWA/.../SH0010/.../TreeBig_001.abc"
 
 aiAreaLight1 (keyLight1)
-|-- intensity: 1.2  <-- from Shot gaffer
-|-- color: (0.8, 0.85, 1.0)  <-- from Seq gaffer
+|-- intensity: 1.2  <-- from Shot_SH0010 gaffer (highest priority)
+|-- exposure: 0.0   <-- from Master gaffer (not overridden)
 
 aiAreaLight2 (fillLight1)
 |-- intensity: 0.5  <-- from Master gaffer
+|-- muted: false    <-- from Master gaffer (not muted in SH0010)
 
 aiSkyDomeLight1 (skyDome)
 |-- intensity: 1.0  <-- from Master gaffer
+
++===========================================================================+
 ```
 
 ---
 
-## 11. Naming Conventions
+## 12. Naming Conventions
 
-### 11.1 Node Naming Summary
+### 12.1 Node Naming Summary
 
 | Node Type | Pattern | Example |
 |-----------|---------|---------|

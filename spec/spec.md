@@ -1,8 +1,8 @@
 # Context Variables Pipeline - Design Document
 
-**Version:** 2.1
-**Last Updated:** 2026-02-14
-**Status:** Active Development
+**Version:** 3.0
+**Last Updated:** 2026-02-22
+**Status:** Production + Schema Migration Planning
 **Repository:** https://github.com/katha-begin/maya-multishot.git
 
 ---
@@ -11,16 +11,21 @@
 
 0. [Repository Setup](#0-repository-setup)
 1. [Project Overview](#1-project-overview)
-2. [Path Structure and Tokens](#2-path-structure-and-tokens)
-3. [Multi-Shot Data Model](#3-multi-shot-data-model)
-4. [Display Layer Management](#4-display-layer-management)
-5. [Project Configuration Schema](#5-project-configuration-schema)
-6. [Code Architecture](#6-code-architecture)
-7. [Core Modules Specification](#7-core-modules-specification)
-8. [UI Specification](#8-ui-specification)
-9. [Use Cases and Workflows](#9-use-cases-and-workflows)
-10. [File Naming Conventions](#10-file-naming-conventions)
-11. [Compatibility Requirements](#11-compatibility-requirements)
+2. [Current Implementation Status](#2-current-implementation-status)
+3. [Path Structure and Tokens](#3-path-structure-and-tokens)
+4. [Multi-Shot Data Model](#4-multi-shot-data-model)
+5. [Display Layer Management](#5-display-layer-management)
+6. [Project Configuration Schema](#6-project-configuration-schema)
+7. [Code Architecture](#7-code-architecture)
+8. [Schema-Based Node System](#8-schema-based-node-system)
+9. [Asset Type System](#9-asset-type-system)
+10. [Renderer Adapter System](#10-renderer-adapter-system)
+11. [Core Modules Specification](#11-core-modules-specification)
+12. [UI Specification](#12-ui-specification)
+13. [NodeGraphQt Integration](#13-nodegraphqt-integration)
+14. [Use Cases and Workflows](#14-use-cases-and-workflows)
+15. [File Naming Conventions](#15-file-naming-conventions)
+16. [Compatibility Requirements](#16-compatibility-requirements)
 
 ---
 
@@ -472,7 +477,85 @@ RESOLVED PATH (applied to Maya node)
 
 ---
 
-## 2. Path Structure and Tokens
+## 2. Current Implementation Status
+
+### 2.1 Completed Phases
+
+**✅ Phase 0: Repository Setup** - COMPLETE
+- Repository structure created and configured
+- Git workflow established
+- Development environment ready
+
+**✅ Phase 1: Core Architecture & Data Model** - COMPLETE
+- CTX_Manager, CTX_Shot, CTX_Asset nodes implemented (`core/custom_nodes.py`)
+- Node wrapper classes functional
+- Message attribute connections working
+- Shot/asset hierarchy established
+- Sequence node support added
+
+**✅ Phase 2: Path Resolution & Token System** - COMPLETE
+- Token-based path resolution implemented (`core/ctx_converter.py`)
+- Template system working
+- Config file structure established (`core/config.py`)
+- Path resolver functional
+- Platform-specific path mapping working
+
+**✅ Phase 3: Display Layer Management** - COMPLETE
+- Per-shot display layer system implemented (`core/display_layers.py`)
+- Layer creation/deletion working
+- Layer switching functional
+- Shot isolation working
+- Display layer refactoring complete
+
+**✅ Phase 4: Tools & UI** - MOSTLY COMPLETE
+- Multishot Manager UI implemented (`ui/multishot_manager_dialog.py`)
+- Asset Manager UI implemented (`ui/asset_manager_dialog.py`)
+- Add Shot Dialog with filtering (`ui/add_shot_dialog.py`)
+- Right-click context menus
+- Multi-selection support
+- Search/filter functionality
+- Version dropdown with color coding
+
+### 2.2 Core Modules Implemented
+
+| Module | Status | Description |
+|--------|--------|-------------|
+| `core/custom_nodes.py` | ✅ Complete | CTX node wrappers (Manager, Shot, Asset, Sequence) |
+| `core/config.py` | ✅ Complete | Configuration management |
+| `core/ctx_converter.py` | ✅ Complete | Path token resolution |
+| `core/display_layers.py` | ✅ Complete | Display layer management |
+| `core/nodes.py` | ✅ Complete | NodeManager for asset types |
+| `core/reference_manager.py` | ✅ Complete | Reference operations |
+| `core/shader_assignment.py` | ✅ Complete | Shader operations |
+| `core/shader_discovery.py` | ✅ Complete | Shader discovery |
+| `core/asset_path_resolver.py` | ✅ Complete | Asset path resolution |
+| `ui/multishot_manager_dialog.py` | ✅ Complete | Main UI |
+| `ui/asset_manager_dialog.py` | ✅ Complete | Asset management UI |
+| `ui/add_shot_dialog.py` | ✅ Complete | Shot addition UI |
+
+### 2.3 Next Phase: Schema-Based Node System
+
+**Status:** Planning Phase
+**Documentation:** See [NODE_ARCHITECTURE.md](NODE_ARCHITECTURE.md)
+
+**Goals:**
+- Migrate from imperative to schema-based node creation
+- Add USD support via asset type handlers
+- Add multi-renderer support via renderer adapters
+- Implement light gaffer system
+- Integrate NodeGraphQt for visual node graph
+
+**Timeline:** 4 weeks (see [tasks.md](tasks.md) for detailed roadmap)
+
+**Key Documents:**
+- [NODE_ARCHITECTURE.md](NODE_ARCHITECTURE.md) - Schema-based node system
+- [ASSET_TYPES.md](ASSET_TYPES.md) - Asset type handlers
+- [RENDERER_ADAPTERS.md](RENDERER_ADAPTERS.md) - Renderer adapters
+- [CTX_lightGaffer.md](CTX_lightGaffer.md) - Gaffer specification
+
+---
+
+## 3. Path Structure and Tokens
 
 ### 2.1 Folder Structure Analysis
 

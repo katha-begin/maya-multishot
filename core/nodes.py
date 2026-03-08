@@ -20,7 +20,24 @@ try:
     MAYA_AVAILABLE = True
 except ImportError:
     MAYA_AVAILABLE = False
-    from core.custom_nodes import cmds  # Use mock cmds
+
+    class _MockCmds(object):
+        def objExists(self, name):
+            return False
+        def referenceQuery(self, node, **kwargs):
+            return False
+        def nodeType(self, node):
+            return ''
+        def getAttr(self, attr, **kwargs):
+            return None
+        def setAttr(self, attr, value, **kwargs):
+            pass
+        def ls(self, *args, **kwargs):
+            return []
+        def listConnections(self, node, **kwargs):
+            return []
+
+    cmds = _MockCmds()
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +187,7 @@ class NodeManager(object):
         Returns:
             CTXAssetNode: Created asset node, or None if failed
         """
-        from core.custom_nodes import CTXAssetNode
+        from core.nodes.wrappers import CTXAssetNode
 
         # Validate Maya node exists
         if not cmds.objExists(maya_node):
@@ -180,8 +197,14 @@ class NodeManager(object):
         if not self.is_valid_node(maya_node):
             return None
 
-        # Create CTX_Asset node
-        asset_node = CTXAssetNode.create_asset(asset_type, asset_name, variant, shot_node)
+        # Create CTX_Asset node and wire to shot
+        asset_node = CTXAssetNode.create(
+            asset_type=asset_type,
+            asset_name=asset_name,
+            variant=variant,
+            namespace='{}_{}_{}'.format(asset_type, asset_name, variant)
+        )
+        shot_node.add_asset(asset_node)
 
         # Store Maya node path
         path = self.get_path(maya_node)
@@ -211,7 +234,7 @@ class NodeManager(object):
             CTXAssetNode: Asset node, or None if not found
         """
         from core.ctx_linker import get_linked_ctx_assets
-        from core.custom_nodes import CTXAssetNode
+        from core.nodes.wrappers import CTXAssetNode
 
         ctx_names = get_linked_ctx_assets(maya_node)
         if ctx_names:
@@ -517,3 +540,122 @@ class NodeManager(object):
 
         return self.update_shot_paths(active_shot, config, platform_config)
 
+
+# Helper functions for creating nodes with namespace
+
+def create_standin_with_namespace(namespace, file_path):
+    """Create Arnold StandIn with namespace (similar to reference).
+
+    This function creates an Arnold StandIn node with proper namespace and naming
+    convention, matching the pattern used for Maya references.
+
+    Args:
+        namespace (str): Namespace (e.g., 'CHAR_ToriiMechSuit_001')
+        file_path (str): Path to .abc file
+
+    Returns:
+        tuple: (transform_node, shape_node) - Full names with namespace
+
+    Example:
+        >>> transform, shape = create_standin_with_namespace('CHAR_ToriiMechSuit_001', '/path/to/file.abc')
+        >>> # Returns: ('CHAR_ToriiMechSuit_001:CHAR_ToriiMechSuit_001AIS',
+        >>>             'CHAR_ToriiMechSuit_001:CHAR_ToriiMechSuit_001AISShape')
+
+    Raises:
+        RuntimeError: If Maya is not available or node creation fails
+    """
+    if not MAYA_AVAILABLE:
+        raise RuntimeError("Maya is not available, cannot create standin")
+
+    # Create namespace if it doesn't exist
+    if not cmds.namespace(exists=namespace):
+        cmds.namespace(add=namespace)
+        logger.info("Created namespace: {}".format(namespace))
+
+    # Set current namespace
+    current_ns = cmds.namespaceInfo(currentNamespace=True)
+    cmds.namespace(set=namespace)
+
+    try:
+        # Create transform node
+        # Name pattern: CHAR_ToriiMechSuit_001AIS (namespace + AIS suffix)
+        transform_name = "{}AIS".format(namespace)
+        transform = cmds.createNode('transform', name=transform_name)
+
+        # Create aiStandIn shape under transform
+        shape_name = "{}Shape".format(transform_name)
+        shape = cmds.createNode('aiStandIn', name=shape_name, parent=transform)
+
+        # Set file path
+        cmds.setAttr("{}.dso".format(shape), file_path, type='string')
+
+        # Get full names with namespace
+        transform_full = "{}:{}".format(namespace, transform_name)
+        shape_full = "{}:{}".format(namespace, shape_name)
+
+        logger.info("Created StandIn: {} (shape: {})".format(transform_full, shape_full))
+
+        return transform_full, shape_full
+
+    finally:
+        # Restore original namespace
+        cmds.namespace(set=current_ns)
+
+
+def create_redshift_proxy_with_namespace(namespace, file_path):
+    """Create Redshift Proxy with namespace (similar to reference).
+
+    This function creates a Redshift Proxy node with proper namespace and naming
+    convention, matching the pattern used for Maya references.
+
+    Args:
+        namespace (str): Namespace (e.g., 'CHAR_ToriiMechSuit_001')
+        file_path (str): Path to .rs file
+
+    Returns:
+        tuple: (transform_node, shape_node) - Full names with namespace
+
+    Example:
+        >>> transform, shape = create_redshift_proxy_with_namespace('CHAR_ToriiMechSuit_001', '/path/to/file.rs')
+        >>> # Returns: ('CHAR_ToriiMechSuit_001:CHAR_ToriiMechSuit_001RSP',
+        >>>             'CHAR_ToriiMechSuit_001:CHAR_ToriiMechSuit_001RSPShape')
+
+    Raises:
+        RuntimeError: If Maya is not available or node creation fails
+    """
+    if not MAYA_AVAILABLE:
+        raise RuntimeError("Maya is not available, cannot create Redshift proxy")
+
+    # Create namespace if it doesn't exist
+    if not cmds.namespace(exists=namespace):
+        cmds.namespace(add=namespace)
+        logger.info("Created namespace: {}".format(namespace))
+
+    # Set current namespace
+    current_ns = cmds.namespaceInfo(currentNamespace=True)
+    cmds.namespace(set=namespace)
+
+    try:
+        # Create transform node
+        # Name pattern: CHAR_ToriiMechSuit_001RSP (namespace + RSP suffix)
+        transform_name = "{}RSP".format(namespace)
+        transform = cmds.createNode('transform', name=transform_name)
+
+        # Create RedshiftProxyMesh shape under transform
+        shape_name = "{}Shape".format(transform_name)
+        shape = cmds.createNode('RedshiftProxyMesh', name=shape_name, parent=transform)
+
+        # Set file path
+        cmds.setAttr("{}.fileName".format(shape), file_path, type='string')
+
+        # Get full names with namespace
+        transform_full = "{}:{}".format(namespace, transform_name)
+        shape_full = "{}:{}".format(namespace, shape_name)
+
+        logger.info("Created Redshift Proxy: {} (shape: {})".format(transform_full, shape_full))
+
+        return transform_full, shape_full
+
+    finally:
+        # Restore original namespace
+        cmds.namespace(set=current_ns)
