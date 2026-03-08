@@ -45,6 +45,9 @@ htmlcov/
 tests/
 
 
+# AI agent workspace
+.claude/
+
 # Documentation
 docs/_build/
 
