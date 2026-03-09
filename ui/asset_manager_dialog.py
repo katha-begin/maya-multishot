@@ -294,7 +294,27 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 logger.info("Scanning department: %s", dept)
                 self._scan_department_assets(dept_path, dept)
 
-            logger.info("Found %d assets", len(self._assets))
+            logger.info("Found %d raw assets across all departments", len(self._assets))
+
+            # Deduplicate by dept priority: keep ONE row per (type, name, variant),
+            # using the highest-priority department when the same asset exists in
+            # multiple departments (e.g. anim AND layout).
+            if hasattr(self._config, 'get_dept_priority'):
+                priority_order = self._config.get_dept_priority()
+                priority_rank = {dept: i for i, dept in enumerate(priority_order)}
+                seen = {}
+                for asset in self._assets:
+                    key = (asset['type'], asset['name'], asset['var'])
+                    existing = seen.get(key)
+                    if existing is None:
+                        seen[key] = asset
+                    else:
+                        existing_rank = priority_rank.get(existing['dept'], len(priority_order))
+                        new_rank = priority_rank.get(asset['dept'], len(priority_order))
+                        if new_rank < existing_rank:
+                            seen[key] = asset
+                self._assets = list(seen.values())
+                logger.info("After priority dedup: %d unique assets", len(self._assets))
 
             # Match assets with scene assets to determine CTX ready status
             self._match_ctx_ready_status()
@@ -555,7 +575,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
         return None
 
     def _read_version_from_ctx(self, asset_data, ctx_node):
-        """Read version from CTX node and update asset_data.
+        """Read version and department from CTX node and update asset_data.
 
         Args:
             asset_data (dict): Asset data dict to update
@@ -575,6 +595,12 @@ class AssetManagerDialog(QtWidgets.QDialog):
                     asset_data['status'] = 'valid'
                 logger.info("      Version from CTX: {} (latest: {})".format(
                     current_version, asset_data['latest']))
+
+        # Sync department from CTX node (authoritative source)
+        if cmds.attributeQuery('department', node=ctx_node, exists=True):
+            ctx_dept = cmds.getAttr('{}.department'.format(ctx_node))
+            if ctx_dept:
+                asset_data['dept'] = ctx_dept
 
     def _auto_link_if_needed(self, ctx_node, maya_node):
         """Auto-link all CTX_Asset nodes sharing the same namespace to the Maya reference.
@@ -1431,13 +1457,21 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 if new_version == old_version:
                     continue  # No change
 
-                # Build context for path resolution
+                # Build context for path resolution.
+                # Prefer department stored on the CTX node (authoritative) over
+                # the table row value which comes from the filesystem scan.
+                dept = asset_data['dept']
+                if cmds.attributeQuery('department', node=ctx_node, exists=True):
+                    ctx_dept = cmds.getAttr('{}.department'.format(ctx_node))
+                    if ctx_dept:
+                        dept = ctx_dept
+
                 context = {
                     'project': self._shot_data.get('project', self._config.get_project_code()),
                     'ep': self._shot_data['ep'],
                     'seq': self._shot_data['seq'],
                     'shot': self._shot_data['shot'],
-                    'dept': asset_data['dept'],
+                    'dept': dept,
                     'asset_type': asset_data['type'],
                     'asset_name': asset_data['name'],
                     'variant': asset_data['var']
