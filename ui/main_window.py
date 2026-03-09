@@ -99,10 +99,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle("Multishot Manager")
         self.setObjectName("MultishotManagerWindow")
 
-        # Make window floatable and not always on top
-        # User can work with other Maya windows while this is open
+        # Qt::Tool + parented to Maya main window keeps the window above Maya
+        # without forcing it above other applications (browser, etc.)
         self.setWindowFlags(
-            QtCore.Qt.Window |
+            QtCore.Qt.Tool |
             QtCore.Qt.WindowCloseButtonHint |
             QtCore.Qt.WindowMinimizeButtonHint |
             QtCore.Qt.WindowMaximizeButtonHint
@@ -149,31 +149,30 @@ class MainWindow(QtWidgets.QMainWindow):
         self.shot_table.setColumnCount(6)
         self.shot_table.setHorizontalHeaderLabels(["#", "Shot", "Frame Range", "Set Shot", "Version", "Gaffer"])
 
-        # Set column widths
+        # Set column widths — Shot column stretches like Light column in Gaffer Manager
         header = self.shot_table.horizontalHeader()
         header.setStretchLastSection(False)
 
-        # Column 0: # - Small, just enough for row numbers (30px)
+        # Column 0: # - narrow row-number column
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(0, 30)
 
-        # Column 1: Shot - Fixed width (300px) instead of stretch
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(1, 300)
+        # Column 1: Shot - stretches to fill available space (matches Gaffer's Light column)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
 
-        # Column 2: Frame Range - Fixed width (100px)
+        # Column 2: Frame Range
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(2, 100)
 
-        # Column 3: Set Shot button - Fixed width (80px)
+        # Column 3: Set Shot button
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(3, 80)
 
-        # Column 4: Version button - Fixed width (80px)
+        # Column 4: Version button
         header.setSectionResizeMode(4, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(4, 80)
 
-        # Column 5: Gaffer button - Fixed width (70px)
+        # Column 5: Gaffer button
         header.setSectionResizeMode(5, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(5, 70)
 
@@ -182,6 +181,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.shot_table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.shot_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self.shot_table.setAlternatingRowColors(True)
+
+        # Compact row height to match Gaffer Manager (22px)
+        self.shot_table.verticalHeader().setDefaultSectionSize(22)
+        # Hide vertical header — the # column already shows row numbers
+        self.shot_table.verticalHeader().setVisible(False)
 
         # Enable context menu
         self.shot_table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
@@ -195,25 +199,25 @@ class MainWindow(QtWidgets.QMainWindow):
         button_layout = QtWidgets.QHBoxLayout()
 
         self.add_shots_btn = QtWidgets.QPushButton("Add Shots")
-        self.add_shots_btn.setMinimumHeight(30)
+        self.add_shots_btn.setFixedHeight(24)
         button_layout.addWidget(self.add_shots_btn)
 
         self.update_versions_btn = QtWidgets.QPushButton("Update All Versions")
-        self.update_versions_btn.setMinimumHeight(30)
+        self.update_versions_btn.setFixedHeight(24)
         button_layout.addWidget(self.update_versions_btn)
 
         self.validate_all_btn = QtWidgets.QPushButton("Validate All")
-        self.validate_all_btn.setMinimumHeight(30)
+        self.validate_all_btn.setFixedHeight(24)
         button_layout.addWidget(self.validate_all_btn)
 
         self.save_all_btn = QtWidgets.QPushButton("Save All")
-        self.save_all_btn.setMinimumHeight(30)
+        self.save_all_btn.setFixedHeight(24)
         button_layout.addWidget(self.save_all_btn)
 
         button_layout.addStretch()
 
         self.delete_all_btn = QtWidgets.QPushButton("Delete All")
-        self.delete_all_btn.setMinimumHeight(30)
+        self.delete_all_btn.setFixedHeight(24)
         self.delete_all_btn.setStyleSheet("background-color: #D32F2F; color: white; font-weight: bold;")
         button_layout.addWidget(self.delete_all_btn)
 
@@ -254,8 +258,8 @@ class MainWindow(QtWidgets.QMainWindow):
         Returns:
             int: Recommended width in pixels
         """
-        # Column widths: 30 + 300 + 100 + 80 + 80 + 70 = 660
-        column_widths = [30, 300, 100, 80, 80, 70]
+        # Column 1 (Shot) now stretches; use 200px as its minimum contribution
+        column_widths = [30, 200, 100, 80, 80, 70]
         total_column_width = sum(column_widths)
 
         # Add extra space for margins, scrollbar, and padding
@@ -283,6 +287,58 @@ class MainWindow(QtWidgets.QMainWindow):
         settings_action.setStatusTip("Open Settings")
         settings_action.triggered.connect(self._open_settings)
         tools_menu.addAction(settings_action)
+
+        tools_menu.addSeparator()
+
+        # Reload action — closes and reopens both windows with fresh modules
+        reload_action = QtWidgets.QAction("Reload All Tools", self)
+        reload_action.setStatusTip("Reload all modules and reopen Multishot Manager")
+        reload_action.setShortcut("Ctrl+Shift+R")
+        reload_action.triggered.connect(self._reload_all_tools)
+        tools_menu.addAction(reload_action)
+
+    def _reload_all_tools(self):
+        """Reload all project modules and reopen this window with fresh code.
+
+        Closes the Gaffer Manager (if open), reloads all modules, then
+        relaunches the Multishot Manager so new flags/parenting take effect.
+        """
+        try:
+            import sys
+            import importlib
+
+            # Close Gaffer Manager first so it is recreated with correct parent
+            from ui.gaffer_manager_dialog import GafferManagerDialog
+            if GafferManagerDialog._instance is not None:
+                try:
+                    GafferManagerDialog._instance.close()
+                except Exception:
+                    pass
+
+            # Reload all project modules
+            prefixes = ('core.', 'ui.', 'tools.', 'utils.',
+                        'core', 'ui', 'tools', 'utils')
+            to_reload = [
+                name for name, mod in list(sys.modules.items())
+                if mod is not None and name.startswith(prefixes)
+            ]
+            for name in reversed(to_reload):
+                try:
+                    importlib.reload(sys.modules[name])
+                except Exception:
+                    pass
+
+            # Close this window — the launch below will create a fresh one
+            self.close()
+
+            # Relaunch via the same entry point used by the launch script
+            from tools.maya_menu import open_context_manager
+            open_context_manager()
+
+        except Exception as e:
+            logger.error("Reload failed: {}".format(e))
+            import traceback
+            traceback.print_exc()
 
     def _open_gaffer_manager(self):
         """Open the Gaffer Manager dialog."""

@@ -433,19 +433,14 @@ def open_gaffer_manager():
 
     try:
         from ui.gaffer_manager_dialog import GafferManagerDialog
+        from ui.main_window import MainWindow
 
-        # Close existing dialog if it exists
-        if _gaffer_manager_dialog is not None:
-            try:
-                _gaffer_manager_dialog.close()
-                _gaffer_manager_dialog.deleteLater()
-            except:
-                pass
+        # Prefer Multishot Manager as parent so the Z-order chain is:
+        # Gaffer (Tool) -> Multishot Manager (Tool) -> Maya main window.
+        # Fall back to Maya main window when Multishot Manager is not open.
+        parent = MainWindow._instance if MainWindow._instance is not None else get_maya_main_window()
 
-        # Create and show gaffer manager
-        # Store reference to prevent garbage collection
-        _gaffer_manager_dialog = GafferManagerDialog()
-        _gaffer_manager_dialog.show()
+        _gaffer_manager_dialog = GafferManagerDialog.open_or_raise(parent=parent)
 
         logger.info("Gaffer Manager opened")
 

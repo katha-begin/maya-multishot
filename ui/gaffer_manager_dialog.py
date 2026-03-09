@@ -72,10 +72,11 @@ class GafferManagerDialog(QtWidgets.QDialog):
             except Exception:
                 cls._instance = None
 
-        # Parent to Maya's main window so the dialog stays above Maya only,
-        # not above every other application on the desktop.
+        # Prefer the explicit parent (e.g. MainWindow) so the dialog sits in the
+        # correct Z-order chain: Gaffer -> Multishot Manager -> Maya main window.
+        # Fall back to Maya's main window when no parent is supplied.
         maya_win = cls._maya_main_window()
-        instance = cls(parent=maya_win or parent)
+        instance = cls(parent=parent or maya_win)
         instance.show()
         instance.raise_()
         instance.activateWindow()
