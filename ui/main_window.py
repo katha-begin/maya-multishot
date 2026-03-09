@@ -147,34 +147,34 @@ class MainWindow(QtWidgets.QMainWindow):
         
         self.shot_table = QtWidgets.QTableWidget()
         self.shot_table.setColumnCount(6)
-        self.shot_table.setHorizontalHeaderLabels(["#", "Shot", "Frame Range", "Set Shot", "Version", "Gaffer"])
+        self.shot_table.setHorizontalHeaderLabels(["#", "Shot", "Frame Range", "Set", "Ver", "Gaf"])
 
         # Set column widths — Shot column stretches like Light column in Gaffer Manager
         header = self.shot_table.horizontalHeader()
         header.setStretchLastSection(False)
 
-        # Column 0: # - narrow row-number column
+        # Column 0: # - minimal width for row numbers
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(0, 30)
+        self.shot_table.setColumnWidth(0, 20)
 
         # Column 1: Shot - stretches to fill available space (matches Gaffer's Light column)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
 
-        # Column 2: Frame Range
+        # Column 2: Frame Range - compact, fits "1001-1100"
         header.setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(2, 100)
+        self.shot_table.setColumnWidth(2, 75)
 
-        # Column 3: Set Shot button
+        # Column 3: Set button (3-char label)
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(3, 80)
+        self.shot_table.setColumnWidth(3, 38)
 
-        # Column 4: Version button
+        # Column 4: Version button (3-char label)
         header.setSectionResizeMode(4, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(4, 80)
+        self.shot_table.setColumnWidth(4, 38)
 
-        # Column 5: Gaffer button
+        # Column 5: Gaffer button (3-char label)
         header.setSectionResizeMode(5, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(5, 70)
+        self.shot_table.setColumnWidth(5, 38)
 
         # Enable multi-selection and row selection
         self.shot_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -258,8 +258,8 @@ class MainWindow(QtWidgets.QMainWindow):
         Returns:
             int: Recommended width in pixels
         """
-        # Column 1 (Shot) now stretches; use 200px as its minimum contribution
-        column_widths = [30, 200, 100, 80, 80, 70]
+        # Column 1 (Shot) stretches; use 180px as its minimum contribution
+        column_widths = [20, 180, 75, 38, 38, 38]
         total_column_width = sum(column_widths)
 
         # Add extra space for margins, scrollbar, and padding
@@ -427,7 +427,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Update button appearance
                 gaffer_btn = self.shot_table.cellWidget(row, 5)
                 if gaffer_btn:
-                    gaffer_btn.setText("Gaffer")
+                    gaffer_btn.setText("GAF")
                     gaffer_btn.setStyleSheet("background-color: #1565C0; color: white;")
 
                 logger.info("Created shot gaffer: {}".format(gaffer.node_name))
@@ -783,7 +783,7 @@ class MainWindow(QtWidgets.QMainWindow):
         import re
 
         if not self._config:
-            return {'status': 'unknown', 'text': 'Unknown'}
+            return {'status': 'unknown', 'text': 'UNK'}
 
         try:
             # Get base publish path for this shot
@@ -792,7 +792,7 @@ class MainWindow(QtWidgets.QMainWindow):
             scene_base = self._config.get_static_path('sceneBase')
 
             if not all([proj_root, project_code, scene_base]):
-                return {'status': 'unknown', 'text': 'Unknown'}
+                return {'status': 'unknown', 'text': 'UNK'}
 
             shot_base = os.path.join(
                 proj_root,
@@ -804,7 +804,7 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
             if not os.path.exists(shot_base):
-                return {'status': 'unknown', 'text': 'Unknown'}
+                return {'status': 'unknown', 'text': 'UNK'}
 
             # Quick scan: check if any department has multiple versions
             has_assets = False
@@ -831,16 +831,16 @@ class MainWindow(QtWidgets.QMainWindow):
                         break
 
             if not has_assets:
-                return {'status': 'unknown', 'text': 'No Assets'}
+                return {'status': 'unknown', 'text': 'N/A'}
 
             if has_outdated:
-                return {'status': 'outdated', 'text': 'Outdated'}
+                return {'status': 'outdated', 'text': 'OTD'}
             else:
-                return {'status': 'latest', 'text': 'Latest'}
+                return {'status': 'latest', 'text': 'OK'}
 
         except Exception as e:
             logger.error("Failed to check version status: %s", e)
-            return {'status': 'unknown', 'text': 'Unknown'}
+            return {'status': 'unknown', 'text': 'UNK'}
 
     def _add_shots_to_table(self, selected_shots):
         """Add selected shots to the table and create CTX_Shot nodes.
@@ -984,6 +984,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Column 3: Set Shot button
         set_btn = QtWidgets.QPushButton("Set")
+        set_btn.setToolTip("Set as active shot")
         set_btn.clicked.connect(lambda checked=False, r=row: self._on_set_shot(r))
         self.shot_table.setCellWidget(row, 3, set_btn)
 
@@ -1007,7 +1008,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 has_gaffer = ctx_node.get_gaffer() is not None
             except Exception:
                 pass
-        gaffer_btn = QtWidgets.QPushButton("Gaffer" if has_gaffer else "+ Gaffer")
+        gaffer_btn = QtWidgets.QPushButton("GAF" if has_gaffer else "+GAF")
+        gaffer_btn.setToolTip("Open Gaffer Manager for this shot")
         if has_gaffer:
             gaffer_btn.setStyleSheet("background-color: #1565C0; color: white;")
         gaffer_btn.clicked.connect(lambda checked=False, r=row: self._on_gaffer_click(r))
@@ -1191,7 +1193,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Update button
                 set_btn = self.shot_table.cellWidget(row, 3)
                 if set_btn:
-                    set_btn.setText("Active")
+                    set_btn.setText("ACT")
                     set_btn.setStyleSheet("background-color: #4A90E2; color: white; font-weight: bold;")
 
                 # Update current shot display
@@ -1502,7 +1504,7 @@ class MainWindow(QtWidgets.QMainWindow):
         set_btn = self.shot_table.cellWidget(row, 3)  # Column 3 is Set Shot button
         if set_btn:
             if shot_data.get('is_active', False):
-                set_btn.setText("Active")
+                set_btn.setText("ACT")
                 set_btn.setStyleSheet("background-color: #4A90E2; color: white; font-weight: bold;")
             else:
                 set_btn.setText("Set")
