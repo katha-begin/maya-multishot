@@ -50,7 +50,7 @@ class CTXAssetNode(NodeWrapper):
         asset_name = kwargs.get('asset_name', '')
         shot_code = kwargs.pop('shot_code', '')  # consumed here, not a schema attribute
 
-        instance = super(CTXAssetNode, cls).create(**kwargs)
+        instance = super().create(**kwargs)
 
         if asset_type and asset_name and shot_code:
             desired_name = 'CTX_Asset_{}_{}_{}'.format(asset_type, asset_name, shot_code)

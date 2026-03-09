@@ -58,7 +58,7 @@ class CTXSequenceNode(NodeWrapper):
 
         seq_code = kwargs.get('sequenceCode', '')
 
-        instance = super(CTXSequenceNode, cls).create(**kwargs)
+        instance = super().create(**kwargs)
 
         if seq_code:
             desired_name = 'CTX_Sequence_{}'.format(seq_code)

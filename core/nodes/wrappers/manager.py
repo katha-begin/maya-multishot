@@ -50,7 +50,7 @@ class CTXManagerNode(NodeWrapper):
             )
         
         # Create using parent class method
-        return super(CTXManagerNode, cls).create(**kwargs)
+        return super().create(**kwargs)
     
     # Manual wiring methods
     

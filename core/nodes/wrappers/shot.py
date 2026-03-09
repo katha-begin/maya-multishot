@@ -47,7 +47,7 @@ class CTXShotNode(NodeWrapper):
         shot_code = kwargs.get('shot_code', '')
 
         # Create node using parent class (gets auto-prefixed name)
-        instance = super(CTXShotNode, cls).create(**kwargs)
+        instance = super().create(**kwargs)
 
         # Rename to specific pattern if all codes are provided
         if ep_code and seq_code and shot_code:

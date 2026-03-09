@@ -43,7 +43,7 @@ class CTXLightContextNode(NodeWrapper):
         Returns:
             CTXLightContextNode: New instance
         """
-        instance = super(CTXLightContextNode, cls).create(**kwargs)
+        instance = super().create(**kwargs)
 
         light_name = kwargs.get('lightName', '')
         if gaffer_name and light_name:
