@@ -494,6 +494,11 @@ class NodeManager(object):
         Called when switching active shot to resolve all templates
         with the new shot's context.
 
+        Assets are processed in department priority order (highest priority first).
+        If multiple CTX_Asset nodes share the same namespace (e.g. duplicate-dept
+        nodes from old scenes), only the highest-priority department is applied;
+        lower-priority duplicates are skipped.
+
         Args:
             shot_node: CTXShotNode instance
             config: ProjectConfig instance
@@ -506,13 +511,31 @@ class NodeManager(object):
         count = 0
         total = len(assets)
 
+        # Sort by dept priority so the highest-priority dept is processed first.
+        if hasattr(config, 'get_dept_priority'):
+            priority_order = config.get_dept_priority()
+            priority_rank = {dept: i for i, dept in enumerate(priority_order)}
+            assets = sorted(
+                assets,
+                key=lambda a: priority_rank.get(a.get_department(), len(priority_order))
+            )
+
         logger.info("Updating paths for %d assets in shot %s",
                      total, shot_node.node_name)
 
+        seen_namespaces = set()
         for asset in assets:
+            ns = asset.get_namespace()
+            if ns in seen_namespaces:
+                logger.debug(
+                    "Skipping %s — namespace '%s' already updated by higher-priority dept",
+                    asset.node_name, ns
+                )
+                continue
             try:
                 if self.update_asset_path(asset, shot_node, config, platform_config):
                     count += 1
+                    seen_namespaces.add(ns)
             except Exception as e:
                 logger.error("Failed to update %s: %s", asset.node_name, e)
 
