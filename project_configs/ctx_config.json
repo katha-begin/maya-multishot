@@ -19,6 +19,10 @@
     "sceneBase": "all/scene",
     "assetBase": "all/asset"
   },
+  "deptPriority": {
+    "description": "Department resolution priority — index 0 wins when the same asset exists in multiple departments. Higher index = lower priority.",
+    "order": ["lighting", "fx", "cfx", "anim", "layout"]
+  },
   "templates": {
     "shotRoot": "$projRoot$project/$sceneBase/$ep/$seq/$shot",
     "shotWork": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/version",
@@ -92,7 +96,7 @@
     "dept": {
       "description": "Department",
       "example": "anim",
-      "values": ["anim", "layout", "fx", "lighting"]
+      "values": ["layout", "anim", "cfx", "fx", "lighting"]
     },
     "ver": {
       "description": "Version",

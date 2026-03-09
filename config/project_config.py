@@ -286,6 +286,23 @@ class ProjectConfig(object):
         token_def = self.data.get('tokens', {}).get(token_name, {})
         return token_def.get('values')
 
+    def get_dept_priority(self):
+        """Get the ordered department priority list.
+
+        Index 0 = highest priority (wins when the same asset exists in multiple
+        departments). Falls back to a sensible default if not set in config.
+
+        Returns:
+            list: Department names ordered from highest to lowest priority.
+                  Example: ['lighting', 'fx', 'cfx', 'anim', 'layout']
+        """
+        dept_priority_cfg = self.data.get('deptPriority', {})
+        order = dept_priority_cfg.get('order')
+        if order and isinstance(order, list) and len(order) > 0:
+            return list(order)
+        # Fallback if config key is missing
+        return ['lighting', 'fx', 'cfx', 'anim', 'layout']
+
     def get_shot_metadata_config(self):
         """
         Get shot metadata configuration.
