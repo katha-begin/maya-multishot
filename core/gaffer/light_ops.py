@@ -256,25 +256,29 @@ class LightOperations(object):
         # Intensity
         if light_ctx.get_attribute('intensityEnabled'):
             mode = light_ctx.get_override_mode('intensity')
-            _apply_scalar(light_ctx.get_attribute('intensity'), 'intensity', mode)
+            maya_attr = get_maya_attr(shape, 'intensity') or 'intensity'
+            _apply_scalar(light_ctx.get_attribute('intensity'), maya_attr, mode)
 
         # Exposure
         if light_ctx.get_attribute('exposureEnabled'):
             mode = light_ctx.get_override_mode('exposure')
-            _apply_scalar(light_ctx.get_attribute('exposure'), 'exposure', mode)
+            maya_attr = get_maya_attr(shape, 'exposure') or 'exposure'
+            _apply_scalar(light_ctx.get_attribute('exposure'), maya_attr, mode)
 
         # Temperature
         if light_ctx.get_attribute('temperatureEnabled'):
             mode = light_ctx.get_override_mode('temperature')
-            _apply_scalar(light_ctx.get_attribute('temperature'), 'temperature', mode)
+            maya_attr = get_maya_attr(shape, 'temperature') or 'temperature'
+            _apply_scalar(light_ctx.get_attribute('temperature'), maya_attr, mode)
 
         # Color (replace only — additive RGB is not meaningful)
         if light_ctx.get_attribute('colorEnabled'):
             r = light_ctx.get_attribute('colorR')
             g = light_ctx.get_attribute('colorG')
             b = light_ctx.get_attribute('colorB')
-            if cmds.attributeQuery('color', node=shape, exists=True):
-                cmds.setAttr('{}.color'.format(shape), r, g, b, type='double3')
+            color_attr = get_maya_attr(shape, 'color') or 'color'
+            if cmds.attributeQuery(color_attr, node=shape, exists=True):
+                cmds.setAttr('{}.{}'.format(shape, color_attr), r, g, b, type='double3')
 
         # Muted — set renderer-specific attr (RS: .on) AND transform visibility
         if light_ctx.get_attribute('mutedEnabled'):

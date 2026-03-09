@@ -345,24 +345,28 @@ class GafferManager(object):
         if light_shape is None:
             return values  # transform with no shape — nothing to capture
 
-        # Capture intensity (common attribute)
-        if cmds.attributeQuery('intensity', node=light_shape, exists=True):
-            values['intensity'] = cmds.getAttr('{}.intensity'.format(light_shape))
+        # Capture intensity — use renderer-specific attribute name (e.g. RS dome: 'multiplier')
+        intensity_attr = get_maya_attr(light_shape, 'intensity') or 'intensity'
+        if cmds.attributeQuery(intensity_attr, node=light_shape, exists=True):
+            values['intensity'] = cmds.getAttr('{}.{}'.format(light_shape, intensity_attr))
 
-        # Capture exposure (Arnold/Redshift)
-        if cmds.attributeQuery('exposure', node=light_shape, exists=True):
-            values['exposure'] = cmds.getAttr('{}.exposure'.format(light_shape))
+        # Capture exposure — use renderer-specific attribute name
+        exposure_attr = get_maya_attr(light_shape, 'exposure') or 'exposure'
+        if cmds.attributeQuery(exposure_attr, node=light_shape, exists=True):
+            values['exposure'] = cmds.getAttr('{}.{}'.format(light_shape, exposure_attr))
 
-        # Capture color
-        if cmds.attributeQuery('color', node=light_shape, exists=True):
-            color = cmds.getAttr('{}.color'.format(light_shape))[0]
+        # Capture color — use renderer-specific attribute name
+        color_attr = get_maya_attr(light_shape, 'color') or 'color'
+        if cmds.attributeQuery(color_attr, node=light_shape, exists=True):
+            color = cmds.getAttr('{}.{}'.format(light_shape, color_attr))[0]
             values['colorR'] = color[0]
             values['colorG'] = color[1]
             values['colorB'] = color[2]
 
         # Capture temperature (if exists)
-        if cmds.attributeQuery('temperature', node=light_shape, exists=True):
-            values['temperature'] = cmds.getAttr('{}.temperature'.format(light_shape))
+        temperature_attr = get_maya_attr(light_shape, 'temperature') or 'temperature'
+        if cmds.attributeQuery(temperature_attr, node=light_shape, exists=True):
+            values['temperature'] = cmds.getAttr('{}.{}'.format(light_shape, temperature_attr))
 
         # Capture muted state (renderer-specific: RS uses .on, others use transform visibility)
         muted_attr = get_maya_attr(light_shape, 'muted')

@@ -13,6 +13,15 @@ LIGHT_TYPES = [
     'RedshiftIESLight',
 ]
 
+# Per-light-type attribute overrides for light types with non-standard attribute names.
+# Values here take precedence over ATTR_MAP for the specified light type.
+LIGHT_TYPE_ATTR_OVERRIDES = {
+    'RedshiftDomeLight': {
+        # Dome lights use 'multiplier' for the overall brightness, not 'intensity'
+        'intensity': 'multiplier',
+    },
+}
+
 # Gaffer attribute -> Maya attribute name on Redshift light shape
 ATTR_MAP = {
     # Brightness
