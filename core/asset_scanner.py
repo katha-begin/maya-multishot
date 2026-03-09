@@ -2,6 +2,8 @@
 """Asset scanner for discovering and registering assets from filesystem.
 
 This module scans publish directories and creates CTX_Asset nodes for discovered assets.
+Department priority is applied so that the same asset in multiple departments produces
+exactly ONE CTX_Asset node, using the highest-priority department.
 
 Author: Context Variables Pipeline
 Date: 2026-02-15
@@ -36,97 +38,143 @@ class AssetScanner(object):
         """
         self.config = config
         self.layer_manager = layer_manager
-    
+
     def scan_shot_assets(self, shot_node, departments=None):
         """Scan filesystem for assets and create CTX_Asset nodes.
-        
+
+        Uses department priority to create ONE CTX_Asset node per unique asset
+        identity (type, name, variant). When the same asset exists in multiple
+        departments the highest-priority department wins (priority defined in
+        config deptPriority, index 0 = highest priority).
+
         Args:
             shot_node: CTXShotNode instance
-            departments (list, optional): List of departments to scan. 
-                                         If None, scans all departments.
-        
+            departments (list, optional): Departments to scan.
+                                         If None, all departments from config are used.
+
         Returns:
             list: List of created CTXAssetNode instances
         """
-        from core.nodes.wrappers import CTXAssetNode
-        
         if not self.config:
             logger.warning("No config available for asset scanning")
             return []
-        
-        # Get shot info
+
         ep = shot_node.get_ep_code()
         seq = shot_node.get_seq_code()
         shot = shot_node.get_shot_code()
-        
-        # Get departments to scan
+
+        # Resolve departments list
         if departments is None:
-            # Try to get from config, fallback to defaults
             try:
                 if hasattr(self.config, 'get_token_values'):
                     departments = self.config.get_token_values('dept')
                 else:
-                    # Fallback: read directly from config data
                     departments = self.config.data.get('tokens', {}).get('dept', {}).get('values')
-
-                # If still None, use defaults
                 if not departments:
                     departments = ['anim', 'layout', 'fx', 'lighting']
             except Exception as e:
                 logger.warning("Failed to get departments from config: %s", e)
                 departments = ['anim', 'layout', 'fx', 'lighting']
-        
+
+        # Resolve department priority (index 0 = highest priority)
+        if hasattr(self.config, 'get_dept_priority'):
+            priority_order = self.config.get_dept_priority()
+        else:
+            priority_order = ['lighting', 'fx', 'cfx', 'anim', 'layout']
+        priority_rank = {dept: i for i, dept in enumerate(priority_order)}
+
+        # PASS 1: Discover assets in every department.
+        # Iterate from LOWEST priority to HIGHEST so later entries overwrite earlier ones.
+        # Result: each asset identity (type, name, variant) maps to its winning dept.
+        depts_scan_order = sorted(
+            departments,
+            key=lambda d: priority_rank.get(d, len(priority_order)),
+            reverse=True,  # highest index (lowest priority) first
+        )
+
+        # master: {(type, name, variant): {'dept': str, 'version': str, 'file_path': str, 'info': dict}}
+        master_assets = {}
+        for dept in depts_scan_order:
+            discovered = self._discover_assets_in_dept(ep, seq, shot, dept)
+            for asset_key, asset_data in discovered.items():
+                entry = dict(asset_data)
+                entry['dept'] = dept
+                master_assets[asset_key] = entry
+
+        logger.info(
+            "Priority scan: %d unique assets for %s_%s_%s across %d departments",
+            len(master_assets), ep, seq, shot, len(departments)
+        )
+
+        # PASS 2: Create one CTX_Asset node per winning (type, name, variant) entry.
         created_assets = []
-        
-        # Scan each department
-        for dept in departments:
-            dept_assets = self._scan_department(ep, seq, shot, dept, shot_node)
-            created_assets.extend(dept_assets)
-        
-        logger.info("Created {} CTX_Asset nodes for shot {}_{}_{}".format(
-            len(created_assets), ep, seq, shot))
-        
+        existing_shot_assets = shot_node.get_assets()
+
+        for asset_key, asset_data in master_assets.items():
+            asset_type, asset_name, variant = asset_key
+
+            # Check by identity only (no dept) — any previously created node blocks duplicates
+            already_linked = any(
+                a.get_asset_type() == asset_type and
+                a.get_asset_name() == asset_name and
+                a.get_variant() == variant
+                for a in existing_shot_assets
+            )
+            if already_linked:
+                logger.info(
+                    "Asset already linked to this shot, skipping: %s %s %s",
+                    asset_type, asset_name, variant
+                )
+                continue
+
+            new_node = self._create_ctx_asset(
+                shot_node, shot,
+                asset_data['dept'], asset_type, asset_name, variant,
+                asset_data['version'], asset_data['file_path'], asset_data['info'],
+                len(created_assets)
+            )
+            if new_node:
+                created_assets.append(new_node)
+
+        logger.info(
+            "Created %d CTX_Asset nodes for shot %s_%s_%s",
+            len(created_assets), ep, seq, shot
+        )
         return created_assets
-    
-    def _scan_department(self, ep, seq, shot, dept, shot_node):
-        """Scan a specific department for assets.
-        
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _discover_assets_in_dept(self, ep, seq, shot, dept):
+        """Scan a department publish directory and return discovered assets.
+
+        Pure filesystem discovery — does NOT create CTX nodes.
+
         Args:
             ep (str): Episode code
             seq (str): Sequence code
             shot (str): Shot code
             dept (str): Department name
-            shot_node: CTXShotNode instance
-        
-        Returns:
-            list: List of created CTXAssetNode instances
-        """
-        from core.nodes.wrappers import CTXAssetNode
 
-        # Build publish path manually from config
-        # Template: $projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish
+        Returns:
+            dict: {(asset_type, asset_name, variant): {'version': str, 'file_path': str, 'info': dict}}
+        """
         proj_root = self.config.get_root('projRoot') or 'V:/'
         project = self.config.get_project_code() or 'SWA'
         scene_base = self.config.get_static_path('sceneBase') or 'all/scene'
 
         publish_path = os.path.join(
-            proj_root,
-            project,
-            scene_base,
-            ep,
-            seq,
-            shot,
-            dept,
-            'publish'
+            proj_root, project, scene_base, ep, seq, shot, dept, 'publish'
         ).replace('\\', '/')
-        
-        if not os.path.exists(publish_path):
-            logger.debug("Publish path does not exist: {}".format(publish_path))
-            return []
-        
-        logger.info("Scanning department: {} at {}".format(dept, publish_path))
 
-        # Find all version directories
+        if not os.path.exists(publish_path):
+            logger.debug("Publish path does not exist: %s", publish_path)
+            return {}
+
+        logger.info("Scanning department: %s at %s", dept, publish_path)
+
+        # Collect version directories, sort latest first
         version_dirs = []
         for item in os.listdir(publish_path):
             item_path = os.path.join(publish_path, item)
@@ -134,176 +182,144 @@ class AssetScanner(object):
                 version_dirs.append((item, item_path))
 
         if not version_dirs:
-            logger.debug("No version directories found in {}".format(publish_path))
-            return []
+            logger.debug("No version directories found in %s", publish_path)
+            return {}
 
-        # Sort versions (latest first)
         version_dirs.sort(reverse=True)
-        logger.info("Found {} versions: {}".format(len(version_dirs), [v[0] for v in version_dirs]))
+        logger.info("Found %d versions: %s", len(version_dirs), [v[0] for v in version_dirs])
 
-        # Track unique assets across ALL versions
-        # Key: (asset_type, asset_name, variant) -> (latest_version, file_path)
+        # First occurrence per key = latest version (versions sorted latest first)
         unique_assets = {}
-
-        # Scan ALL versions to find all unique assets
         for version, version_path in version_dirs:
-            all_files = os.listdir(version_path)
-            logger.debug("Scanning version {} - found {} files".format(version, len(all_files)))
-
-            for filename in all_files:
+            for filename in os.listdir(version_path):
                 if not filename.endswith(('.abc', '.rs', '.ma', '.mb', '.vdb', '.ass')):
                     continue
-
-                # Parse filename: Ep04_sq0070_SH0140__CHAR_CatStompie_001.abc
                 asset_info = self._parse_filename(filename)
                 if not asset_info:
                     continue
-
-                # Create unique key for this asset
                 asset_key = (asset_info['type'], asset_info['name'], asset_info['variant'])
-
-                # Track this asset with its latest version
-                # Since versions are sorted latest first, first occurrence is the latest
                 if asset_key not in unique_assets:
                     file_path = os.path.join(version_path, filename).replace('\\\\', '/')
                     unique_assets[asset_key] = {
                         'version': version,
                         'file_path': file_path,
-                        'info': asset_info
+                        'info': asset_info,
                     }
-                    logger.debug("Found asset: {} {} {} in version {}".format(
-                        asset_info['type'], asset_info['name'], asset_info['variant'], version))
-
-        logger.info("Found {} unique assets across all versions".format(len(unique_assets)))
-
-        # Now create CTX_Asset nodes for all unique assets
-        created_assets = []
-        existing_shot_assets = shot_node.get_assets()
-
-        for asset_key, asset_data in unique_assets.items():
-            asset_type, asset_name, variant = asset_key
-            asset_info = asset_data['info']
-
-            # Skip if this shot already has this asset+department combination
-            already_linked = any(
-                a.get_asset_type() == asset_type and
-                a.get_asset_name() == asset_name and
-                a.get_variant() == variant and
-                a.get_department() == dept
-                for a in existing_shot_assets
-            )
-            if already_linked:
-                logger.info("Asset already linked to this shot, skipping: {} {} {}".format(
-                    asset_type, asset_name, variant))
-                continue
-
-            # Create a per-shot CTX_Asset node.
-            # Node name: CTX_Asset_{assetType}_{assetName}_{shotCode}
-            # Multiple shots can share the same Maya reference (same namespace attribute)
-            # linked via ReferenceNode.message -> CTX_Asset.targetNode.
-            logger.info("Creating CTX_Asset node: {} {} {} (version: {})".format(
-                asset_type, asset_name, variant, asset_data['version']))
-
-            asset_node = CTXAssetNode.create(
-                asset_type=asset_type,
-                asset_name=asset_name,
-                variant=variant,
-                namespace='{}_{}_{}'.format(asset_type, asset_name, variant),
-                shot_code=shot
-            )
-            shot_node.add_asset(asset_node)
-
-            # Set additional attributes
-            asset_node.set_department(dept)
-            asset_node.set_version(asset_data['version'])
-
-            # Store template path from config (token-based path resolution)
-            # Special handling for cameras: use custom template without $assetType and $variant
-            if asset_type == 'CAM':
-                # Camera template: no type prefix, no variant in filename
-                # Build custom template: $projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/$ep_$seq_$shot__$assetName.$ext
-                base_template = self.config.get_template('assetPath')
-                if base_template:
-                    # Replace the filename portion to exclude $assetType and $variant
-                    # Original: ...$ver/$ep_$seq_$shot__$assetType_$assetName_$variant.$ext
-                    # Camera:   ...$ver/$ep_$seq_$shot__$assetName.$ext
-                    asset_path_template = base_template.replace(
-                        '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
-                        '$ep_$seq_$shot__$assetName.$ext'
+                    logger.debug(
+                        "Found asset: %s %s %s in version %s",
+                        asset_info['type'], asset_info['name'], asset_info['variant'], version
                     )
-                    logger.info("Using camera-specific template: %s", asset_path_template)
-                else:
-                    asset_path_template = None
+
+        logger.info("Found %d unique assets in department %s", len(unique_assets), dept)
+        return unique_assets
+
+    def _create_ctx_asset(self, shot_node, shot_code, dept,
+                          asset_type, asset_name, variant,
+                          version, file_path, asset_info, asset_index):
+        """Create a single CTX_Asset node and link it to the shot.
+
+        Args:
+            shot_node: CTXShotNode instance
+            shot_code (str): Shot code string (e.g. 'SH0170')
+            dept (str): Winning department
+            asset_type (str): Asset type code (e.g. 'CHAR')
+            asset_name (str): Asset name
+            variant (str): Variant string (e.g. '001')
+            version (str): Version string (e.g. 'v003')
+            file_path (str): Resolved file path
+            asset_info (dict): Parsed filename info dict (must contain 'ext')
+            asset_index (int): Zero-based index for log messages
+
+        Returns:
+            CTXAssetNode or None
+        """
+        from core.nodes.wrappers import CTXAssetNode
+
+        logger.info(
+            "Creating CTX_Asset node: %s %s %s (dept: %s, version: %s)",
+            asset_type, asset_name, variant, dept, version
+        )
+
+        asset_node = CTXAssetNode.create(
+            asset_type=asset_type,
+            asset_name=asset_name,
+            variant=variant,
+            namespace='{}_{}_{}'.format(asset_type, asset_name, variant),
+            shot_code=shot_code
+        )
+        shot_node.add_asset(asset_node)
+
+        asset_node.set_department(dept)
+        asset_node.set_version(version)
+
+        # Resolve template path (camera assets use a simplified template)
+        if asset_type == 'CAM':
+            base_template = self.config.get_template('assetPath')
+            if base_template:
+                asset_path_template = base_template.replace(
+                    '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
+                    '$ep_$seq_$shot__$assetName.$ext'
+                )
+                logger.info("Using camera-specific template: %s", asset_path_template)
             else:
-                # Standard assets: use default template
-                asset_path_template = self.config.get_template('assetPath')
+                asset_path_template = None
+        else:
+            asset_path_template = self.config.get_template('assetPath')
 
-            if asset_path_template:
-                asset_node.set_template(asset_path_template)
+        if asset_path_template:
+            asset_node.set_template(asset_path_template)
+        else:
+            logger.warning("No 'assetPath' template in config, storing absolute path")
+
+        asset_node.set_extension(asset_info['ext'])
+        asset_node.set_file_path(file_path)
+
+        # Link to matching Maya reference node(s) by namespace
+        from core.ctx_converter import CTXConverter
+        converter = CTXConverter()
+        namespace_val = asset_node.get_namespace()
+        logger.info("=" * 80)
+        logger.info(
+            "ASSET #%d - Linking all CTX_Asset nodes for namespace '%s'",
+            asset_index + 1, namespace_val
+        )
+        logger.info("=" * 80)
+        linked_count = converter.link_all_by_namespace(namespace_val)
+        linked = linked_count > 0
+
+        if linked:
+            logger.info("+" * 80)
+            logger.info("DISPLAY LAYER ASSIGNMENT FOR ASSET #%d", asset_index + 1)
+            logger.info("  Asset node: %s", asset_node.node_name)
+            logger.info("  Namespace: %s", namespace_val)
+            logger.info("  Layer manager: %s", self.layer_manager)
+            logger.info("+" * 80)
+
+            if self.layer_manager:
+                logger.info("Layer manager available - assigning to display layer...")
+                try:
+                    logger.info(
+                        "CALLING assign_to_layer_from_ctx_asset(%s, %s)",
+                        asset_node.node_name, shot_node.node_name
+                    )
+                    self.layer_manager.assign_to_layer_from_ctx_asset(asset_node, shot_node)
+                    logger.info("SUCCESS! Assigned %s to display layer", asset_node.node_name)
+                except Exception as e:
+                    logger.error("FAILED to assign %s to layer: %s", asset_node.node_name, e)
+                    import traceback
+                    logger.error("Traceback: %s", traceback.format_exc())
             else:
-                logger.warning("No 'assetPath' template in config, storing absolute path")
+                logger.warning("No layer_manager available")
 
-            # Store file extension
-            asset_node.set_extension(asset_data['info']['ext'])
+            logger.info("+" * 80)
+        else:
+            logger.info(
+                "No matching Maya reference found for %s (will link when asset is loaded)",
+                asset_node.node_name
+            )
 
-            # Cache the resolved file_path (for display / initial state)
-            asset_node.set_file_path(asset_data['file_path'])
-
-            # Link this asset AND all sibling CTX_Asset nodes sharing the same
-            # namespace to the Maya reference in one bulk operation.
-            # Uses namespace attribute (not node name) to find both the reference
-            # and all CTX_Asset nodes, then connects reference.message -> targetNode.
-            from core.ctx_converter import CTXConverter
-            converter = CTXConverter()
-            namespace_val = asset_node.get_namespace()
-            logger.info("=" * 80)
-            logger.info("ASSET #{} - Linking all CTX_Asset nodes for namespace '{}'".format(
-                len(created_assets) + 1, namespace_val))
-            logger.info("=" * 80)
-            linked_count = converter.link_all_by_namespace(namespace_val)
-            linked = linked_count > 0
-
-            if linked:
-
-                # Add Maya node to display layer if layer manager is available
-                logger.info("+" * 80)
-                logger.info("DISPLAY LAYER ASSIGNMENT FOR ASSET #{}".format(len(created_assets) + 1))
-                logger.info("  Asset node: {}".format(asset_node.node_name))
-                logger.info("  Namespace: {}".format(asset_node.get_namespace()))
-                logger.info("  Layer manager: {}".format(self.layer_manager))
-                logger.info("+" * 80)
-
-                if self.layer_manager:
-                    logger.info("Layer manager available - assigning to display layer...")
-
-                    try:
-                        # Pass the CTX_Asset node and shot node
-                        # Layer manager will determine CTX_Active or CTX_Inactive based on shot.is_active()
-                        logger.info("CALLING assign_to_layer_from_ctx_asset({}, {})".format(
-                            asset_node.node_name, shot_node.node_name))
-                        self.layer_manager.assign_to_layer_from_ctx_asset(
-                            asset_node, shot_node)
-                        logger.info("SUCCESS! Assigned {} to display layer".format(
-                            asset_node.node_name))
-                    except Exception as e:
-                        logger.error("FAILED to assign {} to layer: {}".format(
-                            asset_node.node_name, e))
-                        import traceback
-                        logger.error("Traceback: {}".format(traceback.format_exc()))
-                else:
-                    logger.warning("No layer_manager available")
-
-                logger.info("+" * 80)
-            else:
-                logger.info("No matching Maya reference found for {} (will link when asset is loaded)".format(
-                    asset_node.node_name))
-
-            created_assets.append(asset_node)
-            logger.info("Created asset node: {} for file: {}".format(
-                asset_node.node_name, asset_data['file_path']))
-
-        logger.info("Created {} assets in department {}".format(len(created_assets), dept))
-        return created_assets
+        logger.info("Created asset node: %s for file: %s", asset_node.node_name, file_path)
+        return asset_node
 
     def _parse_filename(self, filename):
         """Parse asset filename to extract metadata.
@@ -328,26 +344,24 @@ class AssetScanner(object):
         # Split by double underscore to separate shot from asset
         parts = name_part.split('__')
         if len(parts) != 2:
-            logger.debug("Filename does not match pattern (missing __): {}".format(filename))
+            logger.debug("Filename does not match pattern (missing __): %s", filename)
             return None
 
         shot_part, asset_part = parts
 
         # Check if this is a camera asset (ends with _camera)
         if asset_part.endswith('_camera'):
-            # Camera format: SWA_Ep04_SH0170_camera
-            # Extract: type=CAM, name=full_name, variant=001
             return {
                 'type': 'CAM',
-                'name': asset_part,  # Full name: SWA_Ep04_SH0170_camera
-                'variant': '001',    # Default variant for cameras
+                'name': asset_part,   # Full name: SWA_Ep04_SH0170_camera
+                'variant': '001',     # Default variant for cameras
                 'ext': ext.lstrip('.')
             }
 
         # Parse standard asset part: CHAR_CatStompie_001
         asset_parts = asset_part.split('_')
         if len(asset_parts) < 3:
-            logger.debug("Asset part does not have enough components: {}".format(asset_part))
+            logger.debug("Asset part does not have enough components: %s", asset_part)
             return None
 
         asset_type = asset_parts[0]
@@ -360,4 +374,3 @@ class AssetScanner(object):
             'variant': variant,
             'ext': ext.lstrip('.')
         }
-
