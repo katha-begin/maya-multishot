@@ -271,6 +271,19 @@ def reload_menu():
     try:
         logger.info("Reloading CTX Tools menu and modules...")
 
+        # Step 0: Clear __pycache__ so stale .pyc files cannot shadow fixed .py files
+        import os
+        import shutil
+        try:
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            for dirpath, dirnames, _ in os.walk(repo_root):
+                if '__pycache__' in dirnames:
+                    cache_dir = os.path.join(dirpath, '__pycache__')
+                    shutil.rmtree(cache_dir, ignore_errors=True)
+            logger.info("Cleared __pycache__ directories")
+        except Exception as cache_err:
+            logger.warning("Could not clear __pycache__: {}".format(cache_err))
+
         # Step 1: Reload Python modules
         import sys
 

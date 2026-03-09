@@ -330,7 +330,9 @@ class AddLightDialog(QtWidgets.QDialog):
                     )
                     added_count += 1
                 except Exception as e:
-                    logger.error("Failed to add light {}: {}".format(light_name, e))
+                    import traceback
+                    logger.error("Failed to add light %s: %s\n%s",
+                                 light_name, e, traceback.format_exc())
                     failed_lights.append(light_name)
 
             # Show results
