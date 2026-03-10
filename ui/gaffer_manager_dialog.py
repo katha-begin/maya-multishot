@@ -129,6 +129,16 @@ class GafferManagerDialog(QtWidgets.QDialog):
         main_layout.setContentsMargins(6, 6, 6, 6)
         main_layout.setSpacing(4)
 
+        # Lock banner -- shown when the current gaffer is locked (hidden by default)
+        self._lock_banner = QtWidgets.QLabel('')
+        self._lock_banner.setStyleSheet(
+            'background-color: #7B3F00; color: #FFD54F; '
+            'padding: 4px 8px; font-weight: bold;'
+        )
+        self._lock_banner.setVisible(False)
+        self._lock_banner.setAlignment(QtCore.Qt.AlignCenter)
+        main_layout.addWidget(self._lock_banner)
+
         # ── Compact header bar (gaffer + edit mode on 2 tight rows) ───
         header_widget = QtWidgets.QWidget()
         header_widget.setSizePolicy(
@@ -215,6 +225,13 @@ class GafferManagerDialog(QtWidgets.QDialog):
         self._discard_button.setStyleSheet("background-color: #B71C1C; color: white;")
         self._discard_button.setVisible(False)
         edit_row.addWidget(self._discard_button)
+
+        self._lock_btn = QtWidgets.QPushButton("Lock Gaffer")
+        self._lock_btn.setFixedWidth(110)
+        self._lock_btn.setToolTip("Lock this gaffer so its values cannot be edited")
+        self._lock_btn.setVisible(False)
+        self._lock_btn.clicked.connect(self._on_toggle_gaffer_lock)
+        edit_row.addWidget(self._lock_btn)
 
         header_layout.addLayout(edit_row)
 
@@ -877,6 +894,14 @@ class GafferManagerDialog(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "No Gaffer Selected",
                                           "Please select a gaffer first.")
             return
+        from core.lock_manager import LockManager
+        if LockManager.is_locked(self._current_gaffer.node_name):
+            QtWidgets.QMessageBox.information(
+                self, 'Locked',
+                'This gaffer is locked and cannot be edited.\n'
+                'Use "Unlock Gaffer" to enable editing.'
+            )
+            return
         if not cmds:
             QtWidgets.QMessageBox.warning(self, "Maya Not Available",
                                           "Maya is not available.")
@@ -945,6 +970,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
         self._edit_mode = None
         self._exit_edit_mode_ui()
         self._populate_lights_table()
+        self._refresh_lock_state()
 
     def _on_discard_edit_mode(self):
         if self._edit_mode is None:
@@ -1467,6 +1493,49 @@ class GafferManagerDialog(QtWidgets.QDialog):
             logger.error("Failed to select light: {}".format(e))
 
     # ------------------------------------------------------------------
+    # Lock state helpers
+    # ------------------------------------------------------------------
+
+    def _refresh_lock_state(self):
+        """Update banner visibility, Edit button state, and lock button label."""
+        if self._current_gaffer is None:
+            self._lock_banner.setVisible(False)
+            self._lock_btn.setVisible(False)
+            return
+
+        from core.lock_manager import LockManager
+        info = LockManager.get_lock_info(self._current_gaffer.node_name)
+        locked = info['is_locked']
+
+        self._lock_banner.setVisible(locked)
+        if locked:
+            by = info.get('locked_by', '')
+            self._lock_banner.setText(
+                'Read only -- locked by {}. Edit mode disabled.'.format(by) if by
+                else 'Read only -- locked. Edit mode disabled.'
+            )
+
+        # Edit button disabled when locked
+        self._enter_edit_button.setEnabled(not locked)
+
+        # Lock button label toggles
+        self._lock_btn.setText('Unlock Gaffer' if locked else 'Lock Gaffer')
+        self._lock_btn.setVisible(True)
+
+    def _on_toggle_gaffer_lock(self):
+        """Toggle lock state of the currently selected gaffer."""
+        if self._current_gaffer is None:
+            return
+
+        from core.lock_manager import LockManager
+        if LockManager.is_locked(self._current_gaffer.node_name):
+            LockManager.unlock_node(self._current_gaffer.node_name)
+        else:
+            LockManager.lock_node(self._current_gaffer.node_name)
+
+        self._refresh_lock_state()
+
+    # ------------------------------------------------------------------
     # Gaffer combo handlers
     # ------------------------------------------------------------------
 
@@ -1480,6 +1549,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
         self._current_gaffer = gaffer_wrapper
         self._update_chain_label()
         self._populate_lights_table()
+        self._refresh_lock_state()
 
     def _on_refresh_clicked(self):
         self._refresh_gaffer_list()
@@ -1505,6 +1575,11 @@ class GafferManagerDialog(QtWidgets.QDialog):
         if self._edit_mode is not None and self._edit_mode.is_active:
             return
         self._refresh_gaffer_list()
+
+    def showEvent(self, event):
+        """Refresh lock state when dialog becomes visible."""
+        super(GafferManagerDialog, self).showEvent(event)
+        self._refresh_lock_state()
 
     def closeEvent(self, event):
         """Clear singleton reference on close."""
