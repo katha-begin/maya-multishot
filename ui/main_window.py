@@ -62,6 +62,7 @@ class MainWindow(QtWidgets.QMainWindow):
         MainWindow._instance = self
 
         self._config = None
+        self._platform_config = None
         self._context_manager = ContextManager()
         self._shots = []  # List of dicts with shot data + CTX node reference
         self._active_shot_index = None
@@ -87,10 +88,21 @@ class MainWindow(QtWidgets.QMainWindow):
         # Register context change callback for path resolution
         self._context_manager.register_callback(self._on_context_changed)
 
+        self._register_scene_callbacks()
+
+        from core.batch import render_state as rs
+        rs.add_listener(self._on_render_state_changed)
+
     def closeEvent(self, event):
         """Handle window close event."""
         # Unregister context callback
         self._context_manager.unregister_callback(self._on_context_changed)
+        self._deregister_scene_callbacks()
+        try:
+            from core.batch import render_state as rs
+            rs.remove_listener(self._on_render_state_changed)
+        except Exception:
+            pass
         # Clear instance reference when window is closed
         MainWindow._instance = None
         super(MainWindow, self).closeEvent(event)
@@ -146,8 +158,8 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addLayout(header_layout)
         
         self.shot_table = QtWidgets.QTableWidget()
-        self.shot_table.setColumnCount(6)
-        self.shot_table.setHorizontalHeaderLabels(["#", "Shot", "Frame Range", "Set", "Ver", "Gaf"])
+        self.shot_table.setColumnCount(7)
+        self.shot_table.setHorizontalHeaderLabels(["#", "Shot", "Frame Range", "Set", "Ver", "Gaf", "Rnd"])
 
         # Set column widths — Shot column stretches like Light column in Gaffer Manager
         header = self.shot_table.horizontalHeader()
@@ -175,6 +187,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # Column 5: Gaffer button (3-char label)
         header.setSectionResizeMode(5, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(5, 38)
+
+        # Column 6: Render status dot
+        header.setSectionResizeMode(6, QtWidgets.QHeaderView.Fixed)
+        self.shot_table.setColumnWidth(6, 28)
 
         # Enable multi-selection and row selection
         self.shot_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -259,7 +275,7 @@ class MainWindow(QtWidgets.QMainWindow):
             int: Recommended width in pixels
         """
         # Column 1 (Shot) stretches; use 180px as its minimum contribution
-        column_widths = [20, 180, 75, 38, 38, 38]
+        column_widths = [20, 180, 75, 38, 38, 38, 28]
         total_column_width = sum(column_widths)
 
         # Add extra space for margins, scrollbar, and padding
@@ -488,6 +504,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
 
             self._config = ProjectConfig(config_path)
+
+            try:
+                self._platform_config = PlatformConfig(self._config)
+            except Exception as exc:
+                logger.warning("Failed to create platform config: %s", exc)
+                self._platform_config = None
 
             # Set config path in CTX_Manager node
             manager = self._context_manager.get_or_create_manager()
@@ -1015,6 +1037,12 @@ class MainWindow(QtWidgets.QMainWindow):
         gaffer_btn.clicked.connect(lambda checked=False, r=row: self._on_gaffer_click(r))
         self.shot_table.setCellWidget(row, 5, gaffer_btn)
 
+        # Column 6: Render status
+        ep = shot_data.get('ep', '')
+        seq = shot_data.get('seq', '')
+        shot = shot_data.get('shot', '')
+        self.shot_table.setItem(row, 6, self._make_rnd_badge(ep, seq, shot))
+
         # Store shot data
         if 'version' not in shot_data:
             shot_data['version'] = 'v001'
@@ -1131,6 +1159,9 @@ class MainWindow(QtWidgets.QMainWindow):
         edit_action = menu.addAction("Edit Frame Range")
         save_action = menu.addAction("Save to Shot Directory")
         menu.addSeparator()
+        quick_render_action = menu.addAction("Quick Render (First & Last Frame)")
+        refresh_rnd_action = menu.addAction("Refresh Render Status")
+        menu.addSeparator()
         remove_action = menu.addAction("Remove")
 
         # Execute menu and get selected action
@@ -1143,6 +1174,10 @@ class MainWindow(QtWidgets.QMainWindow):
             # Save all selected shots
             for row in sorted(selected_rows):
                 self._on_save_shot(row)
+        elif action == quick_render_action:
+            self._on_quick_render(sorted(selected_rows))
+        elif action == refresh_rnd_action:
+            self._refresh_rnd_column()
         elif action == remove_action:
             # Remove all selected shots
             for row in sorted(selected_rows, reverse=True):
@@ -1982,6 +2017,182 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Failed to save scene to shot directory:\n\n{}".format(str(e))
             )
 
+    def _make_rnd_badge(self, ep, seq, shot):
+        """Create the render status badge item for the Rnd column.
+
+        Checks render_state registry first (session state), then filesystem.
+
+        Args:
+            ep (str): Episode code.
+            seq (str): Sequence code.
+            shot (str): Shot code.
+
+        Returns:
+            QTableWidgetItem: Colored dot item with tooltip.
+        """
+        from core.batch import render_state as rs
+
+        shot_id = '%s_%s_%s' % (ep, seq, shot)
+        session_status = rs.get_status(shot_id)
+
+        color = None
+        tooltip = None
+
+        if session_status in (rs.QUEUED, rs.RENDERING):
+            color = QtGui.QColor('#F57C00')   # orange
+            tooltip = 'Queued for render' if session_status == rs.QUEUED else 'Rendering'
+        elif session_status == rs.FAILED:
+            color = QtGui.QColor('#D32F2F')   # red
+            tooltip = 'Last render failed'
+        elif session_status == rs.DONE:
+            # Fall through to filesystem check
+            session_status = None
+
+        if session_status is None:
+            # Filesystem check
+            try:
+                from core.batch.output_checker import check_shot_output, HAS_OUTPUT
+                result = check_shot_output(
+                    self._config,
+                    self._platform_config if hasattr(self, '_platform_config') else None,
+                    ep, seq, shot
+                )
+                if result == HAS_OUTPUT:
+                    color = QtGui.QColor('#2E7D32')   # green
+                    tooltip = 'Has output'
+                else:
+                    color = QtGui.QColor('#757575')   # gray
+                    tooltip = 'No output'
+            except Exception:
+                color = QtGui.QColor('#757575')
+                tooltip = 'No output'
+
+        item = QtWidgets.QTableWidgetItem('\u25cf')  # filled circle
+        item.setForeground(color)
+        item.setTextAlignment(QtCore.Qt.AlignCenter)
+        item.setToolTip(tooltip)
+        item.setFlags(item.flags() & ~QtCore.Qt.ItemIsEditable)
+        return item
+
+    def _refresh_rnd_column(self):
+        """Refresh the Rnd column for all rows. Called after render state changes."""
+        for row, shot_data in enumerate(self._shots):
+            ep = shot_data.get('ep', '')
+            seq = shot_data.get('seq', '')
+            shot = shot_data.get('shot', '')
+            self.shot_table.setItem(row, 6, self._make_rnd_badge(ep, seq, shot))
+
+    def _register_scene_callbacks(self):
+        """Register Maya scene open/new callbacks to refresh the shot table."""
+        try:
+            import maya.OpenMaya as om
+            self._scene_open_cb = om.MSceneMessage.addCallback(
+                om.MSceneMessage.kAfterOpen, self._on_scene_changed)
+            self._scene_new_cb = om.MSceneMessage.addCallback(
+                om.MSceneMessage.kAfterNew, self._on_scene_changed)
+            logger.info("Scene change callbacks registered")
+        except Exception as exc:
+            logger.warning("Could not register scene callbacks: %s", exc)
+
+    def _deregister_scene_callbacks(self):
+        """Remove Maya scene callbacks."""
+        try:
+            import maya.OpenMaya as om
+            for attr in ('_scene_open_cb', '_scene_new_cb'):
+                cb = getattr(self, attr, None)
+                if cb is not None:
+                    om.MMessage.removeCallback(cb)
+                    setattr(self, attr, None)
+        except Exception as exc:
+            logger.warning("Could not deregister scene callbacks: %s", exc)
+
+    def _on_scene_changed(self, *args):
+        """Called by Maya after scene open or new. Clears and repopulates shot table."""
+        from core.batch import render_state as rs
+        rs.clear()
+        # Use QTimer.singleShot to defer back to the Qt main thread
+        QtCore.QTimer.singleShot(100, self._reload_shots_from_scene)
+
+    def _reload_shots_from_scene(self):
+        """Clear shot table and repopulate from the newly opened scene."""
+        self.shot_table.setRowCount(0)
+        self._shots = []
+        self._active_shot_index = None
+        self.current_shot_label.setText("Current Shot: None")
+        # Re-use the existing load method
+        self._load_existing_shots()
+        logger.info("Shot table refreshed after scene change")
+
+    def _on_render_state_changed(self, shot_id, status):
+        """Called when render state changes. Refreshes Rnd column via Qt main thread."""
+        QtCore.QTimer.singleShot(0, self._refresh_rnd_column)
+
+    def _on_quick_render(self, rows):
+        """Queue first and last frame render for selected shots.
+
+        Creates two single-frame RenderJob per shot (start frame + end frame),
+        using the current active render layer. Opens BatchRenderDialog.
+
+        Args:
+            rows (list[int]): Selected row indices.
+        """
+        from core.batch import render_state as rs
+        from core.batch.render_setup_manager import RenderSetupManager
+
+        active_layer = RenderSetupManager().get_active_layer_name()
+
+        jobs_config = []  # list of dicts to pass to dialog
+
+        for row in rows:
+            if row >= len(self._shots):
+                continue
+            shot_data = self._shots[row]
+            ctx_node = shot_data.get('ctx_node')
+            ep = shot_data.get('ep', '')
+            seq = shot_data.get('seq', '')
+            shot = shot_data.get('shot', '')
+
+            start, end = 1001, 1100  # fallback
+            if ctx_node:
+                try:
+                    start, end = ctx_node.get_frame_range()
+                except Exception:
+                    pass
+
+            shot_id = '%s_%s_%s' % (ep, seq, shot)
+            rs.set_status(shot_id, rs.QUEUED)
+
+            # Two single-frame jobs: first frame and last frame
+            jobs_config.append({
+                'ep': ep, 'seq': seq, 'shot': shot,
+                'start_frame': start, 'end_frame': start,  # first frame
+                'render_layers': [active_layer],
+                'label': '%s_%s_%s frame %d' % (ep, seq, shot, start),
+            })
+            jobs_config.append({
+                'ep': ep, 'seq': seq, 'shot': shot,
+                'start_frame': end, 'end_frame': end,  # last frame
+                'render_layers': [active_layer],
+                'label': '%s_%s_%s frame %d' % (ep, seq, shot, end),
+            })
+
+        if not jobs_config:
+            return
+
+        self._refresh_rnd_column()
+
+        # Open / focus BatchRenderDialog on Monitor tab, start these jobs
+        try:
+            from ui.batch_render_dialog import BatchRenderDialog
+            dlg = BatchRenderDialog.get_or_create(parent=self)
+            dlg.show()
+            dlg.raise_()
+            dlg.queue_quick_render_jobs(jobs_config)
+        except Exception as exc:
+            logger.error("Failed to open Batch Render dialog: %s", exc)
+            from PySide2 import QtWidgets as _qw
+            _qw.QMessageBox.critical(self, 'Quick Render', 'Failed to open Batch Render dialog:\n%s' % exc)
+
     def _on_update_versions(self):
         """Handle Update All Versions button click."""
         logger.info("Update All Versions clicked")
@@ -1990,6 +2201,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "Update Versions",
             "Update All Versions will be implemented in Phase 4C."
         )
+        self._refresh_rnd_column()
 
     def _on_validate_all(self):
         """Handle Validate All button click."""

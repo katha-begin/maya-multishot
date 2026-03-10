@@ -28,6 +28,7 @@ class RenderQueue(object):
                  render_layers=None, camera=None):
         """Add a shot to the render queue. Returns the RenderJob."""
         from core.batch.render_job import RenderJob
+        from core.batch import render_state as rs
         job = RenderJob(
             ep=ep, seq=seq, shot=shot,
             scene_file=scene_file,
@@ -37,6 +38,7 @@ class RenderQueue(object):
             camera=camera,
         )
         self._jobs.append(job)
+        rs.set_status(job.shot_id, rs.QUEUED)
         logger.info("Added shot to queue: %s (total=%d)", job.shot_id, len(self._jobs))
         return job
 
@@ -96,12 +98,12 @@ class RenderQueue(object):
 
         # Dispatch phase (parallel via JobDispatcher)
         if gpu_list:
-            dispatcher = JobDispatcher(gpu_list, on_progress=on_progress)
+            dispatcher = JobDispatcher(gpu_list, on_progress=on_progress, config=self.config)
         else:
             # No GPU info -- create a dummy GPUInfo-like object
             from core.batch.gpu_inventory import GPUInfo
             dummy_gpu = GPUInfo(index=0, name='CPU', vram_total_mb=0, vram_free_mb=0, util_pct=0)
-            dispatcher = JobDispatcher([dummy_gpu], on_progress=on_progress)
+            dispatcher = JobDispatcher([dummy_gpu], on_progress=on_progress, config=self.config)
 
         self._dispatcher = dispatcher
         for job in self._jobs:

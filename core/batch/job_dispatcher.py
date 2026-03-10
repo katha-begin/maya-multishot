@@ -42,16 +42,18 @@ class JobDispatcher(object):
         dispatcher.wait_all()      # block until all jobs done
     """
 
-    def __init__(self, gpu_list, on_progress=None, renderer='redshift'):
+    def __init__(self, gpu_list, on_progress=None, renderer=None, config=None):
         """
         Args:
             gpu_list (list[GPUInfo]): Available GPUs from gpu_inventory.
             on_progress (callable|None): Called with (job, layer, status, message).
-            renderer (str): Renderer name for -r flag.
+            renderer (str|None): Renderer name for -r flag. None = auto-detect at dispatch time.
+            config: Optional ProjectConfig instance for GPU env var lookup.
         """
         self.gpu_list = gpu_list
         self.on_progress = on_progress
         self.renderer = renderer
+        self.config = config
         self._render_bin = _find_render_bin()
 
         # One semaphore per GPU -- ensures single render per GPU
@@ -83,6 +85,7 @@ class JobDispatcher(object):
     def _run_job(self, job):
         """Execute all render layers for one job sequentially on one GPU."""
         from core.batch.render_job import JobStatus
+        from core.batch import render_state as rs
 
         gpu_index = job.gpu_index if job.gpu_index is not None else 0
         sem = self._semaphores.get(gpu_index)
@@ -94,6 +97,7 @@ class JobDispatcher(object):
         sem.acquire()
         try:
             job.status = JobStatus.RENDERING
+            rs.set_status(job.shot_id, rs.RENDERING)
             layers = job.resolved_layers or ['defaultRenderLayer']
             all_ok = True
 
@@ -104,6 +108,7 @@ class JobDispatcher(object):
                     break
 
             job.status = JobStatus.DONE if all_ok else JobStatus.FAILED
+            rs.set_status(job.shot_id, rs.DONE if all_ok else rs.FAILED)
             self._notify(job, None, job.status, job.error_message or 'Complete')
         finally:
             sem.release()
@@ -111,9 +116,13 @@ class JobDispatcher(object):
 
     def _render_layer(self, job, layer_name, gpu_index):
         """Run Render subprocess for one layer. Returns True on success."""
+        from core.renderers import get_active_renderer, get_gpu_env_var
+
+        renderer_name = self.renderer or get_active_renderer()
+
         cmd = [
             self._render_bin,
-            '-r', self.renderer,
+            '-r', renderer_name,
             '-s', str(job.resolved_start),
             '-e', str(job.resolved_end),
             '-rl', layer_name,
@@ -125,7 +134,9 @@ class JobDispatcher(object):
         cmd.append(job.temp_scene_path)
 
         env = os.environ.copy()
-        env['REDSHIFT_GPUDEVICES'] = str(gpu_index)
+        gpu_env_var = get_gpu_env_var(renderer_name, self.config)
+        if gpu_env_var:
+            env[gpu_env_var] = str(gpu_index)
         env['MAYA_APP_DIR'] = os.path.join(
             os.path.expanduser('~'), '.maya_render_gpu%d' % gpu_index
         )
