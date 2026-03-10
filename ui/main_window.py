@@ -1592,7 +1592,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     pass
 
-                # Refresh Slate Manager if open; auto-select the active slate
+                # Refresh Slate Manager if open; auto-select the active slate.
+                # Falls back to sequence slate when shot has no slate (mirrors gaffer).
                 try:
                     from ui.slate_manager_dialog import SlateManagerDialog
                     slate_dlg = SlateManagerDialog._instance
@@ -1600,6 +1601,13 @@ class MainWindow(QtWidgets.QMainWindow):
                         active_slate = None
                         try:
                             active_slate = shot_node.get_slate()
+                            if active_slate is None:
+                                # No shot slate -- try sequence slate
+                                from core.nodes.wrappers.sequence import CTXSequenceNode
+                                seq_name = shot_node.get_parent_sequence()
+                                if seq_name:
+                                    seq = CTXSequenceNode(seq_name)
+                                    active_slate = seq.get_slate()
                         except Exception:
                             pass
                         if active_slate is not None:
