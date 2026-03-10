@@ -1,6 +1,6 @@
 # Stream C — Structured Logging
 
-**Status:** Not Started
+**Status:** Complete
 **Priority:** P2 — Do first (enables debugging in all other streams)
 **Branch:** `feature/phase4-production-automation`
 
@@ -142,10 +142,10 @@ File: `tests/test_logging_config.py`
 
 ## Completion Criteria
 
-- [ ] `core/logging_config.py` created
-- [ ] `project_configs/ctx_config.json` has `logging` section
-- [ ] `ProjectConfig.get_logging_config()` method added
-- [ ] `tools/maya_menu.py` calls `setup_logging()` on startup
-- [ ] All listed modules have `print()` replaced with `logger.*`
-- [ ] All new tests pass
-- [ ] No regressions in existing test suite
+- [x] `core/logging_config.py` created
+- [x] `project_configs/ctx_config.json` has `logging` section
+- [x] `ProjectConfig.get_logging_config()` method added
+- [x] `tools/maya_menu.py` calls `setup_logging()` on startup
+- [x] All listed modules have `print()` replaced with `logger.*`
+- [x] All new tests pass
+- [x] No regressions in existing test suite

@@ -26,8 +26,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
-
 try:
     import maya.cmds as cmds
     import maya.mel as mel
@@ -52,7 +50,9 @@ except ImportError:
         QtCore = None
         wrapInstance = None
 
-logger = logging.getLogger(__name__)
+from core.logging_config import setup_logging, get_logger
+
+logger = get_logger(__name__)
 
 # Menu name constant
 CTX_MENU_NAME = "CTXToolsMenu"
@@ -567,15 +567,7 @@ def create_sequence_node():
         # Select the created node
         cmds.select(seq.node_name)
 
-        # Print to Script Editor
-        print("\n" + "="*60)
-        print("CREATED CTX_SEQUENCE NODE")
-        print("="*60)
-        print("Node: {}".format(seq.node_name))
-        print("Edit attributes in Attribute Editor")
-        print("="*60)
-
-        logger.info("Created CTX_Sequence: {}".format(seq.node_name))
+        logger.info("Created CTX_Sequence: %s", seq.node_name)
 
     except Exception as e:
         logger.error("Failed to create CTX_Sequence: {}".format(e))
@@ -604,15 +596,7 @@ def create_gaffer_node():
         # Select the created node
         cmds.select(gaffer.node_name)
 
-        # Print to Script Editor
-        print("\n" + "="*60)
-        print("CREATED CTX_LIGHTGAFFER NODE")
-        print("="*60)
-        print("Node: {}".format(gaffer.node_name))
-        print("Edit attributes in Attribute Editor")
-        print("="*60)
-
-        logger.info("Created CTX_LightGaffer: {}".format(gaffer.node_name))
+        logger.info("Created CTX_LightGaffer: %s", gaffer.node_name)
 
     except Exception as e:
         logger.error("Failed to create CTX_LightGaffer: {}".format(e))
@@ -638,15 +622,7 @@ def create_light_context_node():
         # Select the created node
         cmds.select(light_ctx.node_name)
 
-        # Print to Script Editor
-        print("\n" + "="*60)
-        print("CREATED CTX_LIGHTCONTEXT NODE")
-        print("="*60)
-        print("Node: {}".format(light_ctx.node_name))
-        print("Edit attributes in Attribute Editor")
-        print("="*60)
-
-        logger.info("Created CTX_LightContext: {}".format(light_ctx.node_name))
+        logger.info("Created CTX_LightContext: %s", light_ctx.node_name)
 
     except Exception as e:
         logger.error("Failed to create CTX_LightContext: {}".format(e))
@@ -697,11 +673,7 @@ def list_all_sequences():
             defaultButton="OK"
         )
 
-        # Also print to Script Editor
-        print("\n" + "="*60)
-        print("CTX_SEQUENCE NODES")
-        print("="*60)
-        print(message)
+        logger.info("Listed %d CTX_Sequence node(s)", len(sequences))
 
     except Exception as e:
         logger.error("Failed to list sequences: {}".format(e))
@@ -759,11 +731,7 @@ def list_all_gaffers():
             defaultButton="OK"
         )
 
-        # Also print to Script Editor
-        print("\n" + "="*60)
-        print("CTX_LIGHTGAFFER NODES")
-        print("="*60)
-        print(message)
+        logger.info("Listed %d CTX_LightGaffer node(s)", len(gaffers))
 
     except Exception as e:
         logger.error("Failed to list gaffers: {}".format(e))
@@ -816,11 +784,7 @@ def list_all_light_contexts():
             defaultButton="OK"
         )
 
-        # Also print to Script Editor
-        print("\n" + "="*60)
-        print("CTX_LIGHTCONTEXT NODES")
-        print("="*60)
-        print(message)
+        logger.info("Listed %d CTX_LightContext node(s)", len(light_contexts))
 
     except Exception as e:
         logger.error("Failed to list light contexts: {}".format(e))
@@ -860,15 +824,7 @@ def create_shot_node():
         # Select the created node
         cmds.select(shot.node_name)
 
-        # Print to Script Editor
-        print("\n" + "="*60)
-        print("CREATED CTX_SHOT NODE")
-        print("="*60)
-        print("Node: {}".format(shot.node_name))
-        print("Edit attributes in Attribute Editor")
-        print("="*60)
-
-        logger.info("Created CTX_Shot: {}".format(shot.node_name))
+        logger.info("Created CTX_Shot: %s", shot.node_name)
 
     except Exception as e:
         logger.error("Failed to create CTX_Shot: {}".format(e))
@@ -900,15 +856,7 @@ def create_asset_node():
         # Select the created node
         cmds.select(asset.node_name)
 
-        # Print to Script Editor
-        print("\n" + "="*60)
-        print("CREATED CTX_ASSET NODE")
-        print("="*60)
-        print("Node: {}".format(asset.node_name))
-        print("Edit attributes in Attribute Editor")
-        print("="*60)
-
-        logger.info("Created CTX_Asset: {}".format(asset.node_name))
+        logger.info("Created CTX_Asset: %s", asset.node_name)
 
     except Exception as e:
         logger.error("Failed to create CTX_Asset: {}".format(e))
@@ -931,12 +879,7 @@ def create_manager_node():
         if existing is not None:
             cmds.warning("CTX_Manager already exists: {}".format(existing.node_name))
             cmds.select(existing.node_name)
-            print("\n" + "="*60)
-            print("CTX_MANAGER ALREADY EXISTS")
-            print("="*60)
-            print("Node: {}".format(existing.node_name))
-            print("Only one CTX_Manager allowed per scene")
-            print("="*60)
+            logger.warning("CTX_Manager already exists: %s (only one allowed per scene)", existing.node_name)
             return
 
         # Create the manager node with default values
@@ -949,16 +892,7 @@ def create_manager_node():
         # Select the created node
         cmds.select(manager.node_name)
 
-        # Print to Script Editor
-        print("\n" + "="*60)
-        print("CREATED CTX_MANAGER NODE")
-        print("="*60)
-        print("Node: {}".format(manager.node_name))
-        print("Edit attributes in Attribute Editor")
-        print("WARNING: Only one CTX_Manager allowed per scene")
-        print("="*60)
-
-        logger.info("Created CTX_Manager: {}".format(manager.node_name))
+        logger.info("Created CTX_Manager: %s (only one allowed per scene)", manager.node_name)
 
     except Exception as e:
         logger.error("Failed to create CTX_Manager: {}".format(e))
@@ -1008,11 +942,7 @@ def list_all_shots():
             defaultButton="OK"
         )
 
-        # Also print to Script Editor
-        print("\n" + "="*60)
-        print("CTX_SHOT NODES")
-        print("="*60)
-        print(message)
+        logger.info("Listed %d CTX_Shot node(s)", len(shots))
 
     except Exception as e:
         logger.error("Failed to list shots: {}".format(e))
@@ -1068,11 +998,7 @@ def list_all_assets():
             defaultButton="OK"
         )
 
-        # Also print to Script Editor
-        print("\n" + "="*60)
-        print("CTX_ASSET NODES")
-        print("="*60)
-        print(message)
+        logger.info("Listed %d CTX_Asset node(s)", len(assets))
 
     except Exception as e:
         logger.error("Failed to list assets: {}".format(e))
@@ -1105,6 +1031,22 @@ def install():
         maya_menu.install()
     """
     if MAYA_AVAILABLE:
+        # Configure logging from project config (if available)
+        try:
+            import os
+            from config.project_config import ProjectConfig
+            config_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                'project_configs', 'ctx_config.json'
+            )
+            if os.path.exists(config_path):
+                cfg = ProjectConfig(config_path)
+                setup_logging(**cfg.get_logging_config())
+            else:
+                setup_logging()
+        except Exception:
+            setup_logging()
+
         # Use evalDeferred to ensure Maya's UI is fully initialized before
         # creating the menu. Without this, $gMainWindow is not yet available
         # and the menu silently fails to appear.
@@ -1145,9 +1087,7 @@ def reload_all_modules():
                 break
 
     # Reload modules in reverse order (to handle dependencies)
-    print("\n" + "="*60)
-    print("RELOADING {} MODULES".format(len(modules_to_reload)))
-    print("="*60)
+    logger.info("Reloading %d modules...", len(modules_to_reload))
 
     reloaded_count = 0
     failed_count = 0
@@ -1156,15 +1096,13 @@ def reload_all_modules():
         try:
             if sys.modules[module_name] is not None:
                 importlib.reload(sys.modules[module_name])
-                print("✓ Reloaded: {}".format(module_name))
+                logger.debug("Reloaded: %s", module_name)
                 reloaded_count += 1
         except Exception as e:
-            print("✗ Failed: {} - {}".format(module_name, e))
+            logger.warning("Failed to reload %s: %s", module_name, e)
             failed_count += 1
 
-    print("="*60)
-    print("RELOAD COMPLETE: {} succeeded, {} failed".format(reloaded_count, failed_count))
-    print("="*60)
+    logger.info("Reload complete: %d succeeded, %d failed", reloaded_count, failed_count)
 
     return reloaded_count, failed_count
 

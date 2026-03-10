@@ -22,6 +22,9 @@ except ImportError:
     cmds = None
 
 from .manager import GafferManager
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 # Minimum float delta to consider an attribute changed
 FLOAT_THRESHOLD = 0.0001
@@ -92,28 +95,29 @@ class EditMode(object):
         self._snapshot = {}
 
         lights = GafferManager.get_lights_in_gaffer(self._gaffer, include_inherited=True)
-        print("EditMode.enter: found {} lights in gaffer '{}'".format(
-            len(lights), self._gaffer.get_gaffer_name()))
+        logger.debug("EditMode.enter: found %d lights in gaffer '%s'",
+                     len(lights), self._gaffer.get_gaffer_name())
         for light_info in lights:
             target = light_info.get('target')
             light_name = light_info.get('name', '')
             if not target:
-                print("EditMode.enter: '{}' has no target light (targetLight not connected)".format(light_name))
+                logger.debug("EditMode.enter: '%s' has no target light (targetLight not connected)",
+                             light_name)
                 continue
             if not cmds.objExists(target):
-                print("EditMode.enter: target '{}' for light '{}' does not exist in scene".format(
-                    target, light_name))
+                logger.warning("EditMode.enter: target '%s' for light '%s' does not exist in scene",
+                               target, light_name)
                 continue
             try:
                 node_type = cmds.nodeType(target) if cmds.objExists(target) else 'N/A'
                 values = GafferManager.capture_light_values(target)
                 self._snapshot[light_name] = values
-                print("EditMode.enter: snapshotted '{}' target='{}' type='{}' ({} values)".format(
-                    light_name, target, node_type, len(values)))
+                logger.debug("EditMode.enter: snapshotted '%s' target='%s' type='%s' (%d values)",
+                             light_name, target, node_type, len(values))
             except Exception as e:
-                print("EditMode.enter: failed to capture '{}': {}".format(light_name, e))
+                logger.warning("EditMode.enter: failed to capture '%s': %s", light_name, e)
 
-        print("EditMode.enter: snapshot complete for {} lights".format(len(self._snapshot)))
+        logger.debug("EditMode.enter: snapshot complete for %d lights", len(self._snapshot))
         self._active = True
         return self._snapshot
 
@@ -138,24 +142,26 @@ class EditMode(object):
         changed_report = {}
 
         lights = GafferManager.get_lights_in_gaffer(self._gaffer, include_inherited=True)
-        print("EditMode.commit: comparing {} lights against snapshot ({} entries)".format(
-            len(lights), len(self._snapshot)))
+        logger.debug("EditMode.commit: comparing %d lights against snapshot (%d entries)",
+                     len(lights), len(self._snapshot))
         for light_info in lights:
             target = light_info.get('target')
             light_name = light_info.get('name', '')
             if not target or not cmds.objExists(target):
-                print("EditMode.commit: skipping '{}' (target '{}' not found)".format(light_name, target))
+                logger.debug("EditMode.commit: skipping '%s' (target '%s' not found)",
+                             light_name, target)
                 continue
 
             if light_name not in self._snapshot:
-                print("EditMode.commit: skipping '{}' (no snapshot — was not captured at enter)".format(light_name))
+                logger.debug("EditMode.commit: skipping '%s' (no snapshot - was not captured at enter)",
+                             light_name)
                 continue
             snapshot = self._snapshot[light_name]
 
             try:
                 current = GafferManager.capture_light_values(target)
             except Exception as e:
-                print("EditMode.commit: failed to capture '{}': {}".format(light_name, e))
+                logger.warning("EditMode.commit: failed to capture '%s': %s", light_name, e)
                 continue
 
             light_changes = {}
@@ -252,7 +258,7 @@ class EditMode(object):
                 self._apply_snapshot_to_light(target, snapshot)
                 restored += 1
             except Exception as e:
-                print("EditMode.cancel: failed to restore '{}': {}".format(light_name, e))
+                logger.warning("EditMode.cancel: failed to restore '%s': %s", light_name, e)
 
         self._active = False
         self._snapshot = {}
@@ -293,7 +299,7 @@ class EditMode(object):
             ctx.set_attribute('{}Enabled'.format(attr_name), True)
             ctx.set_override_mode(attr_name, mode)
         except Exception as e:
-            print("EditMode: failed to store override {}.{}: {}".format(light_name, attr_name, e))
+            logger.error("EditMode: failed to store override %s.%s: %s", light_name, attr_name, e)
 
     def _store_compound_override(self, light_name, group, sub_attrs, values_dict, mode='replace'):
         """Store a compound attribute group override in this gaffer's light context.
@@ -315,7 +321,7 @@ class EditMode(object):
             ctx.set_attribute('{}Enabled'.format(group), True)
             ctx.set_override_mode(group, mode)
         except Exception as e:
-            print("EditMode: failed to store compound override {}.{}: {}".format(light_name, group, e))
+            logger.error("EditMode: failed to store compound override %s.%s: %s", light_name, group, e)
 
     def _get_or_create_light_ctx(self, light_name):
         """Get or create a light context in this gaffer for the given light.
@@ -336,7 +342,7 @@ class EditMode(object):
         # Not in this gaffer; find target light from parent chain and create override
         target_light = GafferManager._find_light_in_chain(self._gaffer, light_name)
         if target_light is None:
-            print("EditMode: light '{}' not found in chain".format(light_name))
+            logger.warning("EditMode: light '%s' not found in chain", light_name)
             return None
 
         ctx = CTXLightContextNode.create(

@@ -15,9 +15,10 @@ from __future__ import print_function
 
 import os
 import re
-import logging
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class AssetScanner(object):

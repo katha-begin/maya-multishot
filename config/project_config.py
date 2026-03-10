@@ -414,6 +414,16 @@ class ProjectConfig(object):
             return None
         return render_config.get('camera')
 
+    def get_logging_config(self):
+        """Get logging configuration.
+
+        Returns:
+            dict: Logging config with keys: level, file, verbose.
+                  Defaults to {'level': 'INFO', 'file': None, 'verbose': False}
+                  if the 'logging' section is absent from the config file.
+        """
+        return self.data.get('logging', {'level': 'INFO', 'file': None, 'verbose': False})
+
     def __repr__(self):
         """String representation of ProjectConfig."""
         return "ProjectConfig(config_path='{}', version='{}')".format(

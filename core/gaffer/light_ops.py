@@ -19,6 +19,9 @@ from ..nodes.wrappers.light_context import CTXLightContextNode
 from .resolver import AttributeResolver
 from .manager import GafferManager
 from ..renderers import get_maya_attr
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class LightOperations(object):
@@ -80,8 +83,8 @@ class LightOperations(object):
                     LightOperations._apply_light_ctx_to_maya(light_ctx, target)
                     results[light_name] = True
                 except Exception as e:
-                    print("Warning: Failed to apply {} from gaffer '{}': {}".format(
-                        light_name, gaffer_node.get_gaffer_name(), e))
+                    logger.warning("Failed to apply %s from gaffer '%s': %s",
+                                   light_name, gaffer_node.get_gaffer_name(), e)
                     results[light_name] = False
 
         return results
@@ -103,7 +106,7 @@ class LightOperations(object):
             originals_node = CTXLightOriginalsNode.get_or_create()
             originals = originals_node.get_all_originals()
         except Exception as e:
-            print("LightOperations.restore_originals: could not load originals: {}".format(e))
+            logger.error("LightOperations.restore_originals: could not load originals: %s", e)
             return 0
 
         restored = 0
@@ -113,7 +116,7 @@ class LightOperations(object):
                     LightOperations._apply_values_to_maya(light_shape, values)
                     restored += 1
                 except Exception as e:
-                    print("Warning: Failed to restore {}: {}".format(light_shape, e))
+                    logger.warning("Failed to restore %s: %s", light_shape, e)
 
         return restored
 
@@ -214,7 +217,7 @@ class LightOperations(object):
                 synced = LightOperations.sync_light_from_maya(gaffer, light_name, attributes)
                 results[light_name] = synced
             except Exception as e:
-                print("Warning: Failed to sync {}: {}".format(light_name, e))
+                logger.warning("Failed to sync %s: %s", light_name, e)
                 results[light_name] = {'error': str(e)}
 
         return results
@@ -366,7 +369,7 @@ class LightOperations(object):
             from ..nodes.wrappers.light_originals import CTXLightOriginalsNode
             originals_node = CTXLightOriginalsNode.get_or_create()
         except Exception as e:
-            print("LightOperations._restore_originals_for_targets: {}".format(e))
+            logger.error("LightOperations._restore_originals_for_targets: %s", e)
             return
 
         for target in target_shapes:
@@ -377,7 +380,7 @@ class LightOperations(object):
                 try:
                     LightOperations._apply_values_to_maya(target, values)
                 except Exception as e:
-                    print("Warning: Failed to restore originals for '{}': {}".format(target, e))
+                    logger.warning("Failed to restore originals for '%s': %s", target, e)
 
     @staticmethod
     def _apply_values_to_maya(light_shape, values):

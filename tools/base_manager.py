@@ -10,6 +10,10 @@ Provides shared infrastructure used by all tool managers:
 from __future__ import absolute_import
 from __future__ import print_function
 
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
+
 try:
     import maya.cmds as _maya_cmds
     MAYA_AVAILABLE = True

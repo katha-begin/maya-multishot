@@ -12,6 +12,9 @@ except ImportError:
 
 from ..nodes.wrappers.gaffer import CTXLightGafferNode
 from ..nodes.wrappers.light_context import CTXLightContextNode
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class AttributeResolver(object):

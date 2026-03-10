@@ -12,12 +12,15 @@ try:
 except ImportError:
     cmds = None
 
+from ..logging_config import get_logger
 from .redshift import (
     ATTR_MAP as RS_ATTR_MAP,
     LIGHT_TYPES as RS_LIGHT_TYPES,
     LIGHT_TYPE_ATTR_OVERRIDES as RS_TYPE_OVERRIDES,
 )
 from .arnold import ATTR_MAP as AI_ATTR_MAP, LIGHT_TYPES as AI_LIGHT_TYPES
+
+logger = get_logger(__name__)
 
 
 def get_node_type(node):

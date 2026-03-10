@@ -179,6 +179,11 @@
     },
     "versions": {}
   },
+  "logging": {
+    "level": "INFO",
+    "file": null,
+    "verbose": false
+  },
   "shotMetadata": {
     "enabled": true,
     "filenamePattern": ".{shot_id}.json",

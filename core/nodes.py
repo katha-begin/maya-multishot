@@ -13,7 +13,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import logging
+from core.logging_config import get_logger
 
 try:
     import maya.cmds as cmds
@@ -39,7 +39,7 @@ except ImportError:
 
     cmds = _MockCmds()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Supported node types
 NODE_TYPE_AI_STANDIN = 'aiStandIn'
