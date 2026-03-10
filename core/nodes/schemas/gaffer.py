@@ -6,9 +6,10 @@ Gaffers can be chained (Master → Sequence → Shot) for hierarchical light man
 """
 
 from ..base import NodeSchema
+from .lock_mixin import LockSchemaMixin
 
 
-class CTXLightGafferSchema(NodeSchema):
+class CTXLightGafferSchema(LockSchemaMixin, NodeSchema):
     """Schema for CTX_LightGaffer node.
     
     A gaffer is a container for light contexts that provides:

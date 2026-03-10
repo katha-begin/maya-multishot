@@ -6,9 +6,10 @@ asset instance in a shot.
 """
 
 from ..base import NodeSchema
+from .lock_mixin import LockSchemaMixin
 
 
-class CTXAssetSchema(NodeSchema):
+class CTXAssetSchema(LockSchemaMixin, NodeSchema):
     """Schema for CTX_Asset node.
     
     An asset node provides:

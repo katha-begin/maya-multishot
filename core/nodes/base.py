@@ -14,9 +14,37 @@ except ImportError:
     cmds = None
 
 
-class NodeSchema(object):
+class _NodeSchemaMeta(type):
+    """Metaclass for NodeSchema that merges LOCK_ATTRIBUTES from mixins.
+
+    When a schema class is created, any LOCK_ATTRIBUTES dict found on mixin
+    classes in the MRO is merged into the schema's ATTRIBUTES dict.  This
+    allows LockSchemaMixin to inject lock fields without requiring each
+    schema subclass to manually copy the entries.
+    """
+
+    def __new__(mcs, name, bases, namespace):
+        cls = super(_NodeSchemaMeta, mcs).__new__(mcs, name, bases, namespace)
+
+        # Collect LOCK_ATTRIBUTES from every class in the MRO that defines it,
+        # but only when the class itself declares ATTRIBUTES (i.e. it is a
+        # concrete schema, not NodeSchema or a mixin base).
+        if 'ATTRIBUTES' in namespace:
+            merged = dict(cls.ATTRIBUTES)
+            for base in cls.__mro__:
+                lock_attrs = base.__dict__.get('LOCK_ATTRIBUTES')
+                if lock_attrs:
+                    for attr_name, attr_def in lock_attrs.items():
+                        if attr_name not in merged:
+                            merged[attr_name] = attr_def
+            cls.ATTRIBUTES = merged
+
+        return cls
+
+
+class NodeSchema(object, metaclass=_NodeSchemaMeta):
     """Base class for node schema definitions.
-    
+
     Subclasses should define:
     - NODE_TYPE: Maya node type (e.g., 'network')
     - NODE_PREFIX: Node name prefix (e.g., 'CTX_Asset')
@@ -25,13 +53,13 @@ class NodeSchema(object):
     - ATTRIBUTES: Dict of attribute definitions
     - CONNECTIONS: Dict of connection definitions
     """
-    
+
     # Override in subclasses
     NODE_TYPE = None          # Maya node type (e.g., 'network')
     NODE_PREFIX = None        # Node name prefix (e.g., 'CTX_Asset')
     CATEGORY = None           # Category for organization
     DESCRIPTION = None        # Human-readable description
-    
+
     ATTRIBUTES = {}           # Attribute definitions
     CONNECTIONS = {}          # Connection definitions
     

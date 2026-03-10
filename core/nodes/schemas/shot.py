@@ -6,9 +6,10 @@ assets for that shot.
 """
 
 from ..base import NodeSchema
+from .lock_mixin import LockSchemaMixin
 
 
-class CTXShotSchema(NodeSchema):
+class CTXShotSchema(LockSchemaMixin, NodeSchema):
     """Schema for CTX_Shot node.
 
     A shot node provides:
@@ -99,6 +100,16 @@ class CTXShotSchema(NodeSchema):
     }
     
     CONNECTIONS = {
+        # Slate connection (INPUT - receives from CTXSlateNode)
+        # Unidirectional: Slate.message -> Shot.slate
+        'slate': {
+            'type': 'message',
+            'multi': False,
+            'direction': 'input',
+            'accepts': ['CTX_Slate'],
+            'description': 'Input connection from CTXSlateNode (Slate.message -> Shot.slate)',
+        },
+
         # Gaffer connection (INPUT - receives from LightGaffer, direct ownership)
         # Unidirectional: Gaffer.message → Shot.gaffer
         'gaffer': {

@@ -17,6 +17,8 @@ from .light_originals import CTXLightOriginalsNode
 from .shot import CTXShotNode
 from .asset import CTXAssetNode
 from .manager import CTXManagerNode
+from .slate import CTXSlateNode
+from .slate_layer import CTXSlateLayerNode
 
 __all__ = [
     'MAYA_AVAILABLE',
@@ -27,5 +29,7 @@ __all__ = [
     'CTXShotNode',
     'CTXAssetNode',
     'CTXManagerNode',
+    'CTXSlateNode',
+    'CTXSlateLayerNode',
 ]
 

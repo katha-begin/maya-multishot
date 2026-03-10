@@ -176,6 +176,28 @@ class CTXLightGafferNode(NodeWrapper):
         """
         return self.get_attribute('enabled')
 
+    # Lock convenience methods
+
+    def lock(self, user=None):
+        """Lock this gaffer node."""
+        from core.lock_manager import LockManager
+        LockManager.lock_node(self.node_name, user=user)
+
+    def unlock(self):
+        """Unlock this gaffer node."""
+        from core.lock_manager import LockManager
+        LockManager.unlock_node(self.node_name)
+
+    def is_locked(self):
+        """Return True if this gaffer is locked."""
+        from core.lock_manager import LockManager
+        return LockManager.is_locked(self.node_name)
+
+    def get_lock_info(self):
+        """Return lock metadata dict."""
+        from core.lock_manager import LockManager
+        return LockManager.get_lock_info(self.node_name)
+
     @staticmethod
     def list_all():
         """List all CTX_LightGaffer nodes in scene.

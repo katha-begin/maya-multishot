@@ -6,9 +6,10 @@ It owns a sequence-level light gaffer for sequence-wide lighting adjustments.
 """
 
 from ..base import NodeSchema
+from .lock_mixin import LockSchemaMixin
 
 
-class CTXSequenceSchema(NodeSchema):
+class CTXSequenceSchema(LockSchemaMixin, NodeSchema):
     """Schema for CTX_Sequence node.
     
     A sequence node provides:
@@ -74,6 +75,16 @@ class CTXSequenceSchema(NodeSchema):
             'direction': 'input',
             'accepts': ['CTX_Shot'],
             'description': 'Input connections from CTX_Shot nodes (Shot.message → Sequence.shots[i])'
+        },
+
+        # Slate connection (INPUT - receives from CTXSlateNode)
+        # Unidirectional: Slate.message -> Sequence.slate
+        'slate': {
+            'type': 'message',
+            'multi': False,
+            'direction': 'input',
+            'accepts': ['CTX_Slate'],
+            'description': 'Input connection from CTXSlateNode (Slate.message -> Sequence.slate)',
         },
 
         # Gaffer connection (INPUT - receives from Gaffer)
