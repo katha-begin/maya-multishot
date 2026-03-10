@@ -1099,14 +1099,16 @@ def install():
 
     Example userSetup.py:
         import sys
-        sys.path.append('E:/dev/maya-multishot')
+        sys.path.append(r'T:\pipeline\development\maya\maya-multishot')
 
         from tools import maya_menu
         maya_menu.install()
     """
     if MAYA_AVAILABLE:
-        # Use evalDeferred to ensure Maya is fully initialized
-        cmds.evalDeferred(create_ctx_menu)
+        # Use evalDeferred to ensure Maya's UI is fully initialized before
+        # creating the menu. Without this, $gMainWindow is not yet available
+        # and the menu silently fails to appear.
+        cmds.evalDeferred(lambda: create_ctx_menu(), lowestPriority=True)
         logger.info("CTX Tools menu will be created when Maya is ready")
     else:
         logger.warning("Maya is not available, menu will not be created")
