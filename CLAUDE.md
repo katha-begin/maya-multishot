@@ -12,14 +12,14 @@ Maya Multishot Pipeline is a Maya plugin that lets artists work on multiple shot
 
 ---
 
-## 2. Current State (2026-03-08)
+## 2. Current State (2026-03-10)
 
 | Phase | Status | Branch |
 |---|---|---|
 | Phase 0–5, Phase 1-schema | ✅ Complete | `feature/gaffer-system` |
 | Phase 2 — UI & Tools Framework | ✅ Complete | `feature/ui-tools-framework` |
 | Phase 3 — Gaffer System | ✅ Complete (core + UI) | `feature/ui-tools-framework` |
-| **Phase 4 — Production & Automation** | **Not started — decision pending** | TBD |
+| **Phase 4 — Production & Automation** | **✅ Complete (Streams A–E)** | `feature/phase4-production-automation` |
 
 ### Phase 3 — Complete ✅
 
@@ -45,19 +45,25 @@ Key decisions made in Phase 3 (do not revert):
 - `tests/test_asset_manager.py` — 10 pre-existing failures (Phase 4+ renderer work)
 - `core/ctx_converter.py::convert_to_ctx()` — still uses `core.custom_nodes`, not in active path
 
-### Phase 4 — Production & Automation (Decision Pending)
+### Phase 4 — Production & Automation ✅
 
-Full analysis at: `spec/PRODUCTION_READINESS.md`
+Full task docs at: `spec/phase4/` (INDEX.md + STREAM_A through STREAM_E)
 
-**P1 gaps (blocking mass production):**
-- No headless pipeline API — farm scripts cannot call the tool without knowing internals
-- No scene validator — scene drift is discovered at render time, not before
-- No gaffer JSON export/import — lighting presets cannot be shared between scenes
+**Completed (Streams A–E):**
+- Stream A: `tools/pipeline_api.py` + `tools/cli.py` — headless API + argparse CLI (5 commands)
+- Stream B: `core/validator/` — SceneValidator with 6 named checks, ValidatorReport
+- Stream C: `core/logging_config.py` — structured logging, Maya output handler, replaced all print()
+- Stream D: Config-driven parameters — 7 hardcoded values removed, 8 new ProjectConfig methods
+- Stream E: `get_active_renderer()`, renderer config in JSON, config-driven standin paths
+
+**Remaining gaps (deferred — not blocking):**
 - No production tracker integration — shot creation is manual, frame ranges drift
 - No undo/redo — gaffer operations bypass Maya's undo stack entirely
+- Asset Manager standin creation (Stream F) — deferred
+- VRay renderer adapter — deferred
+- No farm render hook (Deadline/Tractor pre-render)
 
-**P2 gaps (significant at scale):**
-- No structured logging (print statements throughout)
+**P2 gaps still open:**
 - Gaffer attributes hardcoded in Python (cannot be extended via config)
 - No farm render hook (no pre-render shot-apply for Deadline/Tractor)
 - No background threading (long operations block UI)
