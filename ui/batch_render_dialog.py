@@ -24,8 +24,6 @@ try:
 except ImportError:
     MAYA_AVAILABLE = False
 
-from ui.base_dialog import BaseDialog
-
 
 # ---------------------------------------------------------------------------
 # Add Shot popup dialog
@@ -69,6 +67,9 @@ class AddShotDialog(QtWidgets.QDialog):
         self._list.setColumnWidth(1, 80)
         self._list.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self._list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
+        self._list.verticalHeader().setDefaultSectionSize(22)
+        self._list.verticalHeader().setVisible(False)
+        self._list.setAlternatingRowColors(True)
         layout.addWidget(self._list)
 
         # Select all / clear row
@@ -273,7 +274,7 @@ class RenderSettingsDialog(QtWidgets.QDialog):
 # Main dialog
 # ---------------------------------------------------------------------------
 
-class BatchRenderDialog(BaseDialog):
+class BatchRenderDialog(QtWidgets.QMainWindow):
     """Non-modal Batch Render Monitor and Configure dialog.
 
     Monitor tab  -- persistent task list showing all render jobs this session.
@@ -298,14 +299,25 @@ class BatchRenderDialog(BaseDialog):
             'reserve_gpus': 1,
         }
 
-        super(BatchRenderDialog, self).__init__(parent=parent)
-
+        super(BatchRenderDialog, self).__init__(parent)
+        self.setObjectName('BatchRenderDialog')
         self.setWindowTitle('Batch Render')
-        self.setModal(False)
-        self.resize(780, 640)
+        self.setWindowFlags(
+            QtCore.Qt.Tool |
+            QtCore.Qt.WindowCloseButtonHint |
+            QtCore.Qt.WindowMinimizeButtonHint |
+            QtCore.Qt.WindowMaximizeButtonHint
+        )
+        self.resize(460, 600)
 
+        self._setup_ui()
+        self._connect_signals()
         self._populate_layer_list()
         self._refresh_gpu_panel()
+
+        self._gpu_timer = QtCore.QTimer(self)
+        self._gpu_timer.setInterval(5000)
+        self._gpu_timer.timeout.connect(self._refresh_gpu_panel)
         self._gpu_timer.start()
 
     # ------------------------------------------------------------------
@@ -324,94 +336,112 @@ class BatchRenderDialog(BaseDialog):
     # ------------------------------------------------------------------
 
     def _setup_ui(self):
-        self._gpu_timer = QtCore.QTimer(self)
-        self._gpu_timer.setInterval(5000)
-
-        main_layout = QtWidgets.QVBoxLayout(self)
-        main_layout.setSpacing(6)
-        main_layout.setContentsMargins(8, 8, 8, 8)
-
-        # Menu bar
-        menu_bar = QtWidgets.QMenuBar()
-        tools_menu = menu_bar.addMenu('Tools')
+        # Menu bar (native QMainWindow menuBar)
+        tools_menu = self.menuBar().addMenu('Tools')
         settings_action = QtWidgets.QAction('Settings', self)
         settings_action.triggered.connect(self._open_settings)
         tools_menu.addAction(settings_action)
-        main_layout.setMenuBar(menu_bar)
 
+        # Central widget
+        container = QtWidgets.QWidget()
+        self.setCentralWidget(container)
+        main_layout = QtWidgets.QVBoxLayout(container)
+        main_layout.setSpacing(6)
+        main_layout.setContentsMargins(8, 8, 8, 8)
+
+        # Tab widget
         self._tab_widget = QtWidgets.QTabWidget()
         main_layout.addWidget(self._tab_widget)
 
-        # ---- Monitor tab ----
-        monitor_widget = QtWidgets.QWidget()
-        monitor_layout = QtWidgets.QVBoxLayout(monitor_widget)
-        monitor_layout.setContentsMargins(4, 4, 4, 4)
+        self._build_monitor_tab()
+        self._build_configure_tab()
 
-        # GPU status
+    def _build_monitor_tab(self):
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        # GPU Status
         gpu_group = QtWidgets.QGroupBox('GPU Status')
         gpu_inner = QtWidgets.QVBoxLayout(gpu_group)
+        gpu_inner.setSpacing(2)
         self._gpu_table = QtWidgets.QTableWidget(0, 5)
         self._gpu_table.setHorizontalHeaderLabels(['GPU', 'Name', 'VRAM', 'Util', 'Status'])
         self._gpu_table.horizontalHeader().setStretchLastSection(True)
         self._gpu_table.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self._gpu_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self._gpu_table.setFixedHeight(100)
+        self._gpu_table.verticalHeader().setDefaultSectionSize(22)
+        self._gpu_table.verticalHeader().setVisible(False)
         gpu_inner.addWidget(self._gpu_table)
-        monitor_layout.addWidget(gpu_group)
+        layout.addWidget(gpu_group)
 
-        # Task list
+        # Render Tasks header row
         task_header = QtWidgets.QHBoxLayout()
         task_header.addWidget(QtWidgets.QLabel('Render Tasks'))
         task_header.addStretch()
         clear_btn = QtWidgets.QPushButton('Clear Completed')
+        clear_btn.setFixedHeight(22)
         clear_btn.clicked.connect(self._clear_completed_tasks)
         task_header.addWidget(clear_btn)
-        monitor_layout.addLayout(task_header)
+        layout.addLayout(task_header)
 
         self._task_table = QtWidgets.QTableWidget(0, 5)
-        self._task_table.setHorizontalHeaderLabels(
-            ['Shot', 'Layer', 'Frames', 'GPU', 'Status'])
+        self._task_table.setHorizontalHeaderLabels(['Shot', 'Layer', 'Frames', 'GPU', 'Status'])
         self._task_table.horizontalHeader().setStretchLastSection(True)
         self._task_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self._task_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self._task_table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
-        monitor_layout.addWidget(self._task_table)
+        self._task_table.verticalHeader().setDefaultSectionSize(22)
+        self._task_table.verticalHeader().setVisible(False)
+        self._task_table.setAlternatingRowColors(True)
+        layout.addWidget(self._task_table)
 
-        task_btns = QtWidgets.QHBoxLayout()
+        btn_row = QtWidgets.QHBoxLayout()
         self._cancel_selected_btn = QtWidgets.QPushButton('Cancel Selected')
         self._cancel_all_btn = QtWidgets.QPushButton('Cancel All')
+        self._cancel_selected_btn.setFixedHeight(24)
+        self._cancel_all_btn.setFixedHeight(24)
         self._cancel_selected_btn.setEnabled(False)
         self._cancel_all_btn.setEnabled(False)
-        task_btns.addWidget(self._cancel_selected_btn)
-        task_btns.addWidget(self._cancel_all_btn)
-        task_btns.addStretch()
-        monitor_layout.addLayout(task_btns)
+        btn_row.addWidget(self._cancel_selected_btn)
+        btn_row.addWidget(self._cancel_all_btn)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
 
-        self._tab_widget.addTab(monitor_widget, 'Monitor')
+        self._tab_widget.addTab(widget, 'Monitor')
 
-        # ---- Configure tab ----
-        config_widget = QtWidgets.QWidget()
-        config_layout = QtWidgets.QVBoxLayout(config_widget)
-        config_layout.setContentsMargins(4, 4, 4, 4)
+    def _build_configure_tab(self):
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(widget)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
 
         middle = QtWidgets.QHBoxLayout()
+        middle.setSpacing(6)
 
         # Shot list
         shot_group = QtWidgets.QGroupBox('Shot List')
         shot_inner = QtWidgets.QVBoxLayout(shot_group)
+        shot_inner.setSpacing(4)
         self._shot_table = QtWidgets.QTableWidget(0, 2)
         self._shot_table.setHorizontalHeaderLabels(['Shot', 'Frame Range'])
         self._shot_table.horizontalHeader().setStretchLastSection(False)
         self._shot_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
         self._shot_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
         self._shot_table.setColumnWidth(1, 80)
-        self._shot_table.setMinimumWidth(300)
+        self._shot_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self._shot_table.setAlternatingRowColors(True)
+        self._shot_table.verticalHeader().setDefaultSectionSize(22)
+        self._shot_table.verticalHeader().setVisible(False)
         shot_inner.addWidget(self._shot_table)
 
         shot_btn_row = QtWidgets.QHBoxLayout()
         self._add_shot_btn = QtWidgets.QPushButton('Add')
         self._remove_shot_btn = QtWidgets.QPushButton('Remove')
         self._select_all_btn = QtWidgets.QPushButton('Select All')
+        for btn in (self._add_shot_btn, self._remove_shot_btn, self._select_all_btn):
+            btn.setFixedHeight(24)
         shot_btn_row.addWidget(self._add_shot_btn)
         shot_btn_row.addWidget(self._remove_shot_btn)
         shot_btn_row.addWidget(self._select_all_btn)
@@ -422,25 +452,25 @@ class BatchRenderDialog(BaseDialog):
         layer_group = QtWidgets.QGroupBox('Render Layers')
         layer_inner = QtWidgets.QVBoxLayout(layer_group)
         self._layer_list = QtWidgets.QListWidget()
-        self._layer_list.setMinimumWidth(160)
+        self._layer_list.setFixedWidth(160)
         layer_inner.addWidget(self._layer_list)
         middle.addWidget(layer_group)
 
-        config_layout.addLayout(middle)
+        layout.addLayout(middle)
 
-        # Start buttons
         start_row = QtWidgets.QHBoxLayout()
         self._dry_run_btn = QtWidgets.QPushButton('Dry Run')
         self._start_btn = QtWidgets.QPushButton('Start Render')
+        self._dry_run_btn.setFixedHeight(24)
+        self._start_btn.setFixedHeight(24)
         start_row.addStretch()
         start_row.addWidget(self._dry_run_btn)
         start_row.addWidget(self._start_btn)
-        config_layout.addLayout(start_row)
+        layout.addLayout(start_row)
 
-        self._tab_widget.addTab(config_widget, 'Configure')
+        self._tab_widget.addTab(widget, 'Configure')
 
     def _connect_signals(self):
-        self._gpu_timer.timeout.connect(self._refresh_gpu_panel)
         self._add_shot_btn.clicked.connect(self._on_add_shot)
         self._remove_shot_btn.clicked.connect(self._on_remove_shot)
         self._select_all_btn.clicked.connect(self._shot_table.selectAll)
@@ -816,5 +846,6 @@ class BatchRenderDialog(BaseDialog):
     # ------------------------------------------------------------------
 
     def closeEvent(self, event):
-        self._gpu_timer.stop()
+        if self._gpu_timer:
+            self._gpu_timer.stop()
         super(BatchRenderDialog, self).closeEvent(event)

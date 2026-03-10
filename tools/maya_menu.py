@@ -482,39 +482,17 @@ _batch_render_dialog = None
 
 
 def open_batch_render_dialog():
-    """Open the Batch Render dialog."""
-    global _batch_render_dialog
-
-    if not MAYA_AVAILABLE:
-        logger.error("Maya is not available")
-        return
-
+    """Open Batch Render dialog using dockable launcher."""
+    import sys
+    import os
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
     try:
-        from ui.batch_render_dialog import BatchRenderDialog
-
-        parent = get_maya_main_window()
-
-        if BatchRenderDialog._instance is None:
-            _batch_render_dialog = BatchRenderDialog(parent=parent)
-            BatchRenderDialog._instance = _batch_render_dialog
-        else:
-            _batch_render_dialog = BatchRenderDialog._instance
-
-        _batch_render_dialog.show()
-        _batch_render_dialog.raise_()
-
-        logger.info("Batch Render dialog opened")
-
-    except Exception as e:
-        logger.error("Failed to open Batch Render dialog: {}".format(e))
-        import traceback
-        traceback.print_exc()
-        cmds.confirmDialog(
-            title="Error",
-            message="Failed to open Batch Render dialog:\n{}".format(e),
-            button=["OK"],
-            defaultButton="OK"
-        )
+        exec(open(os.path.join(repo_root, 'launch_batch_render_dockable.py')).read())
+    except Exception as exc:
+        import maya.cmds as cmds
+        cmds.warning("Failed to launch Batch Render: {}".format(exc))
 
 
 def open_asset_manager():
