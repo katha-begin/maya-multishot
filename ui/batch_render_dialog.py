@@ -331,17 +331,16 @@ class BatchRenderDialog(BaseDialog):
         main_layout.setSpacing(6)
         main_layout.setContentsMargins(8, 8, 8, 8)
 
-        # Top toolbar: tabs + gear
-        toolbar = QtWidgets.QHBoxLayout()
-        self._tab_widget = QtWidgets.QTabWidget()
-        toolbar.addWidget(self._tab_widget)
+        # Menu bar
+        menu_bar = QtWidgets.QMenuBar()
+        tools_menu = menu_bar.addMenu('Tools')
+        settings_action = QtWidgets.QAction('Settings', self)
+        settings_action.triggered.connect(self._open_settings)
+        tools_menu.addAction(settings_action)
+        main_layout.setMenuBar(menu_bar)
 
-        gear_btn = QtWidgets.QPushButton('\u2699 Settings')
-        gear_btn.setFixedWidth(90)
-        gear_btn.setToolTip('Configure render settings')
-        gear_btn.clicked.connect(self._open_settings)
-        toolbar.addWidget(gear_btn, 0, QtCore.Qt.AlignTop)
-        main_layout.addLayout(toolbar)
+        self._tab_widget = QtWidgets.QTabWidget()
+        main_layout.addWidget(self._tab_widget)
 
         # ---- Monitor tab ----
         monitor_widget = QtWidgets.QWidget()
