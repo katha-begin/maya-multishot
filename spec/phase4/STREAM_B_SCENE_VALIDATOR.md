@@ -1,6 +1,6 @@
 # Stream B — Scene Validator
 
-**Status:** Not Started
+**Status:** Complete
 **Priority:** P1 — Scene drift currently only discovered at render time
 **Branch:** `feature/phase4-production-automation`
 **Dependencies:** Stream C (logging) should be done first
@@ -270,11 +270,11 @@ File: `tests/test_scene_validator.py`
 
 ## Completion Criteria
 
-- [ ] `core/validator/` package created with all files
-- [ ] All 6 checks implemented
-- [ ] `SceneValidator.validate_shot()` works without Maya (headless)
-- [ ] `SceneValidator.validate_shot()` works with Maya (skipped checks pass safely)
-- [ ] `ValidatorReport.to_dict()` produces valid JSON
-- [ ] `ValidatorReport.to_text()` produces readable summary
-- [ ] All tests pass
-- [ ] No regressions in existing test suite
+- [x] `core/validator/` package created with all files
+- [x] All 6 checks implemented
+- [x] `SceneValidator.validate_shot()` works without Maya (headless)
+- [x] `SceneValidator.validate_shot()` works with Maya (skipped checks pass safely)
+- [x] `ValidatorReport.to_dict()` produces valid JSON
+- [x] `ValidatorReport.to_text()` produces readable summary
+- [x] All tests pass (39/39)
+- [x] No regressions in existing test suite
