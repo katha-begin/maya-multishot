@@ -12,14 +12,15 @@ Maya Multishot Pipeline is a Maya plugin that lets artists work on multiple shot
 
 ---
 
-## 2. Current State (2026-03-10)
+## 2. Current State (2026-03-11)
 
 | Phase | Status | Branch |
 |---|---|---|
 | Phase 0–5, Phase 1-schema | ✅ Complete | `feature/gaffer-system` |
 | Phase 2 — UI & Tools Framework | ✅ Complete | `feature/ui-tools-framework` |
 | Phase 3 — Gaffer System | ✅ Complete (core + UI) | `feature/ui-tools-framework` |
-| **Phase 4 — Production & Automation** | **✅ Complete (Streams A–E)** | `feature/phase4-production-automation` |
+| Phase 4 — Production & Automation | ✅ Complete (Streams A–E) | `feature/phase4-production-automation` |
+| **Phase 5 — Batch Render** | **✅ Complete** | `feature/batch-render` |
 
 ### Phase 3 — Complete ✅
 
@@ -74,6 +75,59 @@ Full task docs at: `spec/phase4/` (INDEX.md + STREAM_A through STREAM_E)
 - No CI pipeline
 - Five orphaned UI files not yet removed
 - No gaffer-sharing visibility in UI
+
+### Phase 5 — Batch Render ✅
+
+Full task docs at: `spec/phase5/` (INDEX.md + STREAM_1A through STREAM_4)
+
+**Completed:**
+
+**Core batch package (`core/batch/`):**
+- `render_job.py` — `RenderJob` + `JobStatus` (QUEUED/PREPARING/RENDERING/DONE/FAILED/CANCELLED)
+- `gpu_inventory.py` — `detect_gpus()` via nvidia-smi, `get_available_gpus()`. `CREATE_NO_WINDOW` flag prevents console flash on Windows.
+- `temp_scene_manager.py` — FIFO ring buffer with JSON manifest, configurable max count
+- `render_setup_manager.py` — Maya Render Setup API wrapper, headless-safe
+- `scene_preparer.py` — opens scene, applies CTX context, resolves layers/camera/frames, saves temp copy
+- `job_dispatcher.py` — `threading.Semaphore(1)` per GPU; renderer and GPU env var resolved at dispatch time (never hardcoded); `MAYA_APP_DIR` unique per GPU
+- `render_queue.py` — orchestrates prepare → dispatch, round-robin GPU assignment
+- `render_state.py` — session singleton `{shot_id: status}` with listener callbacks (thread-safe)
+- `output_checker.py` — filesystem scan at resolved `imgPath`; returns HAS_OUTPUT / NO_OUTPUT / UNKNOWN
+
+**Config additions:**
+- `project_configs/ctx_config.json` — `batchRender` section (reservedGpus, tempSceneMaxCount, per-renderer gpuEnvVar)
+- `config/project_config.py` — 6 new methods: `get_batch_render_config()`, `get_reserved_gpus()`, `get_temp_scene_max_count()`, `get_temp_scene_dir()`, `get_batch_log_dir()`, `get_frame_handles()`
+- `core/renderers/__init__.py` — `get_gpu_env_var(renderer_name, config)` — returns None if not configured (CPU/unknown renderers work fine)
+
+**UI:**
+- `ui/batch_render_dialog.py` — `BatchRenderDialog(QMainWindow)`, dockable, 460×600, 22px compact rows:
+  - Monitor tab: GPU info table + persistent task table, Clear Completed, Cancel buttons
+  - Configure tab: blank shot list (Add via popup), Shot col stretches, Frame Range 80px fixed
+  - Native `menuBar()` with Tools > Settings (no inline gear button)
+  - `AddShotDialog` — lists CTX shots via `CTXShotNode.list_all()`, filter, checkboxes
+  - `get_or_create()` classmethod; `queue_quick_render_jobs()` entry point from MainWindow
+- `launch_batch_render_dockable.py` — `cmds.dockControl('BatchRenderDockControl', area='right', width=460)`
+
+**Multishot Manager additions (`ui/main_window.py`):**
+- "Rnd" column (col 6, 28px): colored `●` badge — gray=no output, orange=queued/rendering, green=done, red=failed
+- `MSceneMessage.kAfterOpen/kAfterNew` callbacks — clears state, reloads shots via `QTimer.singleShot`. Fixes stale shots bug.
+- Render state listener for real-time badge updates
+- Right-click "Quick Render (First & Last Frame)" — 2 explicit single-frame jobs per shot, current active layer only
+- Right-click "Refresh Render Status" — re-scans output_checker for all shots
+
+**Pipeline API / CLI:**
+- `tools/pipeline_api.py` — `PipelineAPI.batch_render()` added
+- `tools/cli.py` — `batch-render` subcommand with `--shots`, `--all-shots`, `--layers`, `--dry-run`, `--reserve-gpus`
+
+**Key design decisions (do not revert):**
+- Renderer is auto-detected via `get_active_renderer()` at dispatch time — no dropdown, no hardcoding
+- GPU env var comes from config only — if renderer not in config, var is simply not set
+- `CTXShotNode` API: always use `get_ep_code()`, `get_seq_code()`, `get_shot_code()` — NOT `.ep`, `.seq`, `.shot`
+- `BatchRenderDialog` must be `QMainWindow` (not `QDialog`) for `cmds.dockControl` compatibility
+
+**Remaining gaps (deferred):**
+- Farm render hook (Deadline/Tractor) — not implemented
+- VRay renderer adapter — deferred
+- No undo/redo for batch operations
 
 ---
 
