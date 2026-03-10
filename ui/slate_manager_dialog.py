@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """Slate Manager Dialog -- manage render layer renderable overrides per shot.
 
-Mirrors GafferManagerDialog structure exactly.
-Two-panel layout:
-  Left  -- slate selector list + action buttons
-  Right -- layer table (Layer Name / Renderable / Override / Source)
+Layout mirrors GafferManagerDialog exactly:
+  Row 1: Slate combo + Refresh | + Create  Set Parent  Clear Parent  Remove
+  Row 2: Chain: -
+  Row 3: Edit Mode: OFF            [Enter Edit Mode] [Commit] [Discard]
+  Sep:   horizontal line
+  Body:  Search layers... + full-width layer table
+  Btns:  + Add Layer   - Remove Layer        Apply Slate
 """
 
 from __future__ import absolute_import
@@ -33,7 +36,7 @@ logger = logging.getLogger(__name__)
 class SlateManagerDialog(QtWidgets.QMainWindow):
     """Dockable Slate Manager -- per-shot render layer renderable control.
 
-    Mirrors GafferManagerDialog structure exactly.
+    Layout identical to GafferManagerDialog.
     """
 
     _instance = None
@@ -56,14 +59,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
     @classmethod
     def open_or_raise(cls, parent=None):
-        """Return existing instance (raised to front) or create new one.
-
-        Args:
-            parent (QWidget|None): Parent widget.
-
-        Returns:
-            SlateManagerDialog: The singleton instance.
-        """
+        """Return existing instance (raised to front) or create new one."""
         if cls._instance is not None:
             try:
                 cls._instance.raise_()
@@ -85,15 +81,15 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         self.setObjectName('SlateManagerDialog')
         self.setWindowTitle('Slate Manager')
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.Tool)
-        self.resize(460, 600)
+        self.resize(600, 500)
 
-        self._current_slate = None   # CTXSlateNode currently selected
+        self._current_slate = None
         self._edit_mode = False
-        self._snapshot = {}          # {layer_name: {renderable, renderableEnabled}}
+        self._snapshot = {}
 
         self._setup_ui()
         self._connect_signals()
-        self._refresh_slate_list()
+        self._refresh_slate_combo()
 
     def closeEvent(self, event):
         """Clear instance reference on close."""
@@ -105,7 +101,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------
 
     def _setup_ui(self):
-        """Build the full window layout."""
+        """Build the full window layout -- mirrors GafferManagerDialog."""
         self._setup_menu()
 
         central = QtWidgets.QWidget()
@@ -117,93 +113,181 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
         # Lock banner (hidden by default)
         self._lock_banner = QtWidgets.QLabel('')
-        self._lock_banner.setAlignment(QtCore.Qt.AlignCenter)
         self._lock_banner.setStyleSheet(
-            'background-color: #B8860B; color: white; font-weight: bold; padding: 4px;'
+            'background-color: #7B3F00; color: #FFD54F; '
+            'padding: 4px 8px; font-weight: bold;'
         )
         self._lock_banner.setVisible(False)
+        self._lock_banner.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(self._lock_banner)
 
-        # Splitter: left panel | right panel
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        main_layout.addWidget(splitter, stretch=1)
+        # ── Compact header (mirrors gaffer header exactly) ──────────────
+        header_widget = QtWidgets.QWidget()
+        header_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        )
+        header_layout = QtWidgets.QVBoxLayout(header_widget)
+        header_layout.setContentsMargins(4, 4, 4, 4)
+        header_layout.setSpacing(3)
 
-        # Left panel
-        left_widget = QtWidgets.QWidget()
-        left_layout = QtWidgets.QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(4)
-        left_widget.setMinimumWidth(160)
-        left_widget.setMaximumWidth(220)
+        # Row 1: slate combo + all action buttons
+        slate_row = QtWidgets.QHBoxLayout()
+        slate_row.setSpacing(4)
 
-        self._slate_list = QtWidgets.QListWidget()
-        self._slate_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        left_layout.addWidget(self._slate_list)
+        lbl = QtWidgets.QLabel('Slate:')
+        lbl.setFixedWidth(40)
+        slate_row.addWidget(lbl)
 
-        left_btn_layout = QtWidgets.QHBoxLayout()
-        self._new_slate_btn = QtWidgets.QPushButton('+ New Slate')
-        self._set_parent_btn = QtWidgets.QPushButton('Set Parent...')
-        self._remove_slate_btn = QtWidgets.QPushButton('Remove')
-        left_btn_layout.addWidget(self._new_slate_btn)
-        left_btn_layout.addWidget(self._set_parent_btn)
-        left_btn_layout.addWidget(self._remove_slate_btn)
-        left_layout.addLayout(left_btn_layout)
+        self._slate_combo = QtWidgets.QComboBox()
+        self._slate_combo.setMinimumWidth(180)
+        self._slate_combo.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
+        )
+        slate_row.addWidget(self._slate_combo)
 
-        splitter.addWidget(left_widget)
+        self._refresh_button = QtWidgets.QPushButton('Refresh')
+        self._refresh_button.setFixedWidth(70)
+        slate_row.addWidget(self._refresh_button)
 
-        # Right panel
-        right_widget = QtWidgets.QWidget()
-        right_layout = QtWidgets.QVBoxLayout(right_widget)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(4)
+        sep1 = QtWidgets.QFrame()
+        sep1.setFrameShape(QtWidgets.QFrame.VLine)
+        sep1.setFrameShadow(QtWidgets.QFrame.Sunken)
+        slate_row.addWidget(sep1)
 
+        self._create_slate_button = QtWidgets.QPushButton('+ Create')
+        self._create_slate_button.setFixedWidth(75)
+        self._create_slate_button.setToolTip('Create a new slate for a sequence or shot')
+        slate_row.addWidget(self._create_slate_button)
+
+        self._set_parent_button = QtWidgets.QPushButton('Set Parent')
+        self._set_parent_button.setFixedWidth(80)
+        self._set_parent_button.setToolTip('Set a parent slate to inherit its layer overrides')
+        slate_row.addWidget(self._set_parent_button)
+
+        self._clear_parent_button = QtWidgets.QPushButton('Clear Parent')
+        self._clear_parent_button.setFixedWidth(85)
+        self._clear_parent_button.setToolTip('Remove parent slate connection')
+        slate_row.addWidget(self._clear_parent_button)
+
+        self._remove_slate_button = QtWidgets.QPushButton('Remove')
+        self._remove_slate_button.setFixedWidth(65)
+        self._remove_slate_button.setToolTip('Delete the selected slate node')
+        slate_row.addWidget(self._remove_slate_button)
+
+        header_layout.addLayout(slate_row)
+
+        # Row 2: chain info
+        info_row = QtWidgets.QHBoxLayout()
+        info_row.setSpacing(12)
+        self._chain_label = QtWidgets.QLabel('Chain: -')
+        self._chain_label.setStyleSheet('color: #888; font-style: italic; font-size: 11px;')
+        info_row.addWidget(self._chain_label)
+        info_row.addStretch()
+        header_layout.addLayout(info_row)
+
+        # Row 3: edit mode bar
+        edit_row = QtWidgets.QHBoxLayout()
+        edit_row.setSpacing(4)
+
+        self._edit_mode_label = QtWidgets.QLabel('Edit Mode: OFF')
+        self._edit_mode_label.setStyleSheet('font-weight: bold; font-size: 11px;')
+        edit_row.addWidget(self._edit_mode_label)
+        edit_row.addStretch()
+
+        self._enter_edit_button = QtWidgets.QPushButton('Enter Edit Mode')
+        self._enter_edit_button.setFixedWidth(130)
+        self._enter_edit_button.setStyleSheet('background-color: #37474F; color: white;')
+        edit_row.addWidget(self._enter_edit_button)
+
+        self._commit_button = QtWidgets.QPushButton('Commit Changes')
+        self._commit_button.setFixedWidth(130)
+        self._commit_button.setStyleSheet('background-color: #2E7D32; color: white;')
+        self._commit_button.setVisible(False)
+        edit_row.addWidget(self._commit_button)
+
+        self._discard_button = QtWidgets.QPushButton('Discard Changes')
+        self._discard_button.setFixedWidth(130)
+        self._discard_button.setStyleSheet('background-color: #B71C1C; color: white;')
+        self._discard_button.setVisible(False)
+        edit_row.addWidget(self._discard_button)
+
+        header_layout.addLayout(edit_row)
+
+        # Thin horizontal separator under header
+        sep_h = QtWidgets.QFrame()
+        sep_h.setFrameShape(QtWidgets.QFrame.HLine)
+        sep_h.setFrameShadow(QtWidgets.QFrame.Sunken)
+        header_layout.addWidget(sep_h)
+
+        main_layout.addWidget(header_widget)
+
+        # ── Body: search box + layer table ─────────────────────────────
+        body_widget = QtWidgets.QWidget()
+        body_widget.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        )
+        body_layout = QtWidgets.QVBoxLayout(body_widget)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(3)
+
+        # Search box
+        self._search_box = QtWidgets.QLineEdit()
+        self._search_box.setPlaceholderText('Search layers...')
+        self._search_box.setClearButtonEnabled(True)
+        self._search_box.setFixedHeight(24)
+        body_layout.addWidget(self._search_box)
+
+        # Layer table (full width -- no splitter)
         self._layer_table = QtWidgets.QTableWidget()
         self._layer_table.setColumnCount(4)
         self._layer_table.setHorizontalHeaderLabels(
             ['Layer Name', 'Renderable', 'Override', 'Source']
         )
 
-        header = self._layer_table.horizontalHeader()
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        self._layer_table.setColumnWidth(1, 70)
-        self._layer_table.setColumnWidth(2, 60)
-        self._layer_table.setColumnWidth(3, 70)
+        tbl_header = self._layer_table.horizontalHeader()
+        tbl_header.setStretchLastSection(False)
+        tbl_header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        for col in (1, 2, 3):
+            tbl_header.setSectionResizeMode(col, QtWidgets.QHeaderView.Fixed)
+        self._layer_table.setColumnWidth(1, 80)   # Renderable
+        self._layer_table.setColumnWidth(2, 70)   # Override
+        self._layer_table.setColumnWidth(3, 70)   # Source
 
-        self._layer_table.setAlternatingRowColors(True)
+        self._layer_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self._layer_table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self._layer_table.verticalHeader().setDefaultSectionSize(22)
         self._layer_table.verticalHeader().setVisible(False)
+        self._layer_table.setAlternatingRowColors(True)
         self._layer_table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self._layer_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self._layer_table.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        )
 
-        right_layout.addWidget(self._layer_table)
+        body_layout.addWidget(self._layer_table, 1)
 
-        layer_btn_layout = QtWidgets.QHBoxLayout()
-        self._add_layer_btn = QtWidgets.QPushButton('Add Layer')
-        self._remove_layer_btn = QtWidgets.QPushButton('Remove Layer')
-        layer_btn_layout.addWidget(self._add_layer_btn)
-        layer_btn_layout.addWidget(self._remove_layer_btn)
-        layer_btn_layout.addStretch()
-        right_layout.addLayout(layer_btn_layout)
+        # Action button row (mirrors gaffer "Add Light / Remove Light / Apply" row)
+        btn_row = QtWidgets.QHBoxLayout()
+        btn_row.setSpacing(4)
 
-        splitter.addWidget(right_widget)
-        splitter.setSizes([180, 280])
+        self._add_layer_button = QtWidgets.QPushButton('+ Add Layer')
+        self._add_layer_button.setFixedHeight(24)
+        btn_row.addWidget(self._add_layer_button)
 
-        # Bottom bar
-        bottom_layout = QtWidgets.QHBoxLayout()
-        bottom_layout.addStretch()
+        self._remove_layer_button = QtWidgets.QPushButton('- Remove Layer')
+        self._remove_layer_button.setFixedHeight(24)
+        btn_row.addWidget(self._remove_layer_button)
 
-        self._edit_btn = QtWidgets.QPushButton('Edit')
-        self._commit_btn = QtWidgets.QPushButton('Commit')
-        self._cancel_btn = QtWidgets.QPushButton('Cancel')
+        btn_row.addStretch()
 
-        self._commit_btn.setEnabled(False)
-        self._cancel_btn.setEnabled(False)
+        self._apply_button = QtWidgets.QPushButton('Apply Slate')
+        self._apply_button.setFixedHeight(24)
+        self._apply_button.setToolTip(
+            'Apply all enabled slate overrides to the scene render layers.'
+        )
+        btn_row.addWidget(self._apply_button)
 
-        bottom_layout.addWidget(self._edit_btn)
-        bottom_layout.addWidget(self._commit_btn)
-        bottom_layout.addWidget(self._cancel_btn)
-
-        main_layout.addLayout(bottom_layout)
+        body_layout.addLayout(btn_row)
+        main_layout.addWidget(body_widget, 1)
 
     def _setup_menu(self):
         """Create menuBar with Tools > Settings."""
@@ -214,59 +298,53 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         tools_menu.addAction(settings_action)
 
     def _connect_signals(self):
-        """Wire all button and list signals."""
-        self._slate_list.currentItemChanged.connect(self._on_slate_selected)
-        self._new_slate_btn.clicked.connect(self._on_new_slate)
-        self._set_parent_btn.clicked.connect(self._on_set_parent)
-        self._remove_slate_btn.clicked.connect(self._on_remove_slate)
-        self._add_layer_btn.clicked.connect(self._on_add_layer)
-        self._remove_layer_btn.clicked.connect(self._on_remove_layer)
-        self._edit_btn.clicked.connect(self._enter_edit_mode)
-        self._commit_btn.clicked.connect(self._commit_edit)
-        self._cancel_btn.clicked.connect(self._cancel_edit)
+        """Wire all widget signals."""
+        self._slate_combo.currentIndexChanged.connect(self._on_slate_changed)
+        self._refresh_button.clicked.connect(self._refresh_slate_combo)
+        self._create_slate_button.clicked.connect(self._on_new_slate)
+        self._set_parent_button.clicked.connect(self._on_set_parent)
+        self._clear_parent_button.clicked.connect(self._on_clear_parent)
+        self._remove_slate_button.clicked.connect(self._on_remove_slate)
+        self._search_box.textChanged.connect(self._on_search_changed)
+        self._add_layer_button.clicked.connect(self._on_add_layer)
+        self._remove_layer_button.clicked.connect(self._on_remove_layer)
+        self._enter_edit_button.clicked.connect(self._enter_edit_mode)
+        self._commit_button.clicked.connect(self._commit_edit)
+        self._discard_button.clicked.connect(self._cancel_edit)
+        self._apply_button.clicked.connect(self._on_apply_slate)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def select_slate(self, slate):
-        """Pre-select a slate in the left panel.
+        """Pre-select a slate in the combo.
 
         Args:
             slate (CTXSlateNode|str): Slate node or node name to select.
         """
         if slate is None:
             return
-
         target_name = slate if isinstance(slate, str) else slate.node_name
-
-        for i in range(self._slate_list.count()):
-            item = self._slate_list.item(i)
-            node = item.data(QtCore.Qt.UserRole)
-            if node is not None and node.node_name == target_name:
-                self._slate_list.setCurrentItem(item)
+        for i in range(self._slate_combo.count()):
+            wrapper = self._slate_combo.itemData(i)
+            if wrapper is not None and wrapper.node_name == target_name:
+                self._slate_combo.setCurrentIndex(i)
                 return
-
-        # Not found -- refresh list and try again
-        self._refresh_slate_list()
-        for i in range(self._slate_list.count()):
-            item = self._slate_list.item(i)
-            node = item.data(QtCore.Qt.UserRole)
-            if node is not None and node.node_name == target_name:
-                self._slate_list.setCurrentItem(item)
+        # Not in combo yet -- refresh and retry
+        self._refresh_slate_combo()
+        for i in range(self._slate_combo.count()):
+            wrapper = self._slate_combo.itemData(i)
+            if wrapper is not None and wrapper.node_name == target_name:
+                self._slate_combo.setCurrentIndex(i)
                 return
 
     def refresh(self):
-        """Refresh both panels from the current scene state."""
-        self._refresh_slate_list()
-        self._refresh_layer_table()
+        """Refresh combo and layer table from current scene state."""
+        self._refresh_slate_combo()
 
     def show_lock_banner(self, message):
-        """Show the lock banner with a message.
-
-        Args:
-            message (str): Banner message text.
-        """
+        """Show the lock banner."""
         self._lock_banner.setText(message)
         self._lock_banner.setVisible(True)
 
@@ -275,20 +353,18 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         self._lock_banner.setVisible(False)
 
     # ------------------------------------------------------------------
-    # Left panel helpers
+    # Combo helpers
     # ------------------------------------------------------------------
 
-    def _refresh_slate_list(self):
-        """Repopulate the left panel from CTXSlateNode.list_all()."""
-        current_node_name = None
-        current_item = self._slate_list.currentItem()
-        if current_item is not None:
-            node = current_item.data(QtCore.Qt.UserRole)
-            if node is not None:
-                current_node_name = node.node_name
+    def _refresh_slate_combo(self):
+        """Repopulate the slate combo from CTXSlateNode.list_all()."""
+        current_name = None
+        current_data = self._slate_combo.currentData()
+        if current_data is not None:
+            current_name = current_data.node_name
 
-        self._slate_list.blockSignals(True)
-        self._slate_list.clear()
+        self._slate_combo.blockSignals(True)
+        self._slate_combo.clear()
 
         try:
             slates = CTXSlateNode.list_all()
@@ -296,46 +372,63 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
             logger.warning('Failed to list slates: %s', exc)
             slates = []
 
-        for sn in slates:
-            try:
-                slate_name = sn.get_attribute('slateName') or sn.node_name
-                slate_type = sn.get_attribute('slateType') or '?'
-                label = '{} [{}]'.format(slate_name, slate_type)
-            except Exception:
-                label = sn.node_name
-
-            item = QtWidgets.QListWidgetItem(label)
-            item.setData(QtCore.Qt.UserRole, sn)
-            self._slate_list.addItem(item)
-
-        self._slate_list.blockSignals(False)
-
-        # Restore selection
-        if current_node_name:
-            for i in range(self._slate_list.count()):
-                item = self._slate_list.item(i)
-                node = item.data(QtCore.Qt.UserRole)
-                if node is not None and node.node_name == current_node_name:
-                    self._slate_list.setCurrentItem(item)
-                    return
-
-        # If nothing selected and list not empty, select first item
-        if self._slate_list.count() > 0 and self._slate_list.currentItem() is None:
-            self._slate_list.setCurrentRow(0)
-
-    def _on_slate_selected(self, current, previous):
-        """Handle slate selection change."""
-        if current is None:
+        if not slates:
+            self._slate_combo.addItem('No slates found', None)
+            self._slate_combo.blockSignals(False)
             self._current_slate = None
+            self._update_chain_label()
             self._refresh_layer_table()
             return
 
-        node = current.data(QtCore.Qt.UserRole)
-        self._current_slate = node
+        restore_idx = 0
+        for i, sn in enumerate(slates):
+            try:
+                slate_name = sn.get_attribute('slateName') or sn.node_name
+                slate_type = sn.get_attribute('slateType') or '?'
+                if slate_type == 'master':
+                    label = '[Master] {}'.format(slate_name)
+                else:
+                    label = '[{}] {}'.format(slate_type.capitalize(), slate_name)
+            except Exception:
+                label = sn.node_name
+                slate_name = sn.node_name
+
+            self._slate_combo.addItem(label, sn)
+            if current_name and sn.node_name == current_name:
+                restore_idx = i
+
+        self._slate_combo.blockSignals(False)
+        self._slate_combo.setCurrentIndex(restore_idx)
+        # Manually trigger since we blocked signals during repopulation
+        self._on_slate_changed(restore_idx)
+
+    def _on_slate_changed(self, index):
+        """Handle combo selection change."""
+        wrapper = self._slate_combo.itemData(index)
+        self._current_slate = wrapper  # None if "No slates found" placeholder
+        self._update_chain_label()
         self._refresh_layer_table()
 
+    def _update_chain_label(self):
+        """Update the chain info label to show the inheritance path."""
+        if self._current_slate is None:
+            self._chain_label.setText('Chain: -')
+            return
+        try:
+            chain = SlateResolver.build_chain(self._current_slate)
+            names = []
+            for sn in reversed(chain):
+                try:
+                    n = sn.get_attribute('slateName') or sn.node_name
+                except Exception:
+                    n = sn.node_name
+                names.append(n)
+            self._chain_label.setText('Chain: {}'.format(' > '.join(names)))
+        except Exception:
+            self._chain_label.setText('Chain: -')
+
     # ------------------------------------------------------------------
-    # Right panel helpers
+    # Layer table helpers
     # ------------------------------------------------------------------
 
     def _refresh_layer_table(self):
@@ -344,7 +437,6 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         if self._current_slate is None:
             return
 
-        # Resolve chain for source indicators
         try:
             resolved = SlateResolver.resolve_layer_state(self._current_slate)
         except Exception as exc:
@@ -371,7 +463,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
             # Col 0: Layer Name (read-only)
             name_item = QtWidgets.QTableWidgetItem(name)
-            name_item.setFlags(QtCore.Qt.ItemIsEnabled)
+            name_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
             self._layer_table.setItem(row, 0, name_item)
 
             # Col 1: Renderable checkbox
@@ -384,7 +476,6 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
             override_cb = QtWidgets.QCheckBox()
             override_cb.setChecked(override_enabled)
             override_cb.setEnabled(self._edit_mode)
-            # When override toggled, enable/disable renderable checkbox
             override_cb.stateChanged.connect(
                 lambda state, rcb=renderable_cb: rcb.setEnabled(
                     self._edit_mode and bool(state)
@@ -404,7 +495,6 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                 if source_node and cmds is not None:
                     try:
                         slate_type = cmds.getAttr('{}.slateType'.format(source_node))
-                        # Show first 3 chars of type: 'seq', 'mas', 'sho' etc.
                         source_text = '({})'.format(str(slate_type)[:3])
                     except Exception:
                         pass
@@ -416,15 +506,21 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
             )
             self._layer_table.setItem(row, 3, source_item)
 
+        # Re-apply search filter
+        self._on_search_changed(self._search_box.text())
+
+    def _on_search_changed(self, text):
+        """Filter the layer table to rows matching the search text."""
+        text = text.lower()
+        for row in range(self._layer_table.rowCount()):
+            name_item = self._layer_table.item(row, 0)
+            if name_item is None:
+                self._layer_table.setRowHidden(row, bool(text))
+                continue
+            self._layer_table.setRowHidden(row, bool(text) and text not in name_item.text().lower())
+
     def _center_widget(self, widget):
-        """Wrap a widget in a centered container for table cells.
-
-        Args:
-            widget (QWidget): Widget to center.
-
-        Returns:
-            QWidget: Container widget.
-        """
+        """Wrap a widget in a centered container for table cells."""
         container = QtWidgets.QWidget()
         layout = QtWidgets.QHBoxLayout(container)
         layout.addWidget(widget)
@@ -437,14 +533,17 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------
 
     def _enter_edit_mode(self):
-        """Snapshot current state; enable checkboxes."""
+        """Snapshot current state and switch to edit mode."""
         if self._current_slate is None:
             return
         self._snapshot = self._capture_snapshot()
         self._edit_mode = True
-        self._edit_btn.setEnabled(False)
-        self._commit_btn.setEnabled(True)
-        self._cancel_btn.setEnabled(True)
+        self._edit_mode_label.setText('Edit Mode: ON')
+        self._edit_mode_label.setStyleSheet('font-weight: bold; color: #FFA000; font-size: 11px;')
+        self._enter_edit_button.setVisible(False)
+        self._commit_button.setVisible(True)
+        self._discard_button.setVisible(True)
+        self._slate_combo.setEnabled(False)
         self._refresh_layer_table()
 
     def _commit_edit(self):
@@ -452,7 +551,6 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         if self._current_slate is None:
             self._exit_edit_mode()
             return
-
         current_state = self._read_table_state()
         for layer_name, state in current_state.items():
             snap = self._snapshot.get(layer_name, {})
@@ -469,15 +567,13 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                     layer_entry.set_renderable(state['renderable'])
             except Exception as exc:
                 logger.error('Failed to write layer %s: %s', layer_name, exc)
-
         self._exit_edit_mode()
 
     def _cancel_edit(self):
-        """Restore snapshot to CTX nodes."""
+        """Restore snapshot to CTX nodes and exit edit mode."""
         if self._current_slate is None:
             self._exit_edit_mode()
             return
-
         for layer_name, state in self._snapshot.items():
             try:
                 layer_entry = self._current_slate.get_layer_by_name(layer_name)
@@ -490,16 +586,18 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                 layer_entry.set_override_enabled(state['renderableEnabled'])
             except Exception as exc:
                 logger.error('Failed to restore layer %s: %s', layer_name, exc)
-
         self._exit_edit_mode()
 
     def _exit_edit_mode(self):
-        """Exit edit mode and refresh the table."""
+        """Return to read-only state."""
         self._edit_mode = False
         self._snapshot = {}
-        self._edit_btn.setEnabled(True)
-        self._commit_btn.setEnabled(False)
-        self._cancel_btn.setEnabled(False)
+        self._edit_mode_label.setText('Edit Mode: OFF')
+        self._edit_mode_label.setStyleSheet('font-weight: bold; font-size: 11px;')
+        self._enter_edit_button.setVisible(True)
+        self._commit_button.setVisible(False)
+        self._discard_button.setVisible(False)
+        self._slate_combo.setEnabled(True)
         self._refresh_layer_table()
 
     # ------------------------------------------------------------------
@@ -507,11 +605,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------
 
     def _capture_snapshot(self):
-        """Capture current layer state from CTX nodes.
-
-        Returns:
-            dict: {layer_name: {renderable: bool, renderableEnabled: bool}}
-        """
+        """Return {layer_name: {renderable, renderableEnabled}} from CTX nodes."""
         snap = {}
         if self._current_slate is None:
             return snap
@@ -528,11 +622,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         return snap
 
     def _read_table_state(self):
-        """Read current widget state from the layer table.
-
-        Returns:
-            dict: {layer_name: {renderable: bool, renderableEnabled: bool}}
-        """
+        """Read current widget state from the layer table."""
         state = {}
         for row in range(self._layer_table.rowCount()):
             name_item = self._layer_table.item(row, 0)
@@ -565,97 +655,341 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_new_slate(self):
-        """Create a new CTXSlateNode after prompting for name and type."""
-        slate_name, ok = QtWidgets.QInputDialog.getText(
-            self, 'New Slate', 'Slate name:'
-        )
-        if not ok or not slate_name.strip():
+        """Unified slate creation -- asks Sequence Slate or Shot Slate.
+
+        Mirrors GafferManagerDialog._on_create_gaffer() exactly.
+        """
+        if not cmds:
+            QtWidgets.QMessageBox.warning(self, 'Maya Not Available',
+                                          'Maya is not available.')
             return
 
-        slate_type_options = ['master', 'sequence', 'shot']
-        slate_type, ok2 = QtWidgets.QInputDialog.getItem(
-            self, 'New Slate', 'Slate type:', slate_type_options, 0, False
+        choices = ['Sequence Slate', 'Shot Slate']
+        choice, ok = QtWidgets.QInputDialog.getItem(
+            self, 'Create Slate', 'Attach to:', choices, 0, False
         )
-        if not ok2:
+        if not ok:
             return
 
+        if choice == 'Sequence Slate':
+            self._create_sequence_slate()
+        else:
+            self._create_shot_slate()
+
+    def _create_sequence_slate(self):
+        """Create a slate and attach it to a sequence.
+
+        Mirrors GafferManagerDialog._create_sequence_gaffer().
+        """
         try:
+            from core.nodes.wrappers.sequence import CTXSequenceNode
+
+            all_seqs = CTXSequenceNode.list_all()
+            if not all_seqs:
+                QtWidgets.QMessageBox.warning(
+                    self, 'No Sequences',
+                    'No CTX_Sequence nodes found. Create shots first.'
+                )
+                return
+
+            seq_labels = []
+            for s in all_seqs:
+                existing = s.get_slate()
+                label = s.get_attribute('sequenceCode') or s.node_name
+                if existing:
+                    try:
+                        existing_name = existing.get_attribute('slateName') or existing.node_name
+                    except Exception:
+                        existing_name = existing.node_name
+                    label += '  [has slate: {}]'.format(existing_name)
+                seq_labels.append(label)
+
+            seq_label, ok = QtWidgets.QInputDialog.getItem(
+                self, 'Select Sequence', 'Attach to:', seq_labels, 0, False
+            )
+            if not ok:
+                return
+
+            seq = all_seqs[seq_labels.index(seq_label)]
+            seq_code = seq.get_attribute('sequenceCode') or seq.node_name
+
+            name, ok = QtWidgets.QInputDialog.getText(
+                self, 'Slate Name', 'Name:', text='seq_{}'.format(seq_code)
+            )
+            if not ok or not name.strip():
+                return
+
+            parent_slate = self._ask_parent_slate()
+            if parent_slate is False:
+                return  # User cancelled
+
             new_slate = CTXSlateNode.create(
-                slateName=slate_name.strip(),
-                slateType=slate_type,
-                scopeCode=slate_name.strip(),
+                slateName=name.strip(),
+                slateType='sequence',
+                scopeCode=seq_code,
             )
-            logger.info('Created new slate: %s (%s)', new_slate.node_name, slate_type)
+            seq.set_slate(new_slate)
+
+            if parent_slate is not None:
+                new_slate.set_parent_slate(parent_slate)
+                logger.info('Parent slate set: %s', parent_slate.node_name)
+
+            logger.info("Created sequence slate '%s' for seq '%s'",
+                        new_slate.node_name, seq_code)
+            self._refresh_slate_combo()
+            self.select_slate(new_slate)
+
         except Exception as exc:
-            logger.error('Failed to create slate: %s', exc)
+            logger.error('Failed to create sequence slate: %s', exc)
             QtWidgets.QMessageBox.critical(
-                self, 'Error', 'Failed to create slate:\n{}'.format(exc)
+                self, 'Error', 'Failed to create sequence slate:\n{}'.format(exc)
             )
-            return
 
-        self._refresh_slate_list()
-        self.select_slate(new_slate)
+    def _create_shot_slate(self):
+        """Create a slate and attach it to a shot.
 
-    def _on_set_parent(self):
-        """Open a dialog to pick a parent slate for the currently selected slate."""
-        if self._current_slate is None:
-            QtWidgets.QMessageBox.information(
-                self, 'No Slate Selected', 'Select a slate first.'
+        Mirrors GafferManagerDialog._create_shot_gaffer().
+        """
+        try:
+            from core.nodes.wrappers.shot import CTXShotNode
+
+            all_shots = CTXShotNode.list_all()
+            if not all_shots:
+                QtWidgets.QMessageBox.warning(
+                    self, 'No Shots',
+                    'No CTX_Shot nodes found. Create shots first.'
+                )
+                return
+
+            shot_labels = []
+            for s in all_shots:
+                existing = s.get_slate()
+                label = '{}_{}'.format(
+                    s.get_seq_code() or '?', s.get_shot_code() or s.node_name
+                )
+                if existing:
+                    try:
+                        existing_name = existing.get_attribute('slateName') or existing.node_name
+                    except Exception:
+                        existing_name = existing.node_name
+                    label += '  [has slate: {}]'.format(existing_name)
+                shot_labels.append(label)
+
+            shot_label, ok = QtWidgets.QInputDialog.getItem(
+                self, 'Select Shot', 'Attach to:', shot_labels, 0, False
             )
-            return
+            if not ok:
+                return
 
+            shot = all_shots[shot_labels.index(shot_label)]
+            shot_id = '{}_{}'.format(
+                shot.get_seq_code() or '?', shot.get_shot_code() or shot.node_name
+            )
+
+            name, ok = QtWidgets.QInputDialog.getText(
+                self, 'Slate Name', 'Name:', text=shot_id
+            )
+            if not ok or not name.strip():
+                return
+
+            parent_slate = self._ask_parent_slate()
+            if parent_slate is False:
+                return
+
+            new_slate = CTXSlateNode.create(
+                slateName=name.strip(),
+                slateType='shot',
+                scopeCode=shot_id,
+            )
+            shot.set_slate(new_slate)
+
+            if parent_slate is not None:
+                new_slate.set_parent_slate(parent_slate)
+                logger.info('Parent slate set: %s', parent_slate.node_name)
+
+            logger.info("Created shot slate '%s' for shot '%s'",
+                        new_slate.node_name, shot_id)
+            self._refresh_slate_combo()
+            self.select_slate(new_slate)
+
+        except Exception as exc:
+            logger.error('Failed to create shot slate: %s', exc)
+            QtWidgets.QMessageBox.critical(
+                self, 'Error', 'Failed to create shot slate:\n{}'.format(exc)
+            )
+
+    def _ask_parent_slate(self):
+        """Ask user to optionally choose a parent slate.
+
+        Mirrors GafferManagerDialog._ask_parent_gaffer().
+
+        Returns:
+            CTXSlateNode: chosen parent slate.
+            None: user chose standalone (no parent).
+            False: user cancelled the dialog.
+        """
         try:
             all_slates = CTXSlateNode.list_all()
         except Exception:
             all_slates = []
 
-        # Exclude current slate from candidates
-        candidates = [
-            sn for sn in all_slates
-            if sn.node_name != self._current_slate.node_name
-        ]
+        if not all_slates:
+            return None
 
-        if not candidates:
-            QtWidgets.QMessageBox.information(
-                self, 'No Candidates', 'No other slates available to use as parent.'
-            )
-            return
-
-        labels = []
-        for sn in candidates:
+        choices = ['(none -- standalone)']
+        for sn in all_slates:
             try:
-                slate_name = sn.get_attribute('slateName') or sn.node_name
-                slate_type = sn.get_attribute('slateType') or '?'
-                labels.append('{} [{}]'.format(slate_name, slate_type))
+                n = sn.get_attribute('slateName') or sn.node_name
+                t = sn.get_attribute('slateType') or '?'
+                choices.append('{} [{}]'.format(n, t))
             except Exception:
-                labels.append(sn.node_name)
+                choices.append(sn.node_name)
 
-        choice, ok = QtWidgets.QInputDialog.getItem(
-            self, 'Set Parent Slate', 'Select parent slate:', labels, 0, False
+        chosen, ok = QtWidgets.QInputDialog.getItem(
+            self, 'Parent Slate',
+            'Inherit from (optional):', choices, 0, False
         )
         if not ok:
+            return False
+
+        if chosen == '(none -- standalone)':
+            return None
+
+        for i, sn in enumerate(all_slates):
+            if choices[i + 1] == chosen:
+                return sn
+        return None
+
+    def _on_set_parent(self):
+        """Set parent slate -- excludes current chain to prevent cycles.
+
+        Mirrors GafferManagerDialog._on_set_parent_gaffer().
+        """
+        if not cmds:
+            QtWidgets.QMessageBox.warning(self, 'Maya Not Available',
+                                          'Maya is not available.')
+            return
+        if self._current_slate is None:
+            QtWidgets.QMessageBox.warning(self, 'No Slate Selected',
+                                          'Select a slate first.')
             return
 
-        idx = labels.index(choice)
-        parent_slate = candidates[idx]
-
         try:
-            self._current_slate.set_parent_slate(parent_slate)
-            logger.info(
-                'Set parent of %s to %s',
-                self._current_slate.node_name, parent_slate.node_name
+            all_slates = CTXSlateNode.list_all()
+            current_node = self._current_slate.node_name
+
+            # Build existing chain to prevent cycles
+            try:
+                current_chain = {
+                    sn.node_name
+                    for sn in SlateResolver.build_chain(self._current_slate)
+                }
+            except Exception:
+                current_chain = {current_node}
+
+            candidates = [
+                sn for sn in all_slates
+                if sn.node_name != current_node and sn.node_name not in current_chain
+            ]
+
+            if not candidates:
+                QtWidgets.QMessageBox.warning(
+                    self, 'No Candidates',
+                    'No other slates available as parent.'
+                )
+                return
+
+            labels = []
+            for sn in candidates:
+                try:
+                    n = sn.get_attribute('slateName') or sn.node_name
+                    t = sn.get_attribute('slateType') or '?'
+                    labels.append('{} [{}]'.format(n, t))
+                except Exception:
+                    labels.append(sn.node_name)
+
+            chosen, ok = QtWidgets.QInputDialog.getItem(
+                self, 'Set Parent Slate', 'Inherit from:', labels, 0, False
             )
+            if not ok:
+                return
+
+            parent_slate = candidates[labels.index(chosen)]
+            self._current_slate.set_parent_slate(parent_slate)
+            logger.info("Set parent '%s' on '%s'",
+                        parent_slate.node_name, self._current_slate.node_name)
+
+            self._refresh_slate_combo()
+            self.select_slate(self._current_slate)
+
         except Exception as exc:
-            logger.error('Failed to set parent slate: %s', exc)
+            logger.error('Failed to set parent: %s', exc)
             QtWidgets.QMessageBox.critical(
                 self, 'Error', 'Failed to set parent:\n{}'.format(exc)
+            )
+
+    def _on_clear_parent(self):
+        """Clear parent slate with confirmation dialog.
+
+        Mirrors GafferManagerDialog._on_clear_parent_gaffer().
+        """
+        if not cmds:
+            QtWidgets.QMessageBox.warning(self, 'Maya Not Available',
+                                          'Maya is not available.')
+            return
+        if self._current_slate is None:
+            QtWidgets.QMessageBox.warning(self, 'No Slate Selected',
+                                          'Select a slate first.')
+            return
+
+        try:
+            existing_parent = self._current_slate.get_parent_slate()
+            if existing_parent is None:
+                try:
+                    slate_name = self._current_slate.get_attribute('slateName') or self._current_slate.node_name
+                except Exception:
+                    slate_name = self._current_slate.node_name
+                QtWidgets.QMessageBox.information(
+                    self, 'No Parent',
+                    "Slate '{}' has no parent.".format(slate_name)
+                )
+                return
+
+            try:
+                parent_name = existing_parent.get_attribute('slateName') or existing_parent.node_name
+            except Exception:
+                parent_name = existing_parent.node_name
+
+            reply = QtWidgets.QMessageBox.question(
+                self, 'Clear Parent',
+                "Remove inheritance from '{}'?\n\nSlate will become standalone.".format(
+                    parent_name),
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+            )
+            if reply != QtWidgets.QMessageBox.Yes:
+                return
+
+            src = '{}.message'.format(existing_parent.node_name)
+            dst = '{}.parentSlate'.format(self._current_slate.node_name)
+            if cmds.isConnected(src, dst):
+                cmds.disconnectAttr(src, dst)
+
+            logger.info("Cleared parent '%s' from '%s'",
+                        parent_name, self._current_slate.node_name)
+
+            self._refresh_slate_combo()
+            self.select_slate(self._current_slate)
+
+        except Exception as exc:
+            logger.error('Failed to clear parent: %s', exc)
+            QtWidgets.QMessageBox.critical(
+                self, 'Error', 'Failed to clear parent:\n{}'.format(exc)
             )
 
     def _on_remove_slate(self):
         """Remove the currently selected slate node from the scene."""
         if self._current_slate is None:
             return
-
         try:
             slate_name = self._current_slate.get_attribute('slateName') or self._current_slate.node_name
         except Exception:
@@ -680,8 +1014,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                 self, 'Error', 'Failed to remove slate:\n{}'.format(exc)
             )
 
-        self._refresh_slate_list()
-        self._refresh_layer_table()
+        self._refresh_slate_combo()
 
     def _on_add_layer(self):
         """Open popup to select render layers from the current scene."""
@@ -696,12 +1029,10 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
         if not all_layers:
             QtWidgets.QMessageBox.information(
-                self, 'No Layers',
-                'No render layers found in the current scene.'
+                self, 'No Layers', 'No render layers found in the current scene.'
             )
             return
 
-        # Exclude layers already in the slate
         try:
             existing_names = {l.get_layer_name() for l in self._current_slate.get_layers()}
         except Exception:
@@ -720,8 +1051,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         if dlg.exec_() != QtWidgets.QDialog.Accepted:
             return
 
-        selected_names = dlg.get_selected_layer_names()
-        for name in selected_names:
+        for name in dlg.get_selected_layer_names():
             try:
                 self._current_slate.add_layer(name, renderable=True, enabled=False)
                 logger.info('Added layer %r to slate %s', name, self._current_slate.node_name)
@@ -731,7 +1061,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         self._refresh_layer_table()
 
     def _on_remove_layer(self):
-        """Remove the selected layer row from the current slate."""
+        """Remove selected layer rows from the current slate."""
         if self._current_slate is None:
             return
 
@@ -739,7 +1069,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         if not selected_rows:
             return
 
-        for index in selected_rows:
+        for index in sorted(selected_rows, reverse=True):
             row = index.row()
             name_item = self._layer_table.item(row, 0)
             if name_item is None:
@@ -753,25 +1083,30 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
         self._refresh_layer_table()
 
+    def _on_apply_slate(self):
+        """Apply enabled overrides to Maya scene render layers."""
+        if self._current_slate is None:
+            return
+        try:
+            SlateResolver.apply_to_scene(self._current_slate)
+            logger.info('Applied slate %s to scene', self._current_slate.node_name)
+        except Exception as exc:
+            logger.error('Failed to apply slate: %s', exc)
+            QtWidgets.QMessageBox.critical(
+                self, 'Error', 'Failed to apply slate:\n{}'.format(exc)
+            )
+
     def _open_settings(self):
-        """Open a basic settings dialog (placeholder)."""
+        """Open settings dialog (placeholder)."""
         QtWidgets.QMessageBox.information(
             self, 'Settings', 'Slate Manager settings are not yet implemented.'
         )
 
 
 class _AddLayerDialog(QtWidgets.QDialog):
-    """Popup to pick render layers to add to a slate.
-
-    Mirrors AddShotDialog pattern from batch_render_dialog.
-    """
+    """Popup to pick render layers to add to a slate."""
 
     def __init__(self, layers, parent=None):
-        """
-        Args:
-            layers (list[RenderLayerInfo]): Available layers.
-            parent (QWidget|None): Parent widget.
-        """
         super(_AddLayerDialog, self).__init__(parent)
         self.setWindowTitle('Add Layers to Slate')
         self.resize(300, 400)
@@ -779,13 +1114,11 @@ class _AddLayerDialog(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
 
-        # Filter box
         self._filter = QtWidgets.QLineEdit()
         self._filter.setPlaceholderText('Filter...')
         self._filter.textChanged.connect(self._apply_filter)
         layout.addWidget(self._filter)
 
-        # List with checkboxes
         self._list = QtWidgets.QListWidget()
         self._list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         for layer in layers:
@@ -795,7 +1128,6 @@ class _AddLayerDialog(QtWidgets.QDialog):
             self._list.addItem(item)
         layout.addWidget(self._list)
 
-        # OK / Cancel buttons
         btns = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
         )
@@ -804,21 +1136,11 @@ class _AddLayerDialog(QtWidgets.QDialog):
         layout.addWidget(btns)
 
     def _apply_filter(self, text):
-        """Show/hide list items based on filter text.
-
-        Args:
-            text (str): Filter string.
-        """
         for i in range(self._list.count()):
             item = self._list.item(i)
             item.setHidden(text.lower() not in item.text().lower())
 
     def get_selected_layer_names(self):
-        """Return list of checked layer names.
-
-        Returns:
-            list[str]: Names of checked layers.
-        """
         result = []
         for i in range(self._list.count()):
             item = self._list.item(i)

@@ -20,27 +20,48 @@ Every design decision in that file has a direct analog here.
 
 ## Side-by-Side: Gaffer Manager ↔ Slate Manager
 
+### Layout (pixel-perfect match)
+
 | Gaffer Manager element | Slate Manager equivalent |
 |---|---|
-| `GafferManagerDialog(QMainWindow)` | `SlateManagerDialog(QMainWindow)` |
+| `GafferManagerDialog(QDialog)` | `SlateManagerDialog(QMainWindow)` |
 | `objectName('GafferManagerDialog')` | `objectName('SlateManagerDialog')` |
 | `open_or_raise()` classmethod | `open_or_raise()` classmethod |
 | `select_gaffer(gaffer)` | `select_slate(slate)` |
-| Left panel: gaffer list | Left panel: slate list |
-| Right panel: lights table | Right panel: layers table |
-| `[+ New Gaffer]` button | `[+ New Slate]` button |
-| `[Set Parent...]` button | `[Set Parent...]` button |
-| `[Assign to Shot/Seq...]` | Assignment handled via `+SLT` in main window |
-| Add Light popup | Add Layer popup |
-| Lights table cols: Light Name, Intensity, Color, ... | Layers table cols: Layer Name, Renderable, Override, Source |
-| `{attr}Enabled` checkbox per row | `renderableEnabled` checkbox = Override column |
-| Source indicator: `(own)` / `(seq)` / `(master)` | Same source indicator |
-| Edit / Commit / Cancel buttons | Edit / Commit / Cancel buttons (identical) |
-| Lock banner (from 6-B) | Lock banner (identical pattern) |
-| `menuBar()` Tools > Settings | `menuBar()` Tools > Settings |
-| 460×600, 22px row height | 460×600, 22px row height |
-| `_snapshot` dict for cancel restore | `_snapshot` dict for cancel restore |
-| `cmds.dockControl` compatible | `cmds.dockControl` compatible |
+| Header row 1: "Gaffer:" + `_gaffer_combo` + Refresh \| + Create  Set Parent  Clear Parent | Header row 1: "Slate:" + `_slate_combo` + Refresh \| + Create  Set Parent  Clear Parent  Remove |
+| Header row 2: "Chain: -" + info label | Header row 2: "Chain: -" |
+| Header row 3: "Edit Mode: OFF" + Enter Edit Mode / Commit Changes / Discard Changes | Identical |
+| Horizontal separator | Identical |
+| Search lights... | Search layers... |
+| Full-width lights table (Light, Mute, Intensity, Exposure, Color) | Full-width layers table (Layer Name, Renderable, Override, Source) |
+| Bottom: + Add Light  - Remove Light  Clear Override … Apply Gaffer to Lights | Bottom: + Add Layer  - Remove Layer … Apply Slate |
+| `menuBar()` Tools > Settings | Identical |
+| 22px row height | Identical |
+| `_snapshot` dict for cancel restore | Identical |
+
+### Logic (100% mirrored from GafferManagerDialog)
+
+| Gaffer Manager logic | Slate Manager equivalent |
+|---|---|
+| `_on_create_gaffer()` — asks "Sequence Gaffer / Shot Gaffer" | `_on_create_slate()` — asks "Sequence Slate / Shot Slate" |
+| `_create_sequence_gaffer()` — lists CTXSequenceNode, shows "[has gaffer: X]", default name `seq_{seq_code}`, then `_ask_parent_gaffer()` | `_create_sequence_slate()` — lists CTXSequenceNode, shows "[has slate: X]", default name `seq_{seq_code}`, then `_ask_parent_slate()` |
+| `_create_shot_gaffer()` — lists CTXShotNode, shows "[has gaffer: X]", default name `{seq_code}_{shot_code}`, then `_ask_parent_gaffer()` | `_create_shot_slate()` — lists CTXShotNode, shows "[has slate: X]", default name `{seq_code}_{shot_code}`, then `_ask_parent_slate()` |
+| `_ask_parent_gaffer()` — lists all gaffers, "(none — standalone)" first, returns wrapper or None or False (cancel) | `_ask_parent_slate()` — lists all slates, "(none — standalone)" first, same return contract |
+| `_on_set_parent_gaffer()` — lists all gaffers, **excludes current node and its existing chain** (cycle prevention), labels as `{name} [{type}]` | `_on_set_parent_slate()` — same pattern, excludes current slate and its chain |
+| `_on_clear_parent_gaffer()` — checks parent exists, shows confirmation "Remove inheritance from '{parent_name}'?", disconnects `parentGaffer` via `cmds.disconnectAttr` | `_on_clear_parent_slate()` — same: checks parent, confirmation dialog, disconnects `parentSlate` |
+| `_on_add_light_clicked()` — opens `AddLightDialog(self._current_gaffer)` | `_on_add_layer_clicked()` — opens `_AddLayerDialog(available_layers)` inner class |
+| `_on_remove_light_clicked()` — removes selected rows | `_on_remove_layer_clicked()` — removes selected rows |
+| `_refresh_gaffer_list()` — repopulates `_gaffer_combo`, preserves selection | `_refresh_slate_combo()` — repopulates `_slate_combo`, preserves selection |
+| `_on_gaffer_changed(index)` — sets `_current_gaffer`, calls `_update_chain_label()` + `_populate_lights_table()` | `_on_slate_changed(index)` — sets `_current_slate`, calls `_update_chain_label()` + `_refresh_layer_table()` |
+| `_update_chain_label()` — calls `gaffer.build_chain()`, formats as "A -> B -> C", shows "Type: Inherit\|Master  \| Owner: Sequence sq0070" | `_update_chain_label()` — calls `SlateResolver.build_chain(slate)`, formats same way, shows "Type: Inherit\|Master  \| Owner: Sequence/Shot X" |
+| Combo item labels: `[Master] name` / `[Inherit] name` | Same: `[Master] name` / `[seq] name` / `[shot] name` |
+
+### Naming Conventions (same as gaffer)
+
+| Scope | Default name |
+|---|---|
+| Sequence slate | `seq_{seq_code}` |
+| Shot slate | `{seq_code}_{shot_code}` |
 
 ---
 
