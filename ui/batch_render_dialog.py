@@ -302,7 +302,6 @@ class BatchRenderDialog(BaseDialog):
         self.resize(780, 640)
 
         self._populate_layer_list()
-        self._populate_shot_list()
         self._refresh_gpu_panel()
         self._gpu_timer.start()
 
@@ -479,18 +478,6 @@ class BatchRenderDialog(BaseDialog):
     # ------------------------------------------------------------------
     # Configure tab -- shot list
     # ------------------------------------------------------------------
-
-    def _populate_shot_list(self):
-        """Pre-populate shot list from CTXShotNode.list_all()."""
-        if not MAYA_AVAILABLE:
-            return
-        try:
-            from core.nodes.wrappers import CTXShotNode
-            self._shot_table.setRowCount(0)
-            for sn in CTXShotNode.list_all():
-                self._add_shot_row(sn.get_ep_code(), sn.get_seq_code(), sn.get_shot_code())
-        except Exception as exc:
-            logger.warning("Failed to populate shot list: %s", exc)
 
     def _add_shot_row(self, ep, seq, shot, frame_range=None):
         """Add one row to the Configure shot list."""
