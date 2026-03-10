@@ -191,6 +191,59 @@ class CTXSequenceNode(NodeWrapper):
 
         return connections[0] if connections else None
 
+    def _ensure_slate_attr(self):
+        """Add the slate message attribute if absent (nodes created pre-Phase-6)."""
+        if cmds is not None and not cmds.attributeQuery('slate', node=self.node_name, exists=True):
+            cmds.addAttr(self.node_name, longName='slate', attributeType='message')
+
+    def get_slate(self):
+        """Return the CTXSlateNode assigned to this sequence, or None.
+
+        Returns:
+            CTXSlateNode or None
+        """
+        from core.nodes.wrappers.slate import CTXSlateNode
+        if cmds is None:
+            return None
+        self._ensure_slate_attr()
+        connected = cmds.listConnections(
+            '{}.slate'.format(self.node_name),
+            source=True,
+            destination=False,
+        ) or []
+        if connected:
+            return CTXSlateNode(connected[0])
+        return None
+
+    def set_slate(self, slate):
+        """Connect a CTXSlateNode to this sequence.
+
+        Args:
+            slate (CTXSlateNode or str): Slate node or node name.
+        """
+        self._ensure_slate_attr()
+        slate_name = slate if isinstance(slate, str) else slate.node_name
+        cmds.connectAttr(
+            '{}.message'.format(slate_name),
+            '{}.slate'.format(self.node_name),
+            force=True,
+        )
+
+    def clear_slate(self):
+        """Remove the slate connection from this sequence."""
+        try:
+            self._ensure_slate_attr()
+            connected = cmds.listConnections(
+                '{}.slate'.format(self.node_name),
+                source=True,
+                destination=False,
+                plugs=True,
+            ) or []
+            for plug in connected:
+                cmds.disconnectAttr(plug, '{}.slate'.format(self.node_name))
+        except Exception:
+            pass
+
     def add_shot(self, shot):
         """Connect a shot to this sequence.
 
@@ -232,6 +285,28 @@ class CTXSequenceNode(NodeWrapper):
         ) or []
 
         return [CTXShotNode(n) for n in connections]
+
+    # Lock convenience methods
+
+    def lock(self, user=None):
+        """Lock this sequence node."""
+        from core.lock_manager import LockManager
+        LockManager.lock_node(self.node_name, user=user)
+
+    def unlock(self):
+        """Unlock this sequence node."""
+        from core.lock_manager import LockManager
+        LockManager.unlock_node(self.node_name)
+
+    def is_locked(self):
+        """Return True if this sequence is locked."""
+        from core.lock_manager import LockManager
+        return LockManager.is_locked(self.node_name)
+
+    def get_lock_info(self):
+        """Return lock metadata dict."""
+        from core.lock_manager import LockManager
+        return LockManager.get_lock_info(self.node_name)
 
     @staticmethod
     def find_by_code(sequence_code):

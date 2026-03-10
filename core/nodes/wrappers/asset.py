@@ -253,8 +253,30 @@ class CTXAssetNode(NodeWrapper):
         variant = self.get_attribute('variant')
         return "{}_{}_{}".format(asset_type, asset_name, variant)
     
+    # Lock convenience methods
+
+    def lock(self, user=None):
+        """Lock this asset node."""
+        from core.lock_manager import LockManager
+        LockManager.lock_node(self.node_name, user=user)
+
+    def unlock(self):
+        """Unlock this asset node."""
+        from core.lock_manager import LockManager
+        LockManager.unlock_node(self.node_name)
+
+    def is_locked(self):
+        """Return True if this asset is locked."""
+        from core.lock_manager import LockManager
+        return LockManager.is_locked(self.node_name)
+
+    def get_lock_info(self):
+        """Return lock metadata dict."""
+        from core.lock_manager import LockManager
+        return LockManager.get_lock_info(self.node_name)
+
     # Discovery methods
-    
+
     @staticmethod
     def find_by_name(asset_type, asset_name, variant):
         """Find asset node by type, name, and variant.

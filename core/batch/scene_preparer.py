@@ -94,11 +94,51 @@ class ScenePreparer(object):
             # Step 5: Resolve render layers
             rs_mgr = RenderSetupManager()
             if job.render_layers:
+                # Explicit override always wins -- no slate lookup
                 job.resolved_layers = job.render_layers
+                logger.debug(
+                    "Job %s: using explicit render layers: %s",
+                    job.shot_id, job.render_layers
+                )
             else:
-                job.resolved_layers = rs_mgr.get_layer_names(renderable_only=True)
-                if not job.resolved_layers:
-                    job.resolved_layers = ['defaultRenderLayer']
+                # Try slate resolution first
+                slate_layers = None
+                try:
+                    from core.slate.resolver import SlateResolver
+                    from core.nodes.wrappers import CTXShotNode as _CTXShotNode
+                    all_shots = _CTXShotNode.list_all()
+                    shot_node_for_slate = None
+                    for sn in all_shots:
+                        if (sn.get_ep_code() == job.ep
+                                and sn.get_seq_code() == job.seq
+                                and sn.get_shot_code() == job.shot):
+                            shot_node_for_slate = sn
+                            break
+                    if shot_node_for_slate is not None:
+                        slate_layers = SlateResolver.get_resolved_renderable_layers(
+                            shot_node_for_slate
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "Slate layer resolution failed for %s: %s", job.shot_id, exc
+                    )
+
+                if slate_layers is not None:
+                    # Slate found and resolved -- use its layer list
+                    job.resolved_layers = slate_layers if slate_layers else ['defaultRenderLayer']
+                    logger.info(
+                        "Job %s: slate resolved layers: %s",
+                        job.shot_id, job.resolved_layers
+                    )
+                else:
+                    # No slate -- fall back to all renderable layers in scene
+                    job.resolved_layers = rs_mgr.get_layer_names(renderable_only=True)
+                    if not job.resolved_layers:
+                        job.resolved_layers = ['defaultRenderLayer']
+                    logger.debug(
+                        "Job %s: no slate -- using scene renderable layers: %s",
+                        job.shot_id, job.resolved_layers
+                    )
 
             # Step 6: Set defaultRenderGlobals
             self._set_render_globals(job)

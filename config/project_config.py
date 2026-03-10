@@ -553,6 +553,18 @@ class ProjectConfig(object):
         """Return extra handle frames to add around shot range."""
         return int(self.get_batch_render_config().get('frameHandles', 0))
 
+    def get_slate_manager_config(self):
+        """Return full slateManager config dict."""
+        return self.data.get('slateManager', {})
+
+    def get_default_frame_range_mode(self):
+        """Return default frame range mode for batch render Configure tab.
+
+        Returns:
+            str: 'startEnd' (default) or 'full'.
+        """
+        return self.get_slate_manager_config().get('defaultFrameRangeMode', 'startEnd')
+
     def __repr__(self):
         """String representation of ProjectConfig."""
         return "ProjectConfig(config_path='{}', version='{}')".format(

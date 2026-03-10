@@ -114,6 +114,14 @@ def create_ctx_menu():
             parent=menu
         )
 
+        # Add Slate Manager menu item
+        cmds.menuItem(
+            label="Slate Manager...",
+            command=lambda *args: open_slate_manager(),
+            annotation="Open Render Layer Slate Manager",
+            parent=menu
+        )
+
         # Add separator
         cmds.menuItem(divider=True, parent=menu)
 
@@ -493,6 +501,20 @@ def open_batch_render_dialog():
     except Exception as exc:
         import maya.cmds as cmds
         cmds.warning("Failed to launch Batch Render: {}".format(exc))
+
+
+def open_slate_manager():
+    """Open Slate Manager dialog using dockable launcher."""
+    import sys
+    import os
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    try:
+        exec(open(os.path.join(repo_root, 'launch_slate_manager.py')).read())
+    except Exception as exc:
+        import maya.cmds as cmds
+        cmds.warning("Failed to launch Slate Manager: {}".format(exc))
 
 
 def open_asset_manager():

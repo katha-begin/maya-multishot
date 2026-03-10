@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Multishot Manager - Main window for managing multiple shots in Maya scene.
 
 Based on Nuke Multishot Manager design pattern.
@@ -68,6 +68,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._active_shot_index = None
         self._asset_manager_dialogs = {}  # Store references to prevent garbage collection
         self._gaffer_manager_dialog = None  # Single Gaffer Manager instance
+        self._slate_manager_dialog = None  # Single Slate Manager instance
         self._light_original_values = {}  # Pre-gaffer snapshot for "no gaffer" restore
 
         # Initialize display layer management
@@ -101,6 +102,17 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             from core.batch import render_state as rs
             rs.remove_listener(self._on_render_state_changed)
+        except Exception:
+            pass
+        # Close Slate Manager if open
+        try:
+            from ui.slate_manager_dialog import SlateManagerDialog
+            if SlateManagerDialog._instance is not None:
+                try:
+                    SlateManagerDialog._instance.close()
+                except Exception:
+                    pass
+                SlateManagerDialog._instance = None
         except Exception:
             pass
         # Clear instance reference when window is closed
@@ -158,8 +170,10 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addLayout(header_layout)
         
         self.shot_table = QtWidgets.QTableWidget()
-        self.shot_table.setColumnCount(7)
-        self.shot_table.setHorizontalHeaderLabels(["#", "Shot", "Frame Range", "Set", "Ver", "Gaf", "Rnd"])
+        self.shot_table.setColumnCount(9)
+        self.shot_table.setHorizontalHeaderLabels(
+            ["#", "Lck", "Shot", "Frame Range", "Set", "Ver", "Gaf", "Slt", "Rnd"]
+        )
 
         # Set column widths — Shot column stretches like Light column in Gaffer Manager
         header = self.shot_table.horizontalHeader()
@@ -169,28 +183,36 @@ class MainWindow(QtWidgets.QMainWindow):
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(0, 20)
 
-        # Column 1: Shot - stretches to fill available space (matches Gaffer's Light column)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        # Column 1: Lck - fixed 20px, no resize
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+        self.shot_table.setColumnWidth(1, 20)
 
-        # Column 2: Frame Range - compact, fits "1001-1100"
-        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(2, 75)
+        # Column 2: Shot - stretches to fill available space (matches Gaffer's Light column)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.Stretch)
 
-        # Column 3: Set button (3-char label)
+        # Column 3: Frame Range - compact, fits "1001-1100"
         header.setSectionResizeMode(3, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(3, 38)
+        self.shot_table.setColumnWidth(3, 75)
 
-        # Column 4: Version button (3-char label)
+        # Column 4: Set button (3-char label)
         header.setSectionResizeMode(4, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(4, 38)
 
-        # Column 5: Gaffer button (3-char label)
+        # Column 5: Version button (3-char label)
         header.setSectionResizeMode(5, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(5, 38)
 
-        # Column 6: Render status dot
+        # Column 6: Gaffer button (3-char label)
         header.setSectionResizeMode(6, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(6, 28)
+        self.shot_table.setColumnWidth(6, 38)
+
+        # Column 7: Slate button (3-char label)
+        header.setSectionResizeMode(7, QtWidgets.QHeaderView.Fixed)
+        self.shot_table.setColumnWidth(7, 38)
+
+        # Column 8: Render status dot
+        header.setSectionResizeMode(8, QtWidgets.QHeaderView.Fixed)
+        self.shot_table.setColumnWidth(8, 28)
 
         # Enable multi-selection and row selection
         self.shot_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -274,8 +296,8 @@ class MainWindow(QtWidgets.QMainWindow):
         Returns:
             int: Recommended width in pixels
         """
-        # Column 1 (Shot) stretches; use 180px as its minimum contribution
-        column_widths = [20, 180, 75, 38, 38, 38, 28]
+        # Column 2 (Shot) stretches; use 180px as its minimum contribution
+        column_widths = [20, 20, 180, 75, 38, 38, 38, 38, 28]
         total_column_width = sum(column_widths)
 
         # Add extra space for margins, scrollbar, and padding
@@ -297,6 +319,12 @@ class MainWindow(QtWidgets.QMainWindow):
         gaffer_action.setStatusTip("Open Light Gaffer Manager")
         gaffer_action.triggered.connect(self._open_gaffer_manager)
         tools_menu.addAction(gaffer_action)
+
+        # Slate Manager action
+        slate_action = QtWidgets.QAction("Slate Manager", self)
+        slate_action.setStatusTip("Open Render Layer Slate Manager")
+        slate_action.triggered.connect(self._open_slate_manager)
+        tools_menu.addAction(slate_action)
 
         # Settings action (existing functionality)
         settings_action = QtWidgets.QAction("Settings", self)
@@ -330,6 +358,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     GafferManagerDialog._instance.close()
                 except Exception:
                     pass
+
+            # Close Slate Manager so it is recreated with correct parent
+            try:
+                from ui.slate_manager_dialog import SlateManagerDialog
+                if SlateManagerDialog._instance is not None:
+                    try:
+                        SlateManagerDialog._instance.close()
+                    except Exception:
+                        pass
+                    SlateManagerDialog._instance = None
+            except Exception:
+                pass
 
             # Reload all project modules
             prefixes = ('core.', 'ui.', 'tools.', 'utils.',
@@ -441,7 +481,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     logger.warning("Could not auto-wire gaffer chain: {}".format(e))
 
                 # Update button appearance
-                gaffer_btn = self.shot_table.cellWidget(row, 5)
+                gaffer_btn = self.shot_table.cellWidget(row, 6)
                 if gaffer_btn:
                     gaffer_btn.setText("GAF")
                     gaffer_btn.setStyleSheet("background-color: #1565C0; color: white;")
@@ -469,6 +509,74 @@ class MainWindow(QtWidgets.QMainWindow):
             self._gaffer_manager_dialog.select_gaffer(gaffer)
         except Exception as e:
             logger.error("Failed to open Gaffer Manager for gaffer: {}".format(e))
+
+    def _open_slate_manager(self):
+        """Open the Slate Manager dialog."""
+        try:
+            from ui.slate_manager_dialog import SlateManagerDialog
+            self._slate_manager_dialog = SlateManagerDialog.open_or_raise(parent=self)
+            logger.info("Opened Slate Manager")
+            self.statusBar().showMessage("Slate Manager opened")
+        except Exception as e:
+            logger.error("Failed to open Slate Manager: %s", e)
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                "Failed to open Slate Manager:\n{}".format(e)
+            )
+
+    def _open_slate_manager_for(self, slate):
+        """Open (or bring to front) the Slate Manager and select a specific slate.
+
+        Args:
+            slate (CTXSlateNode): Slate to pre-select.
+        """
+        try:
+            from ui.slate_manager_dialog import SlateManagerDialog
+            self._slate_manager_dialog = SlateManagerDialog.open_or_raise(parent=self)
+            self._slate_manager_dialog.select_slate(slate)
+        except Exception as e:
+            logger.error("Failed to open Slate Manager for slate: %s", e)
+
+    def _on_slate_click(self, row):
+        """Handle Slate button click on a shot row.
+
+        Creates a shot-level slate if one does not exist, auto-wires it to
+        the sequence slate (if present), then opens the Slate Manager.
+
+        Args:
+            row (int): Table row index.
+        """
+        if row < 0 or row >= len(self._shots):
+            return
+
+        shot_data = self._shots[row]
+        ctx_node = shot_data.get('ctx_node')
+        if ctx_node is None:
+            return
+
+        try:
+            from core.slate.manager import SlateManager
+            from ui.slate_manager_dialog import SlateManagerDialog
+
+            slate = SlateManager.get_or_create_shot_slate(ctx_node)
+
+            # Update button appearance
+            slate_btn = self.shot_table.cellWidget(row, 7)
+            if slate_btn:
+                slate_btn.setText("SLT")
+                slate_btn.setStyleSheet("background-color: #1565C0; color: white;")
+
+            logger.info("Opened slate: %s", slate.node_name)
+
+            # Open / refresh Slate Manager and pre-select this slate
+            self._open_slate_manager_for(slate)
+
+        except Exception as exc:
+            logger.error("Slate button error: %s", exc)
+            QtWidgets.QMessageBox.critical(
+                self, "Error", "Failed to open slate:\n{}".format(exc)
+            )
 
     def _open_settings(self):
         """Open the Settings dialog."""
@@ -986,13 +1094,16 @@ class MainWindow(QtWidgets.QMainWindow):
         # Column 0: Row number
         self.shot_table.setItem(row, 0, QtWidgets.QTableWidgetItem(str(row + 1)))
 
-        # Column 1: Shot path (PROJECT_EPISODE_SEQUENCE_SHOT)
+        # Column 1: Lock indicator
+        self._update_lock_cell(row, shot_data)
+
+        # Column 2: Shot path (PROJECT_EPISODE_SEQUENCE_SHOT)
         shot_path = "{}_{}_{}_{}".format(
             shot_data['project'], shot_data['ep'], shot_data['seq'], shot_data['shot']
         )
-        self.shot_table.setItem(row, 1, QtWidgets.QTableWidgetItem(shot_path))
+        self.shot_table.setItem(row, 2, QtWidgets.QTableWidgetItem(shot_path))
 
-        # Column 2: Frame Range
+        # Column 3: Frame Range
         frame_range_text = "1001-1100"  # Default
         if 'ctx_node' in shot_data and shot_data['ctx_node']:
             try:
@@ -1002,15 +1113,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 logger.warning("Failed to get frame range: %s", e)
         frame_range_item = QtWidgets.QTableWidgetItem(frame_range_text)
         frame_range_item.setTextAlignment(QtCore.Qt.AlignCenter)
-        self.shot_table.setItem(row, 2, frame_range_item)
+        self.shot_table.setItem(row, 3, frame_range_item)
 
-        # Column 3: Set Shot button
+        # Column 4: Set Shot button
         set_btn = QtWidgets.QPushButton("Set")
         set_btn.setToolTip("Set as active shot")
         set_btn.clicked.connect(lambda checked=False, r=row: self._on_set_shot(r))
-        self.shot_table.setCellWidget(row, 3, set_btn)
+        self.shot_table.setCellWidget(row, 4, set_btn)
 
-        # Column 4: Version button - check asset status
+        # Column 5: Version button - check asset status
         version_status = self._check_shot_version_status(shot_data)
         version_btn = QtWidgets.QPushButton(version_status['text'])
         if version_status['status'] == 'latest':
@@ -1020,9 +1131,9 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             version_btn.setStyleSheet("")  # Default
         version_btn.clicked.connect(lambda checked=False, r=row: self._on_version_click(r))
-        self.shot_table.setCellWidget(row, 4, version_btn)
+        self.shot_table.setCellWidget(row, 5, version_btn)
 
-        # Column 5: Gaffer button
+        # Column 6: Gaffer button
         ctx_node = shot_data.get('ctx_node')
         has_gaffer = False
         if ctx_node:
@@ -1035,13 +1146,27 @@ class MainWindow(QtWidgets.QMainWindow):
         if has_gaffer:
             gaffer_btn.setStyleSheet("background-color: #1565C0; color: white;")
         gaffer_btn.clicked.connect(lambda checked=False, r=row: self._on_gaffer_click(r))
-        self.shot_table.setCellWidget(row, 5, gaffer_btn)
+        self.shot_table.setCellWidget(row, 6, gaffer_btn)
 
-        # Column 6: Render status
+        # Column 7: Slate button (mirrors Col 6 Gaffer button exactly)
+        has_slate = False
+        if ctx_node is not None:
+            try:
+                has_slate = ctx_node.get_slate() is not None
+            except Exception:
+                pass
+        slate_btn = QtWidgets.QPushButton("SLT" if has_slate else "+SLT")
+        slate_btn.setToolTip("Open Slate Manager for this shot")
+        if has_slate:
+            slate_btn.setStyleSheet("background-color: #1565C0; color: white;")
+        slate_btn.clicked.connect(lambda checked=False, r=row: self._on_slate_click(r))
+        self.shot_table.setCellWidget(row, 7, slate_btn)
+
+        # Column 8: Render status
         ep = shot_data.get('ep', '')
         seq = shot_data.get('seq', '')
         shot = shot_data.get('shot', '')
-        self.shot_table.setItem(row, 6, self._make_rnd_badge(ep, seq, shot))
+        self.shot_table.setItem(row, 8, self._make_rnd_badge(ep, seq, shot))
 
         # Store shot data
         if 'version' not in shot_data:
@@ -1164,6 +1289,45 @@ class MainWindow(QtWidgets.QMainWindow):
         menu.addSeparator()
         remove_action = menu.addAction("Remove")
 
+        # Lock / Unlock actions -- based on first selected row
+        first_row = min(selected_rows)
+        node_name = None
+        if first_row < len(self._shots):
+            ctx_node = self._shots[first_row].get('ctx_node')
+            if ctx_node is not None:
+                node_name = (
+                    ctx_node.node_name if hasattr(ctx_node, 'node_name') else str(ctx_node)
+                )
+
+        if node_name is not None:
+            from core.lock_manager import LockManager
+            menu.addSeparator()
+            lock_info = LockManager.get_lock_info(node_name)
+            if lock_info['is_locked']:
+                unlock_shot_action = menu.addAction('Unlock Shot')
+                unlock_shot_action.triggered.connect(
+                    lambda checked=False, n=node_name: self._on_unlock_shot(n)
+                )
+            else:
+                lock_shot_action = menu.addAction('Lock Shot')
+                lock_shot_action.triggered.connect(
+                    lambda checked=False, n=node_name: self._on_lock_shot(n)
+                )
+
+            seq_node = LockManager._get_parent_sequence(node_name)
+            if seq_node:
+                seq_info = LockManager.get_lock_info(seq_node)
+                if seq_info['is_locked']:
+                    unlock_seq_action = menu.addAction('Unlock Sequence')
+                    unlock_seq_action.triggered.connect(
+                        lambda checked=False, sn=seq_node: self._on_unlock_sequence(sn)
+                    )
+                else:
+                    lock_seq_action = menu.addAction('Lock Sequence')
+                    lock_seq_action.triggered.connect(
+                        lambda checked=False, sn=seq_node: self._on_lock_sequence(sn)
+                    )
+
         # Execute menu and get selected action
         action = menu.exec_(self.shot_table.viewport().mapToGlobal(position))
 
@@ -1182,6 +1346,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Remove all selected shots
             for row in sorted(selected_rows, reverse=True):
                 self._on_remove_shot(row)
+        # Lock/Unlock actions are handled via triggered signals above
 
     def _on_set_shot(self, row):
         """Handle Set Shot button click.
@@ -1204,7 +1369,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Update previous button state
         if self._active_shot_index is not None:
-            prev_btn = self.shot_table.cellWidget(self._active_shot_index, 3)
+            prev_btn = self.shot_table.cellWidget(self._active_shot_index, 4)
             if prev_btn:
                 prev_btn.setText("Set")
                 prev_btn.setStyleSheet("")
@@ -1226,7 +1391,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 shot_data['is_active'] = True
 
                 # Update button
-                set_btn = self.shot_table.cellWidget(row, 3)
+                set_btn = self.shot_table.cellWidget(row, 4)
                 if set_btn:
                     set_btn.setText("ACT")
                     set_btn.setStyleSheet("background-color: #4A90E2; color: white; font-weight: bold;")
@@ -1393,6 +1558,22 @@ class MainWindow(QtWidgets.QMainWindow):
                     import traceback
                     traceback.print_exc()
 
+                # Apply slate (render layer renderable state) -- non-fatal
+                try:
+                    from core.slate.resolver import SlateResolver as _SR
+                    if shot_node is not None:
+                        slate_for_shot = _SR._get_slate_for_node(shot_node)
+                        if slate_for_shot is not None:
+                            _SR.apply_to_scene(shot_node)
+                        else:
+                            if hasattr(_SR, 'restore_originals'):
+                                _SR.restore_originals()
+                    else:
+                        if hasattr(_SR, 'restore_originals'):
+                            _SR.restore_originals()
+                except Exception as exc:
+                    logger.warning('Slate apply failed (non-fatal): %s', exc)
+
                 shot_path = "{}_{}_{}_{}".format(
                     shot_data['project'], shot_data['ep'], shot_data['seq'], shot_data['shot']
                 )
@@ -1408,6 +1589,31 @@ class MainWindow(QtWidgets.QMainWindow):
                             dlg.select_gaffer(apply_gaffer)
                         else:
                             dlg.refresh()
+                except Exception:
+                    pass
+
+                # Refresh Slate Manager if open; auto-select the active slate.
+                # Falls back to sequence slate when shot has no slate (mirrors gaffer).
+                try:
+                    from ui.slate_manager_dialog import SlateManagerDialog
+                    slate_dlg = SlateManagerDialog._instance
+                    if slate_dlg is not None:
+                        active_slate = None
+                        try:
+                            active_slate = shot_node.get_slate()
+                            if active_slate is None:
+                                # No shot slate -- try sequence slate
+                                from core.nodes.wrappers.sequence import CTXSequenceNode
+                                seq_name = shot_node.get_parent_sequence()
+                                if seq_name:
+                                    seq = CTXSequenceNode(seq_name)
+                                    active_slate = seq.get_slate()
+                        except Exception:
+                            pass
+                        if active_slate is not None:
+                            slate_dlg.select_slate(active_slate)
+                        else:
+                            slate_dlg.refresh()
                 except Exception:
                     pass
             else:
@@ -1536,7 +1742,7 @@ class MainWindow(QtWidgets.QMainWindow):
             row: Table row index
         """
         shot_data = self._shots[row]
-        set_btn = self.shot_table.cellWidget(row, 3)  # Column 3 is Set Shot button
+        set_btn = self.shot_table.cellWidget(row, 4)  # Column 4 is Set Shot button
         if set_btn:
             if shot_data.get('is_active', False):
                 set_btn.setText("ACT")
@@ -1649,7 +1855,7 @@ class MainWindow(QtWidgets.QMainWindow):
         version_status = self._check_shot_version_status(shot_data)
 
         # Update button
-        version_btn = self.shot_table.cellWidget(row, 4)  # Column 4 is Version button
+        version_btn = self.shot_table.cellWidget(row, 5)  # Column 5 is Version button
         if version_btn:
             version_btn.setText(version_status['text'])
             if version_status['status'] == 'latest':
@@ -1696,7 +1902,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     start, end = shot_data['ctx_node'].get_frame_range()
                     frame_range_text = "{}-{}".format(start, end)
-                    frame_range_item = self.shot_table.item(row, 2)
+                    frame_range_item = self.shot_table.item(row, 3)
                     if frame_range_item:
                         frame_range_item.setText(frame_range_text)
                     logger.info("Updated frame range display for row {}: {}".format(row, frame_range_text))
@@ -1813,7 +2019,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # Update table display
                     frame_range_text = "{}-{}".format(start, end)
-                    frame_range_item = self.shot_table.item(row, 2)
+                    frame_range_item = self.shot_table.item(row, 3)
                     if frame_range_item:
                         frame_range_item.setText(frame_range_text)
 
@@ -2080,7 +2286,112 @@ class MainWindow(QtWidgets.QMainWindow):
             ep = shot_data.get('ep', '')
             seq = shot_data.get('seq', '')
             shot = shot_data.get('shot', '')
-            self.shot_table.setItem(row, 6, self._make_rnd_badge(ep, seq, shot))
+            self.shot_table.setItem(row, 8, self._make_rnd_badge(ep, seq, shot))
+
+    def _update_lock_cell(self, row, shot_data):
+        """Set the lock indicator cell for a shot row.
+
+        Shows a lock icon label. Color indicates lock state:
+          - no lock:                   blank (no widget)
+          - locked directly:           amber text label  "L"
+          - locked via seq (cascade):  amber, slightly dimmer, tooltip shows source
+
+        Args:
+            row (int): Table row index.
+            shot_data (dict): Shot data dict from self._shots.
+        """
+        from core.lock_manager import LockManager
+
+        ctx_node = shot_data.get('ctx_node')
+        if ctx_node is None:
+            self.shot_table.setCellWidget(row, 1, None)
+            return
+
+        node_name = ctx_node.node_name if hasattr(ctx_node, 'node_name') else str(ctx_node)
+        direct_locked = LockManager.is_locked(node_name)
+        info = LockManager.get_lock_info(node_name) if direct_locked else {}
+
+        # Check sequence cascade
+        seq_locked = False
+        seq_info = {}
+        if not direct_locked:
+            seq_node = LockManager._get_parent_sequence(node_name)
+            if seq_node and LockManager.is_locked(seq_node):
+                seq_locked = True
+                seq_info = LockManager.get_lock_info(seq_node)
+
+        if not direct_locked and not seq_locked:
+            self.shot_table.setCellWidget(row, 1, None)
+            item = QtWidgets.QTableWidgetItem('')
+            item.setFlags(QtCore.Qt.NoItemFlags)
+            self.shot_table.setItem(row, 1, item)
+            return
+
+        label = QtWidgets.QLabel('L')
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        label.setFixedWidth(20)
+
+        if direct_locked:
+            label.setStyleSheet('color: #FFA000; font-weight: bold; font-size: 10px;')
+            by = info.get('locked_by', '')
+            at = info.get('locked_at', '')
+            label.setToolTip('Locked by {} at {}'.format(by, at) if by else 'Locked')
+        else:
+            # Cascade from sequence -- slightly dimmer
+            label.setStyleSheet('color: #CC8800; font-size: 10px;')
+            by = seq_info.get('locked_by', '')
+            at = seq_info.get('locked_at', '')
+            label.setToolTip(
+                'Locked via sequence (by {} at {})'.format(by, at) if by
+                else 'Locked via sequence'
+            )
+
+        self.shot_table.setCellWidget(row, 1, label)
+
+    def _refresh_lock_column(self):
+        """Refresh the Lck column for all rows."""
+        for row, shot_data in enumerate(self._shots):
+            self._update_lock_cell(row, shot_data)
+
+    def _on_lock_shot(self, node_name):
+        """Lock a single shot node."""
+        from core.lock_manager import LockManager
+        try:
+            LockManager.lock_node(node_name)
+            self._refresh_lock_column()
+            self.statusBar().showMessage('Shot locked: {}'.format(node_name))
+        except Exception as exc:
+            logger.error('Failed to lock shot %s: %s', node_name, exc)
+
+    def _on_unlock_shot(self, node_name):
+        """Unlock a single shot node."""
+        from core.lock_manager import LockManager
+        try:
+            LockManager.unlock_node(node_name)
+            self._refresh_lock_column()
+            self.statusBar().showMessage('Shot unlocked: {}'.format(node_name))
+        except Exception as exc:
+            logger.error('Failed to unlock shot %s: %s', node_name, exc)
+
+    def _on_lock_sequence(self, seq_node):
+        """Lock a sequence and all shots under it (cascade)."""
+        from core.lock_manager import LockManager
+        try:
+            LockManager.lock_sequence(seq_node, cascade=True)
+            self._refresh_lock_column()
+            self.statusBar().showMessage('Sequence locked: {}'.format(seq_node))
+        except Exception as exc:
+            logger.error('Failed to lock sequence %s: %s', seq_node, exc)
+
+    def _on_unlock_sequence(self, seq_node):
+        """Unlock a sequence and all shots under it (cascade)."""
+        from core.lock_manager import LockManager
+        try:
+            LockManager.unlock_sequence(seq_node, cascade=True)
+            self._refresh_lock_column()
+            self.statusBar().showMessage('Sequence unlocked: {}'.format(seq_node))
+        except Exception as exc:
+            logger.error('Failed to unlock sequence %s: %s', seq_node, exc)
 
     def _register_scene_callbacks(self):
         """Register Maya scene open/new callbacks to refresh the shot table."""

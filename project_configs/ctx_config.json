@@ -208,6 +208,9 @@
       "gpuEnvVar": "REDSHIFT_GPUDEVICES"
     }
   },
+  "slateManager": {
+    "defaultFrameRangeMode": "startEnd"
+  },
   "cache": {
     "lastUpdated": null,
     "episodes": [],

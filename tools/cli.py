@@ -199,6 +199,12 @@ def build_parser():
                          help='Prepare scenes but do not render')
     p_batch.add_argument('--no-save', action='store_true',
                          help='Do not save temp scenes after render')
+    p_batch.add_argument(
+        '--use-slate-layers',
+        action='store_true',
+        default=False,
+        help="Resolve render layers from each shot's slate instead of --layers.",
+    )
 
     return parser
 
@@ -440,10 +446,17 @@ def _cmd_batch_render(args, api, output):
         output({'success': False, 'error': '--shots or --all-shots required'})
         return 1
 
+    if getattr(args, 'use_slate_layers', False):
+        render_layers = None  # ScenePreparer will resolve from slate
+    elif getattr(args, 'layers', None):
+        render_layers = args.layers
+    else:
+        render_layers = None
+
     result = api.batch_render(
         shots=shots,
         scene_file=getattr(args, 'scene', None),
-        render_layers=getattr(args, 'layers', None),
+        render_layers=render_layers,
         start_frame=getattr(args, 'start_frame', None),
         end_frame=getattr(args, 'end_frame', None),
         dry_run=getattr(args, 'dry_run', False),
