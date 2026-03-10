@@ -63,7 +63,10 @@ class AddShotDialog(QtWidgets.QDialog):
         # List
         self._list = QtWidgets.QTableWidget(0, 2)
         self._list.setHorizontalHeaderLabels(['Shot', 'Frame Range'])
-        self._list.horizontalHeader().setStretchLastSection(True)
+        self._list.horizontalHeader().setStretchLastSection(False)
+        self._list.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self._list.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+        self._list.setColumnWidth(1, 80)
         self._list.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         self._list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         layout.addWidget(self._list)
@@ -399,7 +402,10 @@ class BatchRenderDialog(BaseDialog):
         shot_inner = QtWidgets.QVBoxLayout(shot_group)
         self._shot_table = QtWidgets.QTableWidget(0, 2)
         self._shot_table.setHorizontalHeaderLabels(['Shot', 'Frame Range'])
-        self._shot_table.horizontalHeader().setStretchLastSection(True)
+        self._shot_table.horizontalHeader().setStretchLastSection(False)
+        self._shot_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self._shot_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
+        self._shot_table.setColumnWidth(1, 80)
         self._shot_table.setMinimumWidth(300)
         shot_inner.addWidget(self._shot_table)
 
