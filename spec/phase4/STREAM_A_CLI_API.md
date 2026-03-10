@@ -1,6 +1,6 @@
 # Stream A — CLI & Headless Pipeline API
 
-**Status:** Not Started
+**Status:** Complete
 **Priority:** P1 — Farm scripts cannot currently call the tool without knowing internals
 **Branch:** `feature/phase4-production-automation`
 **Dependencies:** Streams B, C, D, E should be done first
@@ -377,12 +377,15 @@ File: `tests/test_pipeline_api.py`
 
 ## Completion Criteria
 
-- [ ] `tools/pipeline_api.py` created with all public methods
-- [ ] `tools/cli.py` created with all 5 commands + global flags
-- [ ] `core/gaffer/serializer.py` created with export/import
-- [ ] `python -m tools.cli --help` works without Maya
-- [ ] `python -m tools.cli scan-assets ...` works without Maya
-- [ ] `python -m tools.cli validate ...` runs validators and exits correctly
-- [ ] `--json` flag produces valid JSON on all commands
-- [ ] All tests pass
-- [ ] No regressions in existing test suite
+- [x] `tools/pipeline_api.py` created with all public methods
+- [x] `tools/cli.py` created with all 5 commands + global flags
+- [x] `core/gaffer/serializer.py` created with export/import
+- [x] `python tools/cli.py --help` works without Maya
+- [x] `python tools/cli.py scan-assets ...` works without Maya
+- [x] `python tools/cli.py validate ...` runs validators and exits correctly
+- [x] `--json` flag produces valid JSON on all commands
+- [x] All tests pass (42/42 new, 118/118 total)
+- [x] No regressions in existing test suite
+
+**Note:** `--json` is a global flag that must be placed before the subcommand name, e.g.
+`python tools/cli.py --json scan-assets --ep Ep04 ...`

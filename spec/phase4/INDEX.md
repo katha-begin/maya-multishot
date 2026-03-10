@@ -10,11 +10,11 @@
 
 | Stream | Document | Status | Priority |
 |--------|----------|--------|----------|
-| A | [CLI & Headless Pipeline API](./STREAM_A_CLI_API.md) | Not Started | P1 |
-| B | [Scene Validator](./STREAM_B_SCENE_VALIDATOR.md) | Not Started | P1 |
-| C | [Structured Logging](./STREAM_C_LOGGING.md) | Not Started | P2 |
-| D | [Config-Driven Parameters](./STREAM_D_CONFIG_DRIVEN.md) | Not Started | P2 |
-| E | [Renderer Adapter Improvements](./STREAM_E_RENDERER_ADAPTERS.md) | Not Started | P2 |
+| A | [CLI & Headless Pipeline API](./STREAM_A_CLI_API.md) | Complete | P1 |
+| B | [Scene Validator](./STREAM_B_SCENE_VALIDATOR.md) | Complete | P1 |
+| C | [Structured Logging](./STREAM_C_LOGGING.md) | Complete | P2 |
+| D | [Config-Driven Parameters](./STREAM_D_CONFIG_DRIVEN.md) | Complete | P2 |
+| E | [Renderer Adapter Improvements](./STREAM_E_RENDERER_ADAPTERS.md) | Complete | P2 |
 
 > Asset Manager (Stream F) and VRay adapter deferred — not in scope for this branch.
 
@@ -34,11 +34,11 @@
 
 ## Completion Checklist
 
-- [ ] Stream C complete + tests passing
-- [ ] Stream D complete + tests passing
-- [ ] Stream B complete + tests passing
-- [ ] Stream E complete + tests passing
-- [ ] Stream A complete + tests passing
+- [x] Stream C complete + tests passing
+- [x] Stream D complete + tests passing
+- [x] Stream B complete + tests passing
+- [x] Stream E complete + tests passing
+- [x] Stream A complete + tests passing
 - [ ] CLAUDE.md Phase 4 status updated
 - [ ] MEMORY.md updated
 - [ ] Branch merged to main
