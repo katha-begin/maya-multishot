@@ -481,6 +481,54 @@ class ProjectConfig(object):
         """
         return self.get_gaffer_attributes().get('compound', {})
 
+    def get_renderer_config(self, renderer_name):
+        """Return config dict for a specific renderer.
+
+        Args:
+            renderer_name (str): 'redshift' | 'arnold' | 'maya'
+
+        Returns:
+            dict or None
+        """
+        return self.data.get('renderers', {}).get(renderer_name)
+
+    def get_standin_node_type(self, renderer_name):
+        """Return the standin node type for a renderer.
+
+        Args:
+            renderer_name (str): Renderer name.
+
+        Returns:
+            str or None: Node type string (e.g. 'RedshiftProxyMesh') or None.
+        """
+        cfg = self.get_renderer_config(renderer_name) or {}
+        return cfg.get('standinNodeType')
+
+    def get_standin_file_attr(self, renderer_name):
+        """Return the standin file attribute name for a renderer.
+
+        Args:
+            renderer_name (str): Renderer name.
+
+        Returns:
+            str or None: Attribute name (e.g. 'fileName') or None.
+        """
+        cfg = self.get_renderer_config(renderer_name) or {}
+        return cfg.get('standinFileAttr')
+
+    def get_preferred_extensions(self, renderer_name):
+        """Return preferred file extensions for a renderer.
+
+        Args:
+            renderer_name (str): Renderer name.
+
+        Returns:
+            list: Extensions in preference order, without leading dot.
+                  Empty list if renderer not in config.
+        """
+        cfg = self.get_renderer_config(renderer_name) or {}
+        return cfg.get('preferredExtensions', [])
+
     def __repr__(self):
         """String representation of ProjectConfig."""
         return "ProjectConfig(config_path='{}', version='{}')".format(

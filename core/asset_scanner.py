@@ -17,6 +17,7 @@ import os
 import re
 
 from core.logging_config import get_logger
+from core.renderers import get_active_renderer, get_preferred_extensions
 
 logger = get_logger(__name__)
 
@@ -197,9 +198,25 @@ class AssetScanner(object):
             extensions = tuple('.' + e for e in config_exts)
         else:
             extensions = ('.abc', '.rs', '.ma', '.mb', '.vdb', '.ass')
+        # Determine renderer-preferred extension order once (outside version loop)
+        try:
+            _renderer = get_active_renderer()
+            _preferred = get_preferred_extensions(_renderer, self.config)
+        except Exception:
+            _renderer = 'unknown'
+            _preferred = []
+
+        def _ext_rank(fname):
+            ext = os.path.splitext(fname)[1].lstrip('.')
+            try:
+                return _preferred.index(ext)
+            except ValueError:
+                return len(_preferred)
+
         unique_assets = {}
         for version, version_path in version_dirs:
-            for filename in os.listdir(version_path):
+            filenames = sorted(os.listdir(version_path), key=_ext_rank)
+            for filename in filenames:
                 if not filename.endswith(extensions):
                     continue
                 asset_info = self._parse_filename(filename)

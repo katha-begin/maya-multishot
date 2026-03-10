@@ -163,6 +163,26 @@
       "default": "_groom.ma"
     }
   },
+  "renderers": {
+    "redshift": {
+      "standinExtension": "rs",
+      "standinNodeType": "RedshiftProxyMesh",
+      "standinFileAttr": "fileName",
+      "preferredExtensions": ["rs", "abc", "ma", "mb"]
+    },
+    "arnold": {
+      "standinExtension": "ass",
+      "standinNodeType": "aiStandIn",
+      "standinFileAttr": "dso",
+      "preferredExtensions": ["ass", "abc", "ma", "mb"]
+    },
+    "maya": {
+      "standinExtension": null,
+      "standinNodeType": null,
+      "standinFileAttr": null,
+      "preferredExtensions": ["ma", "mb", "abc"]
+    }
+  },
   "renderSettings": {
     "enabled": true,
     "outputPath": {

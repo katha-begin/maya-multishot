@@ -396,7 +396,7 @@ class NodeManager(object):
             return False
 
         # 3. Apply resolved path to Maya node
-        success = self._apply_path_to_maya_node(maya_node, resolved_path)
+        success = self._apply_path_to_maya_node(maya_node, resolved_path, config=config)
 
         if success:
             # Cache resolved path on CTX_Asset
@@ -441,15 +441,18 @@ class NodeManager(object):
         logger.debug("No camera reference found in scene")
         return None
 
-    def _apply_path_to_maya_node(self, maya_node, resolved_path):
+    def _apply_path_to_maya_node(self, maya_node, resolved_path, config=None):
         """Apply resolved path to a Maya node based on its type.
 
-        Handles aiStandIn (.dso), RedshiftProxyMesh (.fileName),
-        and reference nodes (file reload).
+        Renderer-specific node type and file attribute are read from config if
+        provided, with a hardcoded fallback for backward compatibility.
+
+        Handles standin nodes (aiStandIn, RedshiftProxyMesh) and reference nodes.
 
         Args:
             maya_node (str): Maya node name
             resolved_path (str): Resolved file path
+            config: Optional ProjectConfig instance for renderer config lookup.
 
         Returns:
             bool: True if successful
@@ -460,17 +463,29 @@ class NodeManager(object):
 
         node_type = cmds.nodeType(maya_node)
 
-        try:
-            if node_type == NODE_TYPE_AI_STANDIN:
-                cmds.setAttr('{}.dso'.format(maya_node),
-                             resolved_path, type='string')
-                logger.debug("Set aiStandIn.dso: %s", resolved_path)
-                return True
+        # Build lookup: {node_type: file_attr} from config
+        node_attr_map = {}
+        if config is not None:
+            for renderer_name in ('redshift', 'arnold', 'maya'):
+                rnd_cfg = config.get_renderer_config(renderer_name) or {}
+                node_t = rnd_cfg.get('standinNodeType')
+                file_a = rnd_cfg.get('standinFileAttr')
+                if node_t and file_a:
+                    node_attr_map[node_t] = file_a
 
-            elif node_type == NODE_TYPE_RS_PROXY:
-                cmds.setAttr('{}.fileName'.format(maya_node),
+        # Hardcoded fallback (always available even without config)
+        if not node_attr_map:
+            node_attr_map = {
+                NODE_TYPE_AI_STANDIN: 'dso',
+                NODE_TYPE_RS_PROXY:   'fileName',
+            }
+
+        try:
+            if node_type in node_attr_map:
+                attr = node_attr_map[node_type]
+                cmds.setAttr('{}.{}'.format(maya_node, attr),
                              resolved_path, type='string')
-                logger.debug("Set RedshiftProxyMesh.fileName: %s", resolved_path)
+                logger.debug("Set %s.%s: %s", node_type, attr, resolved_path)
                 return True
 
             elif node_type == 'reference':
@@ -482,8 +497,20 @@ class NodeManager(object):
                 return True
 
             else:
-                logger.warning("Unsupported node type %s for %s",
-                               node_type, maya_node)
+                try:
+                    if cmds.referenceQuery(maya_node, isNodeReferenced=True):
+                        if MAYA_AVAILABLE:
+                            cmds.file(resolved_path, loadReference=maya_node)
+                            logger.debug("Reloaded reference %s: %s",
+                                         maya_node, resolved_path)
+                        return True
+                except Exception:
+                    pass
+
+                logger.warning(
+                    "Unknown node type for path application: %s (type: %s)",
+                    maya_node, node_type
+                )
                 return False
 
         except Exception as e:

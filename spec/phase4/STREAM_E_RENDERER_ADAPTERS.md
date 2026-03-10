@@ -1,6 +1,6 @@
 # Stream E — Renderer Adapter Improvements
 
-**Status:** Not Started
+**Status:** Complete
 **Priority:** P2
 **Branch:** `feature/phase4-production-automation`
 **Dependencies:** Stream D (config-driven) should be done first
@@ -251,11 +251,11 @@ File: `tests/test_renderer_adapters.py`
 
 ## Completion Criteria
 
-- [ ] `project_configs/ctx_config.json` has `renderers` section
-- [ ] All new `ProjectConfig` methods added and tested
-- [ ] `get_active_renderer()` added to `core/renderers/__init__.py`
-- [ ] `get_preferred_extensions()` added to `core/renderers/__init__.py`
-- [ ] `NodeManager._apply_path_to_maya_node()` reads from config
-- [ ] Asset scanner uses renderer preference for format selection
-- [ ] All tests pass
-- [ ] No regressions in existing test suite
+- [x] `project_configs/ctx_config.json` has `renderers` section
+- [x] All new `ProjectConfig` methods added and tested
+- [x] `get_active_renderer()` added to `core/renderers/__init__.py`
+- [x] `get_preferred_extensions()` added to `core/renderers/__init__.py`
+- [x] `NodeManager._apply_path_to_maya_node()` reads from config
+- [x] Asset scanner uses renderer preference for format selection
+- [x] All tests pass (25 new + 179 regression)
+- [x] No regressions in existing test suite
