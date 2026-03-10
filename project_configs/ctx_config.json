@@ -41,6 +41,7 @@
   },
   "assetDiscovery": {
     "heroSubdir": "hero",
+    "cameraFileSuffix": "_camera",
     "texRenderSubdir": "tex_render",
     "shaderFileSuffix": "_rsshade.ma",
     "groomFileSuffix": "_groom.ma",
@@ -61,6 +62,18 @@
         "directory": "Setdress",
         "subdirs": ["interior", "exterior", "Set"]
       }
+    }
+  },
+  "gafferAttributes": {
+    "simple": [
+      "intensity", "exposure", "spread", "muted",
+      "affectDiffuse", "affectSpecular", "affectGI", "shadowEnable"
+    ],
+    "compound": {
+      "color":     ["colorR",    "colorG",    "colorB"],
+      "translate": ["translateX","translateY","translateZ"],
+      "rotate":    ["rotateX",   "rotateY",   "rotateZ"],
+      "scale":     ["scaleX",    "scaleY",    "scaleZ"]
     }
   },
   "patterns": {

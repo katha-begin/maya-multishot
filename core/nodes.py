@@ -429,7 +429,9 @@ class NodeManager(object):
                     ref_ns = ref_ns[1:]
 
                 # Check if this is a camera reference
-                if '_camera' in ref_ns.lower():
+                # Camera suffix is '_camera' by convention (see assetDiscovery.cameraFileSuffix)
+                cam_suffix = '_camera'
+                if cam_suffix in ref_ns.lower():
                     logger.debug("Found camera reference: {} (namespace: {})".format(
                         ref_node, ref_ns))
                     return ref_node

@@ -285,7 +285,10 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 return
 
             # Scan departments
-            departments = ['anim', 'layout', 'fx', 'lighting']
+            departments = (
+                self._config.get_token_values('dept')
+                if hasattr(self._config, 'get_token_values') else None
+            ) or ['anim', 'layout', 'fx', 'lighting']
             for dept in departments:
                 dept_path = os.path.join(shot_base, dept, 'publish')
                 if not os.path.exists(dept_path):

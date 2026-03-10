@@ -1,6 +1,6 @@
 # Stream D — Config-Driven Parameters
 
-**Status:** Not Started
+**Status:** Complete
 **Priority:** P2 — Do second (unlocks correct behaviour in other streams)
 **Branch:** `feature/phase4-production-automation`
 
@@ -219,8 +219,8 @@ File: `tests/test_config_driven.py`
 
 ## Completion Criteria
 
-- [ ] All 7 hardcoded values removed from source files
-- [ ] New `ctx_config.json` sections added (`gafferAttributes`, updated `assetDiscovery`)
-- [ ] All new `ProjectConfig` methods added
-- [ ] All listed tests pass
-- [ ] No regressions in existing test suite
+- [x] All 7 hardcoded values removed from source files
+- [x] New `ctx_config.json` sections added (`gafferAttributes`, updated `assetDiscovery`)
+- [x] All new `ProjectConfig` methods added
+- [x] All listed tests pass
+- [x] No regressions in existing test suite
