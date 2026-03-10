@@ -68,6 +68,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._active_shot_index = None
         self._asset_manager_dialogs = {}  # Store references to prevent garbage collection
         self._gaffer_manager_dialog = None  # Single Gaffer Manager instance
+        self._slate_manager_dialog = None  # Single Slate Manager instance
         self._light_original_values = {}  # Pre-gaffer snapshot for "no gaffer" restore
 
         # Initialize display layer management
@@ -101,6 +102,17 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             from core.batch import render_state as rs
             rs.remove_listener(self._on_render_state_changed)
+        except Exception:
+            pass
+        # Close Slate Manager if open
+        try:
+            from ui.slate_manager_dialog import SlateManagerDialog
+            if SlateManagerDialog._instance is not None:
+                try:
+                    SlateManagerDialog._instance.close()
+                except Exception:
+                    pass
+                SlateManagerDialog._instance = None
         except Exception:
             pass
         # Clear instance reference when window is closed
@@ -158,9 +170,9 @@ class MainWindow(QtWidgets.QMainWindow):
         main_layout.addLayout(header_layout)
         
         self.shot_table = QtWidgets.QTableWidget()
-        self.shot_table.setColumnCount(8)
+        self.shot_table.setColumnCount(9)
         self.shot_table.setHorizontalHeaderLabels(
-            ["#", "Lck", "Shot", "Frame Range", "Set", "Ver", "Gaf", "Rnd"]
+            ["#", "Lck", "Shot", "Frame Range", "Set", "Ver", "Gaf", "Slt", "Rnd"]
         )
 
         # Set column widths — Shot column stretches like Light column in Gaffer Manager
@@ -194,9 +206,13 @@ class MainWindow(QtWidgets.QMainWindow):
         header.setSectionResizeMode(6, QtWidgets.QHeaderView.Fixed)
         self.shot_table.setColumnWidth(6, 38)
 
-        # Column 7: Render status dot
+        # Column 7: Slate button (3-char label)
         header.setSectionResizeMode(7, QtWidgets.QHeaderView.Fixed)
-        self.shot_table.setColumnWidth(7, 28)
+        self.shot_table.setColumnWidth(7, 38)
+
+        # Column 8: Render status dot
+        header.setSectionResizeMode(8, QtWidgets.QHeaderView.Fixed)
+        self.shot_table.setColumnWidth(8, 28)
 
         # Enable multi-selection and row selection
         self.shot_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
@@ -281,7 +297,7 @@ class MainWindow(QtWidgets.QMainWindow):
             int: Recommended width in pixels
         """
         # Column 2 (Shot) stretches; use 180px as its minimum contribution
-        column_widths = [20, 20, 180, 75, 38, 38, 38, 28]
+        column_widths = [20, 20, 180, 75, 38, 38, 38, 38, 28]
         total_column_width = sum(column_widths)
 
         # Add extra space for margins, scrollbar, and padding
@@ -303,6 +319,12 @@ class MainWindow(QtWidgets.QMainWindow):
         gaffer_action.setStatusTip("Open Light Gaffer Manager")
         gaffer_action.triggered.connect(self._open_gaffer_manager)
         tools_menu.addAction(gaffer_action)
+
+        # Slate Manager action
+        slate_action = QtWidgets.QAction("Slate Manager", self)
+        slate_action.setStatusTip("Open Render Layer Slate Manager")
+        slate_action.triggered.connect(self._open_slate_manager)
+        tools_menu.addAction(slate_action)
 
         # Settings action (existing functionality)
         settings_action = QtWidgets.QAction("Settings", self)
@@ -336,6 +358,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     GafferManagerDialog._instance.close()
                 except Exception:
                     pass
+
+            # Close Slate Manager so it is recreated with correct parent
+            try:
+                from ui.slate_manager_dialog import SlateManagerDialog
+                if SlateManagerDialog._instance is not None:
+                    try:
+                        SlateManagerDialog._instance.close()
+                    except Exception:
+                        pass
+                    SlateManagerDialog._instance = None
+            except Exception:
+                pass
 
             # Reload all project modules
             prefixes = ('core.', 'ui.', 'tools.', 'utils.',
@@ -475,6 +509,74 @@ class MainWindow(QtWidgets.QMainWindow):
             self._gaffer_manager_dialog.select_gaffer(gaffer)
         except Exception as e:
             logger.error("Failed to open Gaffer Manager for gaffer: {}".format(e))
+
+    def _open_slate_manager(self):
+        """Open the Slate Manager dialog."""
+        try:
+            from ui.slate_manager_dialog import SlateManagerDialog
+            self._slate_manager_dialog = SlateManagerDialog.open_or_raise(parent=self)
+            logger.info("Opened Slate Manager")
+            self.statusBar().showMessage("Slate Manager opened")
+        except Exception as e:
+            logger.error("Failed to open Slate Manager: %s", e)
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                "Failed to open Slate Manager:\n{}".format(e)
+            )
+
+    def _open_slate_manager_for(self, slate):
+        """Open (or bring to front) the Slate Manager and select a specific slate.
+
+        Args:
+            slate (CTXSlateNode): Slate to pre-select.
+        """
+        try:
+            from ui.slate_manager_dialog import SlateManagerDialog
+            self._slate_manager_dialog = SlateManagerDialog.open_or_raise(parent=self)
+            self._slate_manager_dialog.select_slate(slate)
+        except Exception as e:
+            logger.error("Failed to open Slate Manager for slate: %s", e)
+
+    def _on_slate_click(self, row):
+        """Handle Slate button click on a shot row.
+
+        Creates a shot-level slate if one does not exist, auto-wires it to
+        the sequence slate (if present), then opens the Slate Manager.
+
+        Args:
+            row (int): Table row index.
+        """
+        if row < 0 or row >= len(self._shots):
+            return
+
+        shot_data = self._shots[row]
+        ctx_node = shot_data.get('ctx_node')
+        if ctx_node is None:
+            return
+
+        try:
+            from core.slate.manager import SlateManager
+            from ui.slate_manager_dialog import SlateManagerDialog
+
+            slate = SlateManager.get_or_create_shot_slate(ctx_node)
+
+            # Update button appearance
+            slate_btn = self.shot_table.cellWidget(row, 7)
+            if slate_btn:
+                slate_btn.setText("SLT")
+                slate_btn.setStyleSheet("background-color: #1565C0; color: white;")
+
+            logger.info("Opened slate: %s", slate.node_name)
+
+            # Open / refresh Slate Manager and pre-select this slate
+            self._open_slate_manager_for(slate)
+
+        except Exception as exc:
+            logger.error("Slate button error: %s", exc)
+            QtWidgets.QMessageBox.critical(
+                self, "Error", "Failed to open slate:\n{}".format(exc)
+            )
 
     def _open_settings(self):
         """Open the Settings dialog."""
@@ -1046,11 +1148,25 @@ class MainWindow(QtWidgets.QMainWindow):
         gaffer_btn.clicked.connect(lambda checked=False, r=row: self._on_gaffer_click(r))
         self.shot_table.setCellWidget(row, 6, gaffer_btn)
 
-        # Column 7: Render status
+        # Column 7: Slate button (mirrors Col 6 Gaffer button exactly)
+        has_slate = False
+        if ctx_node is not None:
+            try:
+                has_slate = ctx_node.get_slate() is not None
+            except Exception:
+                pass
+        slate_btn = QtWidgets.QPushButton("SLT" if has_slate else "+SLT")
+        slate_btn.setToolTip("Open Slate Manager for this shot")
+        if has_slate:
+            slate_btn.setStyleSheet("background-color: #1565C0; color: white;")
+        slate_btn.clicked.connect(lambda checked=False, r=row: self._on_slate_click(r))
+        self.shot_table.setCellWidget(row, 7, slate_btn)
+
+        # Column 8: Render status
         ep = shot_data.get('ep', '')
         seq = shot_data.get('seq', '')
         shot = shot_data.get('shot', '')
-        self.shot_table.setItem(row, 7, self._make_rnd_badge(ep, seq, shot))
+        self.shot_table.setItem(row, 8, self._make_rnd_badge(ep, seq, shot))
 
         # Store shot data
         if 'version' not in shot_data:
@@ -1468,6 +1584,23 @@ class MainWindow(QtWidgets.QMainWindow):
                             dlg.select_gaffer(apply_gaffer)
                         else:
                             dlg.refresh()
+                except Exception:
+                    pass
+
+                # Refresh Slate Manager if open; auto-select the active slate
+                try:
+                    from ui.slate_manager_dialog import SlateManagerDialog
+                    slate_dlg = SlateManagerDialog._instance
+                    if slate_dlg is not None:
+                        active_slate = None
+                        try:
+                            active_slate = shot_node.get_slate()
+                        except Exception:
+                            pass
+                        if active_slate is not None:
+                            slate_dlg.select_slate(active_slate)
+                        else:
+                            slate_dlg.refresh()
                 except Exception:
                     pass
             else:
@@ -2140,7 +2273,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ep = shot_data.get('ep', '')
             seq = shot_data.get('seq', '')
             shot = shot_data.get('shot', '')
-            self.shot_table.setItem(row, 7, self._make_rnd_badge(ep, seq, shot))
+            self.shot_table.setItem(row, 8, self._make_rnd_badge(ep, seq, shot))
 
     def _update_lock_cell(self, row, shot_data):
         """Set the lock indicator cell for a shot row.

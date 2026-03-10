@@ -298,6 +298,9 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
             'temp_dir': '',
             'reserve_gpus': 1,
         }
+        # List of row dicts for the Configure tab shot table.
+        # Each entry: {ep, seq, shot, start_frame, end_frame, frame_range_mode}
+        self._configure_shots = []
 
         super(BatchRenderDialog, self).__init__(parent)
         self.setObjectName('BatchRenderDialog')
@@ -526,18 +529,109 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
         chk.setData(QtCore.Qt.UserRole, (ep, seq, shot))
         self._shot_table.setItem(row, 0, chk)
 
-        if frame_range is None and MAYA_AVAILABLE:
+        # Resolve frame range values
+        start_frame = 1001
+        end_frame = 1100
+        if MAYA_AVAILABLE:
             try:
                 from core.nodes.wrappers import CTXShotNode
                 sn = CTXShotNode.find_by_code(ep, seq, shot)
                 if sn:
-                    start, end = sn.get_frame_range()
-                    frame_range = '%d-%d' % (start, end)
+                    start_frame, end_frame = sn.get_frame_range()
+            except Exception:
+                if frame_range:
+                    try:
+                        parts = frame_range.split('-')
+                        start_frame = int(parts[0])
+                        end_frame = int(parts[-1])
+                    except Exception:
+                        pass
+        elif frame_range:
+            try:
+                parts = frame_range.split('-')
+                start_frame = int(parts[0])
+                end_frame = int(parts[-1])
             except Exception:
                 pass
-        fr_item = QtWidgets.QTableWidgetItem(frame_range or '----')
-        fr_item.setTextAlignment(QtCore.Qt.AlignCenter)
-        self._shot_table.setItem(row, 1, fr_item)
+
+        row_data = {
+            'ep': ep,
+            'seq': seq,
+            'shot': shot,
+            'start_frame': start_frame,
+            'end_frame': end_frame,
+            'frame_range_mode': 'startEnd',
+        }
+        self._configure_shots.append(row_data)
+
+        cell = self._make_frame_range_cell(row, row_data)
+        self._shot_table.setCellWidget(row, 1, cell)
+
+    def _get_display_frame_range(self, row_data):
+        """Return (start, end) to display and submit for a shot row.
+
+        Args:
+            row_data (dict): Shot row dict with frame_range_mode, start_frame, end_frame.
+
+        Returns:
+            tuple: (start_frame, end_frame) to render.
+        """
+        mode = row_data.get('frame_range_mode', 'startEnd')
+        start = row_data['start_frame']
+        end = row_data['end_frame']
+        if mode == 'startEnd':
+            return (start, start)
+        return (start, end)
+
+    def _make_frame_range_cell(self, row_index, row_data):
+        """Return a widget for the Frame Range cell in the Configure tab.
+
+        Shows current range and a toggle button to expand/collapse.
+
+        Args:
+            row_index (int): Row index in _shot_table.
+            row_data (dict): Shot row data dict.
+
+        Returns:
+            QWidget: Container widget with label and toggle button.
+        """
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(2, 0, 2, 0)
+        layout.setSpacing(2)
+
+        start, end = self._get_display_frame_range(row_data)
+        range_label = QtWidgets.QLabel('{}-{}'.format(start, end))
+        range_label.setFixedWidth(60)
+
+        mode = row_data.get('frame_range_mode', 'startEnd')
+        toggle_btn = QtWidgets.QPushButton('+' if mode == 'startEnd' else '-')
+        toggle_btn.setFixedSize(16, 16)
+        toggle_btn.setToolTip(
+            'Expand to full frame range' if mode == 'startEnd'
+            else 'Collapse to start+end frames only'
+        )
+        toggle_btn.clicked.connect(
+            lambda checked=False, r=row_index: self._on_toggle_frame_range(r)
+        )
+
+        layout.addWidget(range_label)
+        layout.addWidget(toggle_btn)
+        return container
+
+    def _on_toggle_frame_range(self, row_index):
+        """Toggle frame_range_mode for a Configure tab shot row.
+
+        Args:
+            row_index (int): Row index in _shot_table and _configure_shots.
+        """
+        if row_index < 0 or row_index >= len(self._configure_shots):
+            return
+        row_data = self._configure_shots[row_index]
+        current_mode = row_data.get('frame_range_mode', 'startEnd')
+        row_data['frame_range_mode'] = 'full' if current_mode == 'startEnd' else 'startEnd'
+        cell = self._make_frame_range_cell(row_index, row_data)
+        self._shot_table.setCellWidget(row_index, 1, cell)
 
     def _get_shot_ids_in_list(self):
         """Return set of shot_id strings currently in the Configure shot list."""
@@ -563,6 +657,8 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
             reverse=True)
         for row in rows:
             self._shot_table.removeRow(row)
+            if 0 <= row < len(self._configure_shots):
+                del self._configure_shots[row]
 
     # ------------------------------------------------------------------
     # Configure tab -- layer list
@@ -625,16 +721,70 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
                 data = item.data(QtCore.Qt.UserRole)
                 if data:
                     ep, seq, shot = data
-                    shots.append({'ep': ep, 'seq': seq, 'shot': shot})
+                    row_data = (self._configure_shots[row]
+                                if row < len(self._configure_shots) else {})
+                    shots.append({
+                        'ep': ep,
+                        'seq': seq,
+                        'shot': shot,
+                        'start_frame': row_data.get('start_frame'),
+                        'end_frame': row_data.get('end_frame'),
+                        'frame_range_mode': row_data.get('frame_range_mode', 'startEnd'),
+                    })
         return shots
 
     def _launch_render(self, shots, dry_run=False):
-        """Build jobs for shots and start render thread."""
+        """Build jobs for shots and start render thread.
+
+        For each shot, respects frame_range_mode:
+          'startEnd' -- creates two single-frame jobs (start frame + end frame).
+          'full'     -- creates one job spanning the full range.
+        """
         render_layers = self._get_checked_layers() or None
         auto_frame = self._settings.get('auto_frame', True)
-        start_frame = None if auto_frame else self._settings.get('start_frame')
-        end_frame   = None if auto_frame else self._settings.get('end_frame')
-        reserved    = self._settings.get('reserve_gpus', 1)
+        reserved   = self._settings.get('reserve_gpus', 1)
+
+        # Build expanded job list from per-row frame_range_mode
+        jobs_to_run = []
+        for shot in shots:
+            mode = shot.get('frame_range_mode', 'startEnd')
+            sf = shot.get('start_frame')
+            ef = shot.get('end_frame')
+
+            if auto_frame:
+                # Auto: use None so ScenePreparer reads from CTXShotNode
+                if mode == 'startEnd':
+                    # Two single-frame sentinel jobs -- ScenePreparer will clamp
+                    jobs_to_run.append({
+                        'ep': shot['ep'], 'seq': shot['seq'], 'shot': shot['shot'],
+                        'start_frame': sf, 'end_frame': sf,
+                    })
+                    jobs_to_run.append({
+                        'ep': shot['ep'], 'seq': shot['seq'], 'shot': shot['shot'],
+                        'start_frame': ef, 'end_frame': ef,
+                    })
+                else:
+                    jobs_to_run.append({
+                        'ep': shot['ep'], 'seq': shot['seq'], 'shot': shot['shot'],
+                        'start_frame': None, 'end_frame': None,
+                    })
+            else:
+                manual_sf = self._settings.get('start_frame', 1001)
+                manual_ef = self._settings.get('end_frame', 1100)
+                if mode == 'startEnd':
+                    jobs_to_run.append({
+                        'ep': shot['ep'], 'seq': shot['seq'], 'shot': shot['shot'],
+                        'start_frame': manual_sf, 'end_frame': manual_sf,
+                    })
+                    jobs_to_run.append({
+                        'ep': shot['ep'], 'seq': shot['seq'], 'shot': shot['shot'],
+                        'start_frame': manual_ef, 'end_frame': manual_ef,
+                    })
+                else:
+                    jobs_to_run.append({
+                        'ep': shot['ep'], 'seq': shot['seq'], 'shot': shot['shot'],
+                        'start_frame': manual_sf, 'end_frame': manual_ef,
+                    })
 
         self._append_tasks_to_monitor(shots, render_layers)
         self._tab_widget.setCurrentIndex(0)  # switch to Monitor
@@ -646,15 +796,22 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
             try:
                 from tools.pipeline_api import PipelineAPI
                 api = PipelineAPI()
-                api.batch_render(
-                    shots=shots,
-                    render_layers=render_layers,
-                    start_frame=start_frame,
-                    end_frame=end_frame,
-                    on_progress=self._on_progress,
-                    dry_run=dry_run,
-                    reserved_gpus=reserved,
-                )
+                for job_spec in jobs_to_run:
+                    if self._cancelled:
+                        break
+                    api.batch_render(
+                        shots=[{
+                            'ep': job_spec['ep'],
+                            'seq': job_spec['seq'],
+                            'shot': job_spec['shot'],
+                        }],
+                        render_layers=render_layers,
+                        start_frame=job_spec['start_frame'],
+                        end_frame=job_spec['end_frame'],
+                        on_progress=self._on_progress,
+                        dry_run=dry_run,
+                        reserved_gpus=reserved,
+                    )
             except Exception as exc:
                 logger.exception("Batch render thread failed: %s", exc)
             finally:

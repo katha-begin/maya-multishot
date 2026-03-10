@@ -523,6 +523,30 @@ class PipelineAPI(object):
                 except Exception:
                     pass
 
+    def get_shot_slate_layers(self, ep, seq, shot):
+        """Return the resolved renderable layer list for a shot via its slate.
+
+        Args:
+            ep (str): Episode code.
+            seq (str): Sequence code.
+            shot (str): Shot code.
+
+        Returns:
+            list[str]|None: Renderable layer names, or None if no slate.
+        """
+        try:
+            from core.nodes.wrappers import CTXShotNode
+            from core.slate.resolver import SlateResolver
+            all_shots = CTXShotNode.list_all()
+            for sn in all_shots:
+                if (sn.get_ep_code() == ep
+                        and sn.get_seq_code() == seq
+                        and sn.get_shot_code() == shot):
+                    return SlateResolver.get_resolved_renderable_layers(sn)
+        except Exception as exc:
+            logger.warning("get_shot_slate_layers failed: %s", exc)
+        return None
+
     def import_gaffer(self, ep, seq, shot, json_path, scene_file=None, save=True):
         """Load gaffer JSON and apply it to a shot in a Maya scene.
 
