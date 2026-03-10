@@ -276,6 +276,128 @@ class PipelineAPI(object):
                 'output_file': None,
             }
 
+    def set_active_shot(self, ep, seq, shot, scene_file=None, save=True,
+                        apply_paths=True, apply_gaffer=True):
+        """Set a shot as the active shot in a Maya scene.
+
+        Performs the same operations as clicking "Set" in the Context Manager UI:
+        marks the shot active on the CTX_Manager node, updates all asset paths,
+        and applies the gaffer chain.
+
+        Requires Maya.
+
+        Args:
+            ep (str): Episode code.
+            seq (str): Sequence code.
+            shot (str): Shot code.
+            scene_file (str|None): Optional scene file to open first.
+            save (bool): If True, save the scene after applying.
+            apply_paths (bool): If True, update asset file paths via NodeManager.
+            apply_gaffer (bool): If True, apply gaffer chain to Maya lights.
+
+        Returns:
+            dict: {
+                'success': bool,
+                'message': str,
+                'output_file': str|None,
+                'assets_updated': int,
+                'gaffer_applied': bool,
+            }
+        """
+        self._require_maya()
+        import maya.cmds as cmds
+
+        try:
+            if scene_file:
+                self._open_scene(scene_file)
+
+            shot_node = self._find_shot_node(ep, seq, shot)
+
+            # Deactivate all other shots, activate this one
+            from core.nodes.wrappers import CTXShotNode, CTXManagerNode
+            all_shots = CTXShotNode.list_all()
+            for s in all_shots:
+                if isinstance(s, str):
+                    from core.nodes.wrappers.shot import CTXShotNode as _ShotCls
+                    s = _ShotCls(s)
+                try:
+                    s.set_active(s.node_name == shot_node.node_name)
+                except Exception:
+                    pass
+
+            # Record active shot on the manager node
+            managers = CTXManagerNode.list_all()
+            if managers:
+                mgr = managers[0]
+                if isinstance(mgr, str):
+                    from core.nodes.wrappers.manager import CTXManagerNode as _MgrCls
+                    mgr = _MgrCls(mgr)
+                try:
+                    shot_id = shot_node.get_shot_id()
+                    mgr.set_active_shot_id(shot_id)
+                except Exception:
+                    pass
+
+            # Update asset paths
+            assets_updated = 0
+            if apply_paths:
+                from core.nodes import NodeManager
+                nm = NodeManager()
+                assets_updated = nm.update_shot_paths(
+                    shot_node, self._get_config(), self._get_platform_config()
+                )
+
+            # Apply gaffer chain (shot gaffer → sequence gaffer → restore originals)
+            gaffer_applied = False
+            if apply_gaffer:
+                try:
+                    from core.nodes.wrappers.gaffer import CTXLightGafferNode
+                    from core.nodes.wrappers.sequence import CTXSequenceNode
+                    from core.gaffer.light_ops import LightOperations
+
+                    active_gaffer = None
+                    shot_gaffer_name = shot_node.get_gaffer()
+                    if shot_gaffer_name:
+                        active_gaffer = CTXLightGafferNode(shot_gaffer_name)
+                    else:
+                        seq_name = shot_node.get_parent_sequence()
+                        if seq_name:
+                            seq = CTXSequenceNode(seq_name)
+                            seq_gaffer_name = seq.get_gaffer()
+                            if seq_gaffer_name:
+                                active_gaffer = CTXLightGafferNode(seq_gaffer_name)
+
+                    if active_gaffer:
+                        LightOperations.apply_gaffer_to_all_lights(active_gaffer)
+                        gaffer_applied = True
+                    else:
+                        LightOperations.restore_originals()
+                except Exception as exc:
+                    logger.warning("set_active_shot: gaffer apply failed: %s", exc)
+
+            output_file = None
+            if save:
+                cmds.file(save=True, force=True)
+                output_file = scene_file
+
+            return {
+                'success': True,
+                'message': 'Active shot set: %s_%s_%s' % (ep, seq, shot),
+                'output_file': output_file,
+                'assets_updated': assets_updated,
+                'gaffer_applied': gaffer_applied,
+            }
+
+        except Exception as exc:
+            logger.exception("set_active_shot failed: %s", exc)
+            return {
+                'success': False,
+                'message': str(exc),
+                'output_file': None,
+                'assets_updated': 0,
+                'gaffer_applied': False,
+            }
+
     def export_gaffer(self, ep, seq, shot, output_path, scene_file=None):
         """Export the gaffer chain for a shot to a JSON file.
 

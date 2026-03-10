@@ -11,6 +11,8 @@ Usage::
     python tools/cli.py scan-assets --ep Ep04 --seq sq0070 --shot SH0170 --json
     python tools/cli.py validate --scene file.ma --ep Ep04 --seq sq0070 --shot SH0170
     python tools/cli.py apply-shot --scene file.ma --ep Ep04 --seq sq0070 --shot SH0170
+    python tools/cli.py set-active-shot --scene file.ma --ep Ep04 --seq sq0070 --shot SH0170
+    python tools/cli.py set-active-shot --scene file.ma --ep Ep04 --seq sq0070 --shot SH0170 --no-gaffer
     python tools/cli.py export-gaffer --ep Ep04 --seq sq0070 --shot SH0170 --out gaffer.json
     python tools/cli.py import-gaffer --scene file.ma --ep Ep04 --seq sq0070 --shot SH0170 --json-file gaffer.json
 
@@ -113,6 +115,25 @@ def build_parser():
         default=False,
         help='Do not save the scene after applying',
     )
+
+    # ------------------------------------------------------------------ #
+    # set-active-shot
+    # ------------------------------------------------------------------ #
+    p_set = subparsers.add_parser(
+        'set-active-shot',
+        help='Mark a shot as active, update asset paths, and apply gaffer (requires Maya)',
+    )
+    p_set.add_argument('--scene', default=None, metavar='FILE',
+                       help='Optional scene file to open first')
+    p_set.add_argument('--ep',   required=True, help='Episode code')
+    p_set.add_argument('--seq',  required=True, help='Sequence code')
+    p_set.add_argument('--shot', required=True, help='Shot code')
+    p_set.add_argument('--no-save',         action='store_true', default=False,
+                       help='Do not save the scene after applying')
+    p_set.add_argument('--no-paths',        action='store_true', default=False,
+                       help='Skip asset path updates')
+    p_set.add_argument('--no-gaffer',       action='store_true', default=False,
+                       help='Skip gaffer chain application')
 
     # ------------------------------------------------------------------ #
     # export-gaffer
@@ -258,6 +279,45 @@ def _cmd_apply_shot(args, api):
     return 0 if result.get('success') else 1
 
 
+def _cmd_set_active_shot(args, api):
+    """Handle the set-active-shot command.
+
+    Args:
+        args: Parsed argparse namespace.
+        api: PipelineAPI instance.
+
+    Returns:
+        int: 0 on success, 1 on failure.
+    """
+    try:
+        result = api.set_active_shot(
+            args.ep, args.seq, args.shot,
+            scene_file=args.scene,
+            save=not args.no_save,
+            apply_paths=not args.no_paths,
+            apply_gaffer=not args.no_gaffer,
+        )
+    except RuntimeError as exc:
+        if args.json:
+            print(json.dumps({'success': False, 'message': str(exc)}))
+        else:
+            print('ERROR: %s' % exc)
+        return 1
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        status = 'OK' if result.get('success') else 'FAILED'
+        print('[%s] %s' % (status, result.get('message', '')))
+        if result.get('success'):
+            print('  Assets updated : %d' % result.get('assets_updated', 0))
+            print('  Gaffer applied : %s' % result.get('gaffer_applied', False))
+            if result.get('output_file'):
+                print('  Saved          : %s' % result['output_file'])
+
+    return 0 if result.get('success') else 1
+
+
 def _cmd_export_gaffer(args, api):
     """Handle the export-gaffer command.
 
@@ -355,6 +415,8 @@ def main(argv=None):
         return _cmd_validate(args, api)
     elif command == 'apply-shot':
         return _cmd_apply_shot(args, api)
+    elif command == 'set-active-shot':
+        return _cmd_set_active_shot(args, api)
     elif command == 'export-gaffer':
         return _cmd_export_gaffer(args, api)
     elif command == 'import-gaffer':
