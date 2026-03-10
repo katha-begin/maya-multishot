@@ -106,6 +106,14 @@ def create_ctx_menu():
             parent=menu
         )
 
+        # Add Batch Render menu item
+        cmds.menuItem(
+            label="Batch Render...",
+            command=lambda *args: open_batch_render_dialog(),
+            annotation="Open Batch Render dialog",
+            parent=menu
+        )
+
         # Add separator
         cmds.menuItem(divider=True, parent=menu)
 
@@ -464,6 +472,46 @@ def open_gaffer_manager():
         cmds.confirmDialog(
             title="Error",
             message="Failed to open Gaffer Manager:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+
+# Global reference to keep Batch Render dialog alive (prevent garbage collection)
+_batch_render_dialog = None
+
+
+def open_batch_render_dialog():
+    """Open the Batch Render dialog."""
+    global _batch_render_dialog
+
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        from ui.batch_render_dialog import BatchRenderDialog
+
+        parent = get_maya_main_window()
+
+        if BatchRenderDialog._instance is None:
+            _batch_render_dialog = BatchRenderDialog(parent=parent)
+            BatchRenderDialog._instance = _batch_render_dialog
+        else:
+            _batch_render_dialog = BatchRenderDialog._instance
+
+        _batch_render_dialog.show()
+        _batch_render_dialog.raise_()
+
+        logger.info("Batch Render dialog opened")
+
+    except Exception as e:
+        logger.error("Failed to open Batch Render dialog: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Error",
+            message="Failed to open Batch Render dialog:\n{}".format(e),
             button=["OK"],
             defaultButton="OK"
         )

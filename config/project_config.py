@@ -529,6 +529,30 @@ class ProjectConfig(object):
         cfg = self.get_renderer_config(renderer_name) or {}
         return cfg.get('preferredExtensions', [])
 
+    def get_batch_render_config(self):
+        """Return full batchRender config dict."""
+        return self.data.get('batchRender', {})
+
+    def get_reserved_gpus(self):
+        """Return number of GPUs reserved for interactive use."""
+        return int(self.get_batch_render_config().get('reservedGpus', 1))
+
+    def get_temp_scene_max_count(self):
+        """Return max number of temp scenes to keep (0 = unlimited)."""
+        return int(self.get_batch_render_config().get('tempSceneMaxCount', 5))
+
+    def get_temp_scene_dir(self):
+        """Return configured temp scene directory or None (auto)."""
+        return self.get_batch_render_config().get('tempSceneDir')
+
+    def get_batch_log_dir(self):
+        """Return configured log directory or None (auto)."""
+        return self.get_batch_render_config().get('logDir')
+
+    def get_frame_handles(self):
+        """Return extra handle frames to add around shot range."""
+        return int(self.get_batch_render_config().get('frameHandles', 0))
+
     def __repr__(self):
         """String representation of ProjectConfig."""
         return "ProjectConfig(config_path='{}', version='{}')".format(
