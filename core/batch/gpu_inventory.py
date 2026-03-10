@@ -43,6 +43,11 @@ def detect_gpus():
         list[GPUInfo]: Detected GPUs. Empty list if nvidia-smi unavailable.
     """
     try:
+        # CREATE_NO_WINDOW prevents a console window flashing on Windows
+        kwargs = {}
+        if os.name == 'nt':
+            kwargs['creationflags'] = 0x08000000  # subprocess.CREATE_NO_WINDOW
+
         result = subprocess.run(
             [
                 'nvidia-smi',
@@ -52,6 +57,7 @@ def detect_gpus():
             capture_output=True,
             text=True,
             timeout=10,
+            **kwargs
         )
         if result.returncode != 0:
             logger.warning("nvidia-smi returned non-zero: %s", result.stderr)

@@ -141,13 +141,12 @@ class JobDispatcher(object):
 
         try:
             os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            popen_kwargs = {'env': env, 'stderr': subprocess.STDOUT}
+            if os.name == 'nt':
+                popen_kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW
             with open(log_path, 'w') as log_file:
-                proc = subprocess.Popen(
-                    cmd,
-                    env=env,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                )
+                popen_kwargs['stdout'] = log_file
+                proc = subprocess.Popen(cmd, **popen_kwargs)
                 job.return_code = proc.wait()
 
             success = job.return_code == 0
