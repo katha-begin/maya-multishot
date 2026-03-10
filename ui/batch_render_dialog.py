@@ -99,13 +99,16 @@ class AddShotDialog(QtWidgets.QDialog):
         try:
             from core.nodes.wrappers import CTXShotNode
             for sn in CTXShotNode.list_all():
-                shot_id = '%s_%s_%s' % (sn.ep, sn.seq, sn.shot)
+                ep = sn.get_ep_code()
+                seq = sn.get_seq_code()
+                shot = sn.get_shot_code()
+                shot_id = '%s_%s_%s' % (ep, seq, shot)
                 try:
                     start, end = sn.get_frame_range()
                     fr = '%d-%d' % (start, end)
                 except Exception:
                     fr = '----'
-                self._all_rows.append((shot_id, fr, sn.ep, sn.seq, sn.shot))
+                self._all_rows.append((shot_id, fr, ep, seq, shot))
         except Exception as exc:
             logger.warning("AddShotDialog: failed to list shots: %s", exc)
         self._render_rows(self._all_rows)
@@ -485,7 +488,7 @@ class BatchRenderDialog(BaseDialog):
             from core.nodes.wrappers import CTXShotNode
             self._shot_table.setRowCount(0)
             for sn in CTXShotNode.list_all():
-                self._add_shot_row(sn.ep, sn.seq, sn.shot)
+                self._add_shot_row(sn.get_ep_code(), sn.get_seq_code(), sn.get_shot_code())
         except Exception as exc:
             logger.warning("Failed to populate shot list: %s", exc)
 
