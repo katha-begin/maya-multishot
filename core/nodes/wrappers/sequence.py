@@ -191,6 +191,11 @@ class CTXSequenceNode(NodeWrapper):
 
         return connections[0] if connections else None
 
+    def _ensure_slate_attr(self):
+        """Add the slate message attribute if absent (nodes created pre-Phase-6)."""
+        if cmds is not None and not cmds.attributeQuery('slate', node=self.node_name, exists=True):
+            cmds.addAttr(self.node_name, longName='slate', attributeType='message')
+
     def get_slate(self):
         """Return the CTXSlateNode assigned to this sequence, or None.
 
@@ -200,6 +205,7 @@ class CTXSequenceNode(NodeWrapper):
         from core.nodes.wrappers.slate import CTXSlateNode
         if cmds is None:
             return None
+        self._ensure_slate_attr()
         connected = cmds.listConnections(
             '{}.slate'.format(self.node_name),
             source=True,
@@ -215,6 +221,7 @@ class CTXSequenceNode(NodeWrapper):
         Args:
             slate (CTXSlateNode or str): Slate node or node name.
         """
+        self._ensure_slate_attr()
         slate_name = slate if isinstance(slate, str) else slate.node_name
         cmds.connectAttr(
             '{}.message'.format(slate_name),
@@ -225,6 +232,7 @@ class CTXSequenceNode(NodeWrapper):
     def clear_slate(self):
         """Remove the slate connection from this sequence."""
         try:
+            self._ensure_slate_attr()
             connected = cmds.listConnections(
                 '{}.slate'.format(self.node_name),
                 source=True,

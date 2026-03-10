@@ -1578,10 +1578,10 @@ class GafferManagerDialog(QtWidgets.QDialog):
 
     def showEvent(self, event):
         """Refresh lock state when dialog becomes visible."""
-        super(GafferManagerDialog, self).showEvent(event)
+        QtWidgets.QMainWindow.showEvent(self, event)
         self._refresh_lock_state()
 
     def closeEvent(self, event):
         """Clear singleton reference on close."""
         GafferManagerDialog._instance = None
-        super(GafferManagerDialog, self).closeEvent(event)
+        QtWidgets.QMainWindow.closeEvent(self, event)

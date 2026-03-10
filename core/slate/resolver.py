@@ -8,7 +8,7 @@ Resolution algorithm (mirrors gaffer chain walk):
   2. For each render layer known to the chain:
      Walk chain from index 0 (shot) outward.
      First slate where renderableEnabled=True wins.
-     If none found -> no override, leave scene state unchanged for that layer.
+     If none found -> no override, restore to original (if captured).
   3. apply_to_scene() calls Maya Render Setup API to set renderable flags.
 """
 
@@ -131,8 +131,8 @@ class SlateResolver(object):
     def apply_to_scene(shot_or_seq_node):
         """Resolve the slate chain and apply renderable flags to Maya Render Setup.
 
-        Only layers with overridden=True are modified. Layers with no override
-        in any slate are left at their current scene state.
+        Captures originals before first application. Restores originals for
+        layers with no override in any slate (same behaviour as gaffer restore).
 
         Args:
             shot_or_seq_node: CTXShotNode or CTXSequenceNode (or node name str).
@@ -151,23 +151,85 @@ class SlateResolver(object):
             logger.warning("Render Setup not available: %s", exc)
             return
 
-        for layer_name, state in resolved.items():
-            if not state['overridden']:
-                continue
+        # Get originals node (create if needed)
+        try:
+            from core.nodes.wrappers.slate_originals import CTXSlateOriginalsNode
+            originals_node = CTXSlateOriginalsNode.get_or_create()
+        except Exception as exc:
+            logger.warning("Could not access SlateOriginals node: %s", exc)
+            originals_node = None
 
-            renderable = state['renderable']
+        for layer_name, state in resolved.items():
             try:
                 layer = rs.getRenderLayer(layer_name)
                 if layer is None:
                     logger.warning("Slate apply: layer %r not found in scene", layer_name)
                     continue
-                layer.setRenderable(renderable)
-                logger.debug(
-                    "Slate: set %r renderable=%s (source=%s)",
-                    layer_name, renderable, state['source']
-                )
+
+                # Capture original state before first override (mirrors gaffer originals)
+                if originals_node is not None and not originals_node.has_layer(layer_name):
+                    try:
+                        current_renderable = layer.isRenderable()
+                        originals_node.store_layer(layer_name, current_renderable)
+                    except Exception as exc:
+                        logger.warning("Failed to capture original for %r: %s", layer_name, exc)
+
+                if state['overridden']:
+                    layer.setRenderable(state['renderable'])
+                    logger.debug(
+                        "Slate: set %r renderable=%s (source=%s)",
+                        layer_name, state['renderable'], state['source']
+                    )
+                else:
+                    # No override in chain -- restore to original
+                    if originals_node is not None:
+                        original = originals_node.get_layer_renderable(layer_name)
+                        if original is not None:
+                            layer.setRenderable(original)
+                            logger.debug(
+                                "Slate: restored %r to original renderable=%s",
+                                layer_name, original
+                            )
+
             except Exception as exc:
-                logger.warning("Failed to set renderable on layer %r: %s", layer_name, exc)
+                logger.warning("Failed to apply slate for layer %r: %s", layer_name, exc)
+
+    @staticmethod
+    def restore_originals():
+        """Restore all render layers to their original renderable state.
+
+        Called when switching to a shot that has no slate at any level.
+        Mirrors GafferManager's restore-originals behavior.
+        """
+        if not MAYA_AVAILABLE:
+            return
+
+        try:
+            from core.nodes.wrappers.slate_originals import CTXSlateOriginalsNode
+            originals_node = CTXSlateOriginalsNode.get_or_create()
+            originals = originals_node.get_all()
+        except Exception as exc:
+            logger.warning("restore_originals: could not load SlateOriginals: %s", exc)
+            return
+
+        if not originals:
+            return
+
+        try:
+            from maya.app.renderSetup.model import renderSetup as rs_module
+            rs = rs_module.instance()
+        except Exception as exc:
+            logger.warning("Render Setup not available: %s", exc)
+            return
+
+        for layer_name, renderable in originals.items():
+            try:
+                layer = rs.getRenderLayer(layer_name)
+                if layer is not None:
+                    layer.setRenderable(renderable)
+                    logger.debug("Restored %r renderable=%s", layer_name, renderable)
+            except Exception as exc:
+                logger.warning("Failed to restore layer %r: %s", layer_name, exc)
 
     @staticmethod
     def get_resolved_renderable_layers(shot_or_seq_node):

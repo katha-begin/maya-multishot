@@ -19,6 +19,7 @@ from .asset import CTXAssetNode
 from .manager import CTXManagerNode
 from .slate import CTXSlateNode
 from .slate_layer import CTXSlateLayerNode
+from .slate_originals import CTXSlateOriginalsNode
 
 __all__ = [
     'MAYA_AVAILABLE',
@@ -31,5 +32,6 @@ __all__ = [
     'CTXManagerNode',
     'CTXSlateNode',
     'CTXSlateLayerNode',
+    'CTXSlateOriginalsNode',
 ]
 

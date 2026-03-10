@@ -1558,16 +1558,21 @@ class MainWindow(QtWidgets.QMainWindow):
                     import traceback
                     traceback.print_exc()
 
-                # Apply slate (render layer renderable state)
+                # Apply slate (render layer renderable state) -- non-fatal
                 try:
-                    from core.slate.resolver import SlateResolver
-                    shot_node_name = shot_node.node_name if hasattr(shot_node, 'node_name') else None
-                    if shot_node_name:
-                        SlateResolver.apply_to_scene(shot_node_name)
-                        logger.debug("Slate applied for shot %s", shot_node_name)
+                    from core.slate.resolver import SlateResolver as _SR
+                    if shot_node is not None:
+                        slate_for_shot = _SR._get_slate_for_node(shot_node)
+                        if slate_for_shot is not None:
+                            _SR.apply_to_scene(shot_node)
+                        else:
+                            if hasattr(_SR, 'restore_originals'):
+                                _SR.restore_originals()
+                    else:
+                        if hasattr(_SR, 'restore_originals'):
+                            _SR.restore_originals()
                 except Exception as exc:
-                    logger.warning("Slate apply failed for shot: %s", exc)
-                    # Non-fatal -- do not interrupt shot switch on slate error
+                    logger.warning('Slate apply failed (non-fatal): %s', exc)
 
                 shot_path = "{}_{}_{}_{}".format(
                     shot_data['project'], shot_data['ep'], shot_data['seq'], shot_data['shot']

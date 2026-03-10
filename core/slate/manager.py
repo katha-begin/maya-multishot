@@ -40,11 +40,13 @@ class SlateManager(object):
         return slate
 
     @staticmethod
-    def create_sequence_slate(seq_node, parent_slate=None):
+    def create_sequence_slate(seq_node, name=None, parent_slate=None):
         """Create a sequence-level CTXSlateNode and assign it to a sequence.
 
         Args:
             seq_node (CTXSequenceNode|str): Sequence to assign to.
+            name (str|None): Human name for slateName attribute.
+                             Defaults to 'seq_{seq_code}'.
             parent_slate (CTXSlateNode|str|None): Parent slate to inherit from.
 
         Returns:
@@ -56,8 +58,10 @@ class SlateManager(object):
         seq = seq_node if not isinstance(seq_node, str) else CTXSequenceNode(seq_node)
         seq_code = seq.get_attribute('sequenceCode') or seq.node_name
 
+        slate_name = name if name else 'seq_{}'.format(seq_code)
+
         slate = CTXSlateNode.create(
-            slateName=seq_code,
+            slateName=slate_name,
             slateType='sequence',
             scopeCode=seq_code,
         )
@@ -70,7 +74,7 @@ class SlateManager(object):
         return slate
 
     @staticmethod
-    def create_shot_slate(shot_node, parent_slate=None):
+    def create_shot_slate(shot_node, name=None, parent_slate=None):
         """Create a shot-level CTXSlateNode and assign it to a shot.
 
         If no parent_slate is given, automatically finds the sequence slate
@@ -78,6 +82,8 @@ class SlateManager(object):
 
         Args:
             shot_node (CTXShotNode|str): Shot to assign to.
+            name (str|None): Human name for slateName attribute.
+                             Defaults to '{seq_code}_{shot_code}'.
             parent_slate (CTXSlateNode|str|None): Explicit parent slate, or
                                                   None for auto-wire.
 
@@ -90,8 +96,10 @@ class SlateManager(object):
         shot = shot_node if not isinstance(shot_node, str) else CTXShotNode(shot_node)
         shot_id = '{}_{}'.format(shot.get_seq_code(), shot.get_shot_code())
 
+        slate_name = name if name else shot_id
+
         slate = CTXSlateNode.create(
-            slateName=shot_id,
+            slateName=slate_name,
             slateType='shot',
             scopeCode=shot_id,
         )
@@ -133,7 +141,7 @@ class SlateManager(object):
         return SlateManager.create_shot_slate(shot)
 
     @staticmethod
-    def add_layer_to_slate(slate, layer_name, renderable=True, override_enabled=False):
+    def add_layer_to_slate(slate, layer_name, renderable=True, override_enabled=True):
         """Add a render layer entry to a slate.
 
         If the layer already exists in the slate, returns the existing node.

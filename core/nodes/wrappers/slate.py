@@ -35,6 +35,21 @@ class CTXSlateNode(NodeWrapper):
     SCHEMA = CTXSlateSchema
 
     # ------------------------------------------------------------------
+    # Attribute guards
+    # ------------------------------------------------------------------
+
+    def _ensure_layers_attr(self):
+        """Add the layers multi-attribute if absent."""
+        if cmds is not None and not cmds.attributeQuery('layers', node=self.node_name, exists=True):
+            cmds.addAttr(self.node_name, longName='layers',
+                         attributeType='message', multi=True, indexMatters=False)
+
+    def _ensure_parent_slate_attr(self):
+        """Add the parentSlate attribute if absent."""
+        if cmds is not None and not cmds.attributeQuery('parentSlate', node=self.node_name, exists=True):
+            cmds.addAttr(self.node_name, longName='parentSlate', attributeType='message')
+
+    # ------------------------------------------------------------------
     # Layer management
     # ------------------------------------------------------------------
 
@@ -47,6 +62,7 @@ class CTXSlateNode(NodeWrapper):
         from core.nodes.wrappers.slate_layer import CTXSlateLayerNode
         if cmds is None:
             return []
+        self._ensure_layers_attr()
         connected = cmds.listConnections(
             '{}.layers'.format(self.node_name),
             source=True,
@@ -71,7 +87,7 @@ class CTXSlateNode(NodeWrapper):
                 continue
         return None
 
-    def add_layer(self, layer_name, renderable=True, enabled=False):
+    def add_layer(self, layer_name, renderable=True, enabled=True):
         """Create a CTXSlateLayerNode and connect it to this slate.
 
         If a layer with this name already exists in the slate, returns the
@@ -80,12 +96,14 @@ class CTXSlateNode(NodeWrapper):
         Args:
             layer_name (str): Render layer name (must match scene layer exactly).
             renderable (bool): Initial renderable value.
-            enabled (bool): Initial renderableEnabled value. Default False (inherit).
+            enabled (bool): Initial renderableEnabled value. Default True.
 
         Returns:
             CTXSlateLayerNode: The created or existing layer node.
         """
         from core.nodes.wrappers.slate_layer import CTXSlateLayerNode
+
+        self._ensure_layers_attr()
 
         existing = self.get_layer_by_name(layer_name)
         if existing is not None:
@@ -140,6 +158,7 @@ class CTXSlateNode(NodeWrapper):
         """
         if cmds is None:
             return None
+        self._ensure_parent_slate_attr()
         connected = cmds.listConnections(
             '{}.parentSlate'.format(self.node_name),
             source=True,
@@ -155,6 +174,7 @@ class CTXSlateNode(NodeWrapper):
         Args:
             parent (CTXSlateNode or str): Parent slate node or node name.
         """
+        self._ensure_parent_slate_attr()
         parent_name = parent if isinstance(parent, str) else parent.node_name
         cmds.connectAttr(
             '{}.message'.format(parent_name),
@@ -164,6 +184,7 @@ class CTXSlateNode(NodeWrapper):
 
     def clear_parent_slate(self):
         """Remove the parentSlate connection, making this slate a root."""
+        self._ensure_parent_slate_attr()
         try:
             connected = cmds.listConnections(
                 '{}.parentSlate'.format(self.node_name),

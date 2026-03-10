@@ -1,667 +1,345 @@
-# Stream 6-F — Slate UI: SlateManagerDialog and +SLT Column
+# Stream 6-F — Slate UI: SlateManagerDialog (REVISED)
 
-**Status:** Not Started
-**Round:** 3 (after 6-D)
+**Status:** In Progress (Round 4 — spec revision based on live testing)
 **Branch:** `feature/phase6-lock-slate`
-**Dependencies:** Stream 6-D (SlateManager, SlateResolver)
+**Dependencies:** Stream 6-D (SlateManager, SlateResolver), Stream 6-G (SlateOriginalsNode)
 
 ---
 
-## Goal
+## Identified Bugs (from live testing, fix in Round 4)
 
-Build the Slate Manager UI and integrate the `+SLT` column into the Multishot
-Manager. The UI must mirror the Gaffer Manager 100% in structure, interaction
-model, and visual style to minimise the learning curve.
-
-Read `ui/gaffer_manager_dialog.py` completely before writing any code.
-Every design decision in that file has a direct analog here.
-
----
-
-## Side-by-Side: Gaffer Manager ↔ Slate Manager
-
-### Layout (pixel-perfect match)
-
-| Gaffer Manager element | Slate Manager equivalent |
-|---|---|
-| `GafferManagerDialog(QDialog)` | `SlateManagerDialog(QMainWindow)` |
-| `objectName('GafferManagerDialog')` | `objectName('SlateManagerDialog')` |
-| `open_or_raise()` classmethod | `open_or_raise()` classmethod |
-| `select_gaffer(gaffer)` | `select_slate(slate)` |
-| Header row 1: "Gaffer:" + `_gaffer_combo` + Refresh \| + Create  Set Parent  Clear Parent | Header row 1: "Slate:" + `_slate_combo` + Refresh \| + Create  Set Parent  Clear Parent  Remove |
-| Header row 2: "Chain: -" + info label | Header row 2: "Chain: -" |
-| Header row 3: "Edit Mode: OFF" + Enter Edit Mode / Commit Changes / Discard Changes | Identical |
-| Horizontal separator | Identical |
-| Search lights... | Search layers... |
-| Full-width lights table (Light, Mute, Intensity, Exposure, Color) | Full-width layers table (Layer Name, Renderable, Override, Source) |
-| Bottom: + Add Light  - Remove Light  Clear Override … Apply Gaffer to Lights | Bottom: + Add Layer  - Remove Layer … Apply Slate |
-| `menuBar()` Tools > Settings | Identical |
-| 22px row height | Identical |
-| `_snapshot` dict for cancel restore | Identical |
-
-### Logic (100% mirrored from GafferManagerDialog)
-
-| Gaffer Manager logic | Slate Manager equivalent |
-|---|---|
-| `_on_create_gaffer()` — asks "Sequence Gaffer / Shot Gaffer" | `_on_create_slate()` — asks "Sequence Slate / Shot Slate" |
-| `_create_sequence_gaffer()` — lists CTXSequenceNode, shows "[has gaffer: X]", default name `seq_{seq_code}`, then `_ask_parent_gaffer()` | `_create_sequence_slate()` — lists CTXSequenceNode, shows "[has slate: X]", default name `seq_{seq_code}`, then `_ask_parent_slate()` |
-| `_create_shot_gaffer()` — lists CTXShotNode, shows "[has gaffer: X]", default name `{seq_code}_{shot_code}`, then `_ask_parent_gaffer()` | `_create_shot_slate()` — lists CTXShotNode, shows "[has slate: X]", default name `{seq_code}_{shot_code}`, then `_ask_parent_slate()` |
-| `_ask_parent_gaffer()` — lists all gaffers, "(none — standalone)" first, returns wrapper or None or False (cancel) | `_ask_parent_slate()` — lists all slates, "(none — standalone)" first, same return contract |
-| `_on_set_parent_gaffer()` — lists all gaffers, **excludes current node and its existing chain** (cycle prevention), labels as `{name} [{type}]` | `_on_set_parent_slate()` — same pattern, excludes current slate and its chain |
-| `_on_clear_parent_gaffer()` — checks parent exists, shows confirmation "Remove inheritance from '{parent_name}'?", disconnects `parentGaffer` via `cmds.disconnectAttr` | `_on_clear_parent_slate()` — same: checks parent, confirmation dialog, disconnects `parentSlate` |
-| `_on_add_light_clicked()` — opens `AddLightDialog(self._current_gaffer)` | `_on_add_layer_clicked()` — opens `_AddLayerDialog(available_layers)` inner class |
-| `_on_remove_light_clicked()` — removes selected rows | `_on_remove_layer_clicked()` — removes selected rows |
-| `_refresh_gaffer_list()` — repopulates `_gaffer_combo`, preserves selection | `_refresh_slate_combo()` — repopulates `_slate_combo`, preserves selection |
-| `_on_gaffer_changed(index)` — sets `_current_gaffer`, calls `_update_chain_label()` + `_populate_lights_table()` | `_on_slate_changed(index)` — sets `_current_slate`, calls `_update_chain_label()` + `_refresh_layer_table()` |
-| `_update_chain_label()` — calls `gaffer.build_chain()`, formats as "A -> B -> C", shows "Type: Inherit\|Master  \| Owner: Sequence sq0070" | `_update_chain_label()` — calls `SlateResolver.build_chain(slate)`, formats same way, shows "Type: Inherit\|Master  \| Owner: Sequence/Shot X" |
-| Combo item labels: `[Master] name` / `[Inherit] name` | Same: `[Master] name` / `[seq] name` / `[shot] name` |
-
-### Naming Conventions (same as gaffer)
-
-| Scope | Default name |
-|---|---|
-| Sequence slate | `seq_{seq_code}` |
-| Shot slate | `{seq_code}_{shot_code}` |
-
----
-
-## 1. `ui/slate_manager_dialog.py` — NEW FILE
-
-### Window setup
-
-```python
-class SlateManagerDialog(QtWidgets.QMainWindow):
-    """Dockable Slate Manager — per-shot render layer renderable control.
-
-    Mirrors GafferManagerDialog structure exactly.
-    """
-
-    _instance = None
-
-    @classmethod
-    def open_or_raise(cls, parent=None):
-        """Return existing instance (raised to front) or create new one."""
-        if cls._instance is not None:
-            try:
-                cls._instance.raise_()
-                cls._instance.activateWindow()
-                return cls._instance
-            except RuntimeError:
-                cls._instance = None
-        instance = cls(parent=parent)
-        instance.show()
-        cls._instance = instance
-        return instance
-
-    def __init__(self, parent=None):
-        super(SlateManagerDialog, self).__init__(parent)
-        self.setObjectName('SlateManagerDialog')
-        self.setWindowTitle('Slate Manager')
-        self.setWindowFlags(self.windowFlags() | QtCore.Qt.Tool)
-        self.resize(460, 600)
-
-        self._current_slate = None   # CTXSlateNode currently selected
-        self._edit_mode = False
-        self._snapshot = {}          # {layer_name: {renderable, renderableEnabled}}
-
-        self._setup_ui()
-        self._connect_signals()
-        self._refresh_slate_list()
-```
-
-### Menu bar
-
-```python
-def _setup_menu(self):
-    menubar = self.menuBar()
-    tools_menu = menubar.addMenu('Tools')
-    settings_action = QtWidgets.QAction('Settings', self)
-    settings_action.triggered.connect(self._open_settings)
-    tools_menu.addAction(settings_action)
-```
-
-### Layout
-
-```
-QMainWindow
-  centralWidget (QWidget)
-    QVBoxLayout
-      [lock banner — hidden by default]
-      QSplitter (horizontal)
-        Left panel (200px)
-          [slate list QListWidget]
-          [+ New Slate] [Set Parent...] [Remove]
-        Right panel (stretch)
-          [layer table QTableWidget]
-          [Add Layer] [Remove Layer]  ← below table
-      [Edit] [Commit] [Cancel]  ← bottom bar
-```
-
-### Left panel — Slate List
-
-```python
-self._slate_list = QtWidgets.QListWidget()
-self._slate_list.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-# Items show slate name + type, e.g. "Master [master]", "sq0070 [seq]"
-```
-
-`_refresh_slate_list()` calls `CTXSlateNode.list_all()` and repopulates the list.
-Items store the `CTXSlateNode` as `item.setData(QtCore.Qt.UserRole, slate_node)`.
-
-**Buttons below list:**
-
-```python
-self._new_slate_btn   = QtWidgets.QPushButton('+ New Slate')
-self._set_parent_btn  = QtWidgets.QPushButton('Set Parent...')
-self._remove_slate_btn = QtWidgets.QPushButton('Remove')
-```
-
-### Right panel — Layer Table
-
-```python
-self._layer_table = QtWidgets.QTableWidget()
-self._layer_table.setColumnCount(4)
-self._layer_table.setHorizontalHeaderLabels(
-    ['Layer Name', 'Renderable', 'Override', 'Source']
-)
-
-# Column widths
-header = self._layer_table.horizontalHeader()
-header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)   # Layer Name
-self._layer_table.setColumnWidth(1, 70)   # Renderable (checkbox)
-self._layer_table.setColumnWidth(2, 60)   # Override (checkbox)
-self._layer_table.setColumnWidth(3, 70)   # Source (text)
-
-self._layer_table.setAlternatingRowColors(True)
-self._layer_table.verticalHeader().setDefaultSectionSize(22)
-self._layer_table.verticalHeader().setVisible(False)
-```
-
-**Column semantics:**
-
-| Col | Name | Widget | Editable in edit mode |
+| # | Bug | Root Cause | Fix |
 |---|---|---|---|
-| 0 | Layer Name | `QTableWidgetItem` (read-only) | No |
-| 1 | Renderable | `QCheckBox` centered in cell | Yes (when Override=checked) |
-| 2 | Override | `QCheckBox` centered in cell | Yes |
-| 3 | Source | `QTableWidgetItem` (read-only) | No |
-
-**Source column values:**
-- `(own)` — this slate has `renderableEnabled=True` for this layer
-- `(seq)` — value inherited from sequence slate
-- `(master)` — value inherited from master slate
-- `(–)` — no override anywhere in chain, scene state unchanged
-
-**Renderable checkbox behaviour:**
-- When `Override` is unchecked (not enabled): renderable checkbox shows inherited value
-  (greyed out, not editable even in edit mode)
-- When `Override` is checked: renderable checkbox is editable in edit mode
-
-### Buttons below layer table
-
-```python
-self._add_layer_btn    = QtWidgets.QPushButton('Add Layer')
-self._remove_layer_btn = QtWidgets.QPushButton('Remove Layer')
-```
-
-### Bottom bar — Edit / Commit / Cancel
-
-```python
-self._edit_btn   = QtWidgets.QPushButton('Edit')
-self._commit_btn = QtWidgets.QPushButton('Commit')
-self._cancel_btn = QtWidgets.QPushButton('Cancel')
-
-self._commit_btn.setEnabled(False)
-self._cancel_btn.setEnabled(False)
-```
-
-Behaviour mirrors gaffer exactly:
-- **Edit**: takes `_snapshot`, enables checkboxes in table
-- **Commit**: reads table state, writes diff to CTX nodes via `SlateManager`, exits edit mode
-- **Cancel**: restores `_snapshot` to CTX nodes and table, exits edit mode
+| 1 | Slate node naming wrong | `create_sequence_slate` uses `seq_code` for `slateName`, ignores user-provided name | Pass name from UI dialog through SlateManager |
+| 2 | No originals system | No snapshot of pre-slate render layer state | Implement `CTXSlateOriginalsNode` (see Stream 6-G) |
+| 3 | Inherited layers not shown in child | `is_override_enabled()` filter too strict; also naming bug means chain lookup fails | Remove filter; fix naming so chain resolves correctly |
+| 4 | Width mismatch | SlateManagerDialog is 600px; should match MainWindow (545px) | `self.resize(545, 600)` |
+| 5 | Close + reopen loses layers | `closeEvent` clears `_instance`; reopen creates new instance but `_refresh_slate_combo()` may silently fail because CTXSlateLayerNode `layers` attribute may be missing | Add `_ensure_layers_attr()` guard in `CTXSlateNode.get_layers()` |
 
 ---
 
-### Edit Mode Methods
+## 1. Naming Convention Fix
 
+### Problem
+`SlateManager.create_sequence_slate` does:
 ```python
-def _enter_edit_mode(self):
-    """Snapshot current state; enable checkboxes."""
-    if self._current_slate is None:
-        return
-    self._snapshot = self._capture_snapshot()
-    self._edit_mode = True
-    self._edit_btn.setEnabled(False)
-    self._commit_btn.setEnabled(True)
-    self._cancel_btn.setEnabled(True)
-    self._refresh_layer_table()  # Re-draw with editable checkboxes
-
-def _commit_edit(self):
-    """Write table state to CTX nodes (snapshot-diff pattern)."""
-    if self._current_slate is None:
-        return
-    current_state = self._read_table_state()
-    # Write only changed values
-    for layer_name, state in current_state.items():
-        snap = self._snapshot.get(layer_name, {})
-        layer_entry = self._current_slate.get_layer_by_name(layer_name)
-        if layer_entry is None:
-            continue
-        if state['renderableEnabled'] != snap.get('renderableEnabled'):
-            layer_entry.set_override_enabled(state['renderableEnabled'])
-        if state['renderable'] != snap.get('renderable'):
-            layer_entry.set_renderable(state['renderable'])
-    self._exit_edit_mode()
-
-def _cancel_edit(self):
-    """Restore snapshot to CTX nodes."""
-    if self._current_slate is None:
-        self._exit_edit_mode()
-        return
-    for layer_name, state in self._snapshot.items():
-        layer_entry = self._current_slate.get_layer_by_name(layer_name)
-        if layer_entry is None:
-            continue
-        layer_entry.set_renderable(state['renderable'])
-        layer_entry.set_override_enabled(state['renderableEnabled'])
-    self._exit_edit_mode()
-
-def _exit_edit_mode(self):
-    self._edit_mode = False
-    self._snapshot = {}
-    self._edit_btn.setEnabled(True)
-    self._commit_btn.setEnabled(False)
-    self._cancel_btn.setEnabled(False)
-    self._refresh_layer_table()
+slate = CTXSlateNode.create(slateName=seq_code, ...)   # BUG: "sq0030" not "seq_sq0030"
 ```
 
----
+The UI dialog prompts for a name (default `seq_sq0030`) but `SlateManager` ignores it.
 
-### Add Layer Popup
+### Correct Pattern (from gaffer study)
 
-Mirrors the Add Light popup in Gaffer Manager:
+In gaffer: `GafferManagerDialog._create_sequence_gaffer()` prompts the user for a name, then passes it to `GafferManager.create_sequence_gaffer(seq_node, name=name, ...)`. The manager stores name in `gafferName` attribute.
+
+### Fix: SlateManager API change
 
 ```python
-def _on_add_layer(self):
-    """Open popup to select render layers from the current scene."""
-    if self._current_slate is None:
-        return
+@staticmethod
+def create_sequence_slate(seq_node, name=None, parent_slate=None):
+    """Create a sequence-level CTXSlateNode.
 
-    try:
-        from core.batch.render_setup_manager import RenderSetupManager
-        all_layers = RenderSetupManager().get_all_layers()
-    except Exception:
-        all_layers = []
+    Args:
+        seq_node (CTXSequenceNode|str): Sequence to assign.
+        name (str|None): Human name for slateName attribute.
+                         Defaults to 'seq_{seq_code}'.
+        parent_slate (CTXSlateNode|str|None): Parent to wire.
+    """
+    seq = seq_node if not isinstance(seq_node, str) else CTXSequenceNode(seq_node)
+    seq_code = seq.get_attribute('sequenceCode') or seq.node_name
 
-    if not all_layers:
-        QtWidgets.QMessageBox.information(
-            self, 'No Layers',
-            'No render layers found in the current scene.'
-        )
-        return
+    slate_name = name if name else 'seq_{}'.format(seq_code)
 
-    # Exclude layers already in the slate
-    existing_names = {l.get_layer_name() for l in self._current_slate.get_layers()}
-    available = [l for l in all_layers if l.name not in existing_names]
+    slate = CTXSlateNode.create(
+        slateName=slate_name,
+        slateType='sequence',
+        scopeCode=seq_code,
+    )
+    if parent_slate is not None:
+        slate.set_parent_slate(parent_slate)
+    seq.set_slate(slate)
+    return slate
 
-    if not available:
-        QtWidgets.QMessageBox.information(
-            self, 'All Layers Added',
-            'All scene render layers are already in this slate.'
-        )
-        return
 
-    dlg = _AddLayerDialog(available, parent=self)
-    if dlg.exec_() != QtWidgets.QDialog.Accepted:
-        return
+@staticmethod
+def create_shot_slate(shot_node, name=None, parent_slate=None):
+    """Create a shot-level CTXSlateNode.
 
-    selected_names = dlg.get_selected_layer_names()
-    for name in selected_names:
-        self._current_slate.add_layer(name, renderable=True, enabled=False)
+    Args:
+        shot_node (CTXShotNode|str): Shot to assign.
+        name (str|None): Human name. Defaults to '{seq_code}_{shot_code}'.
+        parent_slate (CTXSlateNode|str|None): None = auto-wire to seq slate.
+    """
+    shot = shot_node if not isinstance(shot_node, str) else CTXShotNode(shot_node)
+    seq_code = shot.get_seq_code()
+    shot_code = shot.get_shot_code()
+    shot_id = '{}_{}'.format(seq_code, shot_code)
 
-    self._refresh_layer_table()
+    slate_name = name if name else shot_id
+
+    slate = CTXSlateNode.create(
+        slateName=slate_name,
+        slateType='shot',
+        scopeCode=shot_id,
+    )
+    if parent_slate is not None:
+        slate.set_parent_slate(parent_slate)
+    else:
+        auto_parent = SlateManager._find_sequence_slate_for_shot(shot)
+        if auto_parent is not None:
+            slate.set_parent_slate(auto_parent)
+    shot.set_slate(slate)
+    return slate
 ```
 
-### `_AddLayerDialog` — inner class (mirrors `AddShotDialog` pattern)
+### Fix: UI passes name
 
+In `_create_sequence_slate()` and `_create_shot_slate()` in `SlateManagerDialog`:
 ```python
-class _AddLayerDialog(QtWidgets.QDialog):
-    """Popup to pick render layers to add to a slate."""
+# Pass the user-entered name as the `name` argument
+slate = SlateManager.create_sequence_slate(seq_node, name=name.strip(), parent_slate=parent)
+slate = SlateManager.create_shot_slate(shot_node, name=name.strip(), parent_slate=parent)
+```
 
-    def __init__(self, layers, parent=None):
-        super(_AddLayerDialog, self).__init__(parent)
-        self.setWindowTitle('Add Layers to Slate')
-        self.resize(300, 400)
-        self._layers = layers  # list of RenderLayerInfo
+### Slate combo label format
 
-        layout = QtWidgets.QVBoxLayout(self)
-
-        # Filter box
-        self._filter = QtWidgets.QLineEdit()
-        self._filter.setPlaceholderText('Filter...')
-        self._filter.textChanged.connect(self._apply_filter)
-        layout.addWidget(self._filter)
-
-        # List with checkboxes
-        self._list = QtWidgets.QListWidget()
-        self._list.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
-        for layer in layers:
-            item = QtWidgets.QListWidgetItem(layer.name)
-            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
-            item.setCheckState(QtCore.Qt.Unchecked)
-            self._list.addItem(item)
-        layout.addWidget(self._list)
-
-        # OK / Cancel
-        btns = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
-        )
-        btns.accepted.connect(self.accept)
-        btns.rejected.connect(self.reject)
-        layout.addWidget(btns)
-
-    def _apply_filter(self, text):
-        for i in range(self._list.count()):
-            item = self._list.item(i)
-            item.setHidden(text.lower() not in item.text().lower())
-
-    def get_selected_layer_names(self):
-        """Return list of checked layer names."""
-        result = []
-        for i in range(self._list.count()):
-            item = self._list.item(i)
-            if item.checkState() == QtCore.Qt.Checked:
-                result.append(item.text())
-        return result
+The combo must show the `slateName` attribute, not the Maya node name:
+```python
+# In _refresh_slate_combo():
+label = '[Master] {}'.format(slate.get_attribute('slateName'))   # master
+label = '[seq] {}'.format(slate.get_attribute('slateName'))       # sequence
+label = '[shot] {}'.format(slate.get_attribute('slateName'))      # shot
 ```
 
 ---
 
-### `_refresh_layer_table()` — Full Redraw
+## 2. Window Width
+
+```python
+# In __init__:
+self.resize(545, 600)   # matches MainWindow.get_recommended_width()
+```
+
+---
+
+## 3. closeEvent / Singleton Pattern
+
+Mirror the exact gaffer pattern — clear `_instance` in `closeEvent`, always call `QtWidgets.QMainWindow.closeEvent(self, event)` (NOT `super()` — avoids stale class after module reload):
+
+```python
+def closeEvent(self, event):
+    SlateManagerDialog._instance = None
+    QtWidgets.QMainWindow.closeEvent(self, event)
+```
+
+### Refresh on show
+
+`_refresh_slate_combo()` is called in `__init__()` AND in `showEvent` so that reopening the dialog always rescans the scene:
+
+```python
+def showEvent(self, event):
+    QtWidgets.QMainWindow.showEvent(self, event)
+    self._refresh_slate_combo()
+```
+
+---
+
+## 4. Layer Table — Inheritance Display
+
+### Correct approach (from gaffer study)
+
+Gaffer builds a chain via `build_chain()`, then collects ALL lights from all gaffers in chain. Each light is tagged `is_direct=True/False`. The table renders inherited lights with `(inh)` prefix in gray.
+
+### Slate equivalent
+
+`_refresh_layer_table()` must:
+
+1. Build chain: `chain = SlateResolver.build_chain(self._current_slate)`
+2. Collect own layers from `chain[0]` (current slate)
+3. Collect ALL layers from `chain[1:]` (parent slates) that are not already in own — regardless of `override_enabled`
+4. Show own rows in normal color, inherited rows in gray `#888888` with `(inh)` suffix
 
 ```python
 def _refresh_layer_table(self):
-    """Redraw the layer table for the currently selected slate."""
     self._layer_table.setRowCount(0)
     if self._current_slate is None:
         return
 
-    # Resolve chain for source indicators
-    from core.slate.resolver import SlateResolver
-    resolved = SlateResolver.resolve_layer_state(self._current_slate)
+    # Build full chain
+    try:
+        chain = SlateResolver.build_chain(self._current_slate)
+    except Exception as exc:
+        logger.warning('build_chain failed: %s', exc)
+        chain = [self._current_slate]
 
-    layers = self._current_slate.get_layers()
-    self._layer_table.setRowCount(len(layers))
+    # Own layers (on current slate)
+    try:
+        own_layers = {
+            l.get_layer_name(): l
+            for l in self._current_slate.get_layers()
+            if l.get_layer_name()
+        }
+    except Exception:
+        own_layers = {}
 
-    for row, layer_entry in enumerate(layers):
-        name = layer_entry.get_layer_name()
-        renderable = layer_entry.get_renderable()
-        override_enabled = layer_entry.is_override_enabled()
+    # Inherited layers — ALL layers from parent slates, no override_enabled filter
+    inherited = {}   # name -> (layer_entry, source_slate)
+    for slate_node in chain[1:]:
+        try:
+            for layer_entry in slate_node.get_layers():
+                name = layer_entry.get_layer_name()
+                if name and name not in own_layers and name not in inherited:
+                    inherited[name] = (layer_entry, slate_node)
+        except Exception:
+            continue
 
-        # Col 0: Layer Name (read-only)
-        name_item = QtWidgets.QTableWidgetItem(name)
-        name_item.setFlags(QtCore.Qt.ItemIsEnabled)
+    # Ordered rows: own first, inherited second
+    rows = []
+    for name, entry in sorted(own_layers.items()):
+        rows.append(('local', name, entry))
+    for name, (entry, _src) in sorted(inherited.items()):
+        rows.append(('inh', name, entry))
+
+    gray = QtGui.QColor('#888888')
+    self._layer_table.setRowCount(len(rows))
+
+    for row, (kind, name, layer_entry) in enumerate(rows):
+        is_local = kind == 'local'
+        display_name = name if is_local else '{} (inh)'.format(name)
+
+        # Col 0: Layer name
+        name_item = QtWidgets.QTableWidgetItem(display_name)
+        name_item.setData(QtCore.Qt.UserRole, name)   # real name without suffix
+        name_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
+        if not is_local:
+            name_item.setForeground(gray)
         self._layer_table.setItem(row, 0, name_item)
 
-        # Col 1: Renderable checkbox
+        # Col 1: Renderable checkbox — enabled for ALL rows in edit mode
         renderable_cb = QtWidgets.QCheckBox()
-        renderable_cb.setChecked(renderable)
-        # Editable only in edit mode AND override is enabled
-        renderable_cb.setEnabled(self._edit_mode and override_enabled)
+        try:
+            renderable_cb.setChecked(layer_entry.get_renderable())
+        except Exception:
+            renderable_cb.setChecked(True)
+        renderable_cb.setEnabled(self._edit_mode)
         self._layer_table.setCellWidget(row, 1, self._center_widget(renderable_cb))
 
-        # Col 2: Override checkbox (renderableEnabled)
-        override_cb = QtWidgets.QCheckBox()
-        override_cb.setChecked(override_enabled)
-        override_cb.setEnabled(self._edit_mode)
-        # When override toggled, enable/disable renderable checkbox
-        override_cb.stateChanged.connect(
-            lambda state, r=row, rcb=renderable_cb: rcb.setEnabled(
-                self._edit_mode and bool(state)
-            )
-        )
-        self._layer_table.setCellWidget(row, 2, self._center_widget(override_cb))
-
-        # Col 3: Source indicator
-        layer_state = resolved.get(name, {})
-        if not layer_state.get('overridden'):
-            source_text = '(–)'
-        elif layer_state.get('source') == self._current_slate.node_name:
-            source_text = '(own)'
-        else:
-            # Identify whether source is seq or master slate
-            source_node = layer_state.get('source', '')
-            try:
-                import maya.cmds as cmds
-                slate_type = cmds.getAttr('{}.slateType'.format(source_node))
-                source_text = '({})'.format(slate_type[:3])  # 'seq' or 'mas'
-            except Exception:
-                source_text = '(inh)'
-
-        source_item = QtWidgets.QTableWidgetItem(source_text)
-        source_item.setFlags(QtCore.Qt.ItemIsEnabled)
-        source_item.setForeground(
-            QtGui.QColor('#888888') if source_text != '(own)' else QtGui.QColor('#CCCCCC')
-        )
-        self._layer_table.setItem(row, 3, source_item)
-
-def _center_widget(self, widget):
-    """Wrap a widget in a centered container for table cells."""
-    container = QtWidgets.QWidget()
-    layout = QtWidgets.QHBoxLayout(container)
-    layout.addWidget(widget)
-    layout.setAlignment(QtCore.Qt.AlignCenter)
-    layout.setContentsMargins(0, 0, 0, 0)
-    return container
+    self._on_search_changed(self._search_box.text())
 ```
 
----
-
-## 2. `ui/main_window.py` — +SLT Column
-
-### Column update (from 8 to 9 columns after 6-B added Lck)
-
-After 6-B is complete, the table has 8 columns. 6-F adds col 7 `Slt`,
-shifting `Rnd` from col 7 to col 8.
+### Commit — auto-creates local entry for inherited rows that changed
 
 ```python
-# After 6-F:
-self.shot_table.setColumnCount(9)
-self.shot_table.setHorizontalHeaderLabels(
-    ["#", "Lck", "Shot", "Frame Range", "Set", "Ver", "Gaf", "Slt", "Rnd"]
-)
-```
-
-**All existing col 7 (Rnd) references must be updated to col 8.**
-
-```python
-# Col 7: Slt button
-header.setSectionResizeMode(7, QtWidgets.QHeaderView.Fixed)
-self.shot_table.setColumnWidth(7, 38)
-```
-
-### `_populate_shot_row()` — add Slt cell at col 7
-
-```python
-# Col 7: Slate button (mirrors Col 6 Gaffer button exactly)
-ctx_node = shot_data.get('ctx_node')
-has_slate = False
-if ctx_node is not None:
-    try:
-        has_slate = ctx_node.get_slate() is not None
-    except Exception:
-        pass
-slate_btn = QtWidgets.QPushButton('SLT' if has_slate else '+SLT')
-slate_btn.setToolTip('Open Slate Manager for this shot')
-if has_slate:
-    slate_btn.setStyleSheet('background-color: #1565C0; color: white;')
-slate_btn.clicked.connect(lambda checked=False, r=row: self._on_slate_click(r))
-self.shot_table.setCellWidget(row, 7, slate_btn)
-```
-
-### `_on_slate_click(row)` — mirrors `_on_gaffer_click(row)` exactly
-
-```python
-def _on_slate_click(self, row):
-    """Handle Slate button click on a shot row.
-
-    Creates a shot-level slate if one does not exist, auto-wires it to
-    the sequence slate (if present), then opens the Slate Manager.
-
-    Args:
-        row (int): Table row index.
-    """
-    if row < 0 or row >= len(self._shots):
+def _commit_edit(self):
+    if self._current_slate is None:
+        self._exit_edit_mode()
         return
-
-    shot_data = self._shots[row]
-    ctx_node = shot_data.get('ctx_node')
-    if ctx_node is None:
-        return
-
-    try:
-        from core.slate.manager import SlateManager
-        from ui.slate_manager_dialog import SlateManagerDialog
-
-        slate = SlateManager.get_or_create_shot_slate(ctx_node)
-
-        # Update button appearance
-        slate_btn = self.shot_table.cellWidget(row, 7)
-        if slate_btn:
-            slate_btn.setText('SLT')
-            slate_btn.setStyleSheet('background-color: #1565C0; color: white;')
-
-        logger.info('Opened slate: %s', slate.node_name)
-
-        # Open / refresh Slate Manager and pre-select this slate
-        self._open_slate_manager_for(slate)
-
-    except Exception as exc:
-        logger.error('Slate button error: %s', exc)
-        QtWidgets.QMessageBox.critical(
-            self, 'Error', 'Failed to open slate:\n{}'.format(exc)
-        )
-
-def _open_slate_manager_for(self, slate):
-    """Open (or bring to front) the Slate Manager and select a specific slate."""
-    try:
-        from ui.slate_manager_dialog import SlateManagerDialog
-        self._slate_manager_dialog = SlateManagerDialog.open_or_raise(parent=self)
-        self._slate_manager_dialog.select_slate(slate)
-    except Exception as exc:
-        logger.error('Failed to open Slate Manager for slate: %s', exc)
-```
-
-### Shot-switch: refresh Slate Manager (mirrors Gaffer Manager refresh)
-
-In `_on_set_shot()`, after the existing Gaffer Manager refresh block:
-
-```python
-# Refresh Slate Manager if open; auto-select the active slate
-try:
-    from ui.slate_manager_dialog import SlateManagerDialog
-    dlg = SlateManagerDialog._instance
-    if dlg is not None:
-        active_slate = None
-        if shot_node is not None:
-            active_slate = shot_node.get_slate()
-        if active_slate is not None:
-            dlg.select_slate(active_slate)
-except Exception:
-    pass
-```
-
-### Menu bar — Slate Manager item
-
-In `_setup_toolbar()` or wherever the Tools menu is built:
-
-```python
-slate_action = QtWidgets.QAction('Slate Manager', self)
-slate_action.setStatusTip('Open Render Layer Slate Manager')
-slate_action.triggered.connect(self._open_slate_manager)
-tools_menu.addAction(slate_action)
-```
-
-```python
-def _open_slate_manager(self):
-    """Open the Slate Manager dialog."""
-    try:
-        from ui.slate_manager_dialog import SlateManagerDialog
-        self._slate_manager_dialog = SlateManagerDialog.open_or_raise(parent=self)
-        logger.info('Opened Slate Manager')
-        self.statusBar().showMessage('Slate Manager opened')
-    except Exception as exc:
-        logger.error('Failed to open Slate Manager: %s', exc)
-        QtWidgets.QMessageBox.critical(
-            self, 'Error', 'Failed to open Slate Manager:\n{}'.format(exc)
-        )
+    current_state = self._read_table_state()
+    for layer_name, state in current_state.items():
+        snap = self._snapshot.get(layer_name, {})
+        if state['renderable'] == snap.get('renderable'):
+            continue   # Unchanged
+        try:
+            layer_entry = self._current_slate.get_layer_by_name(layer_name)
+            if layer_entry is None:
+                # Inherited row changed — take ownership
+                layer_entry = self._current_slate.add_layer(
+                    layer_name, renderable=state['renderable'], enabled=True
+                )
+            else:
+                layer_entry.set_renderable(state['renderable'])
+                layer_entry.set_override_enabled(True)
+        except Exception as exc:
+            logger.error('Failed to write layer %s: %s', layer_name, exc)
+    self._exit_edit_mode()
 ```
 
 ---
 
-## 3. `tools/maya_menu.py` — Slate Manager Menu Item
+## 5. `_ensure_layers_attr` — Close/Reopen Bug Fix
 
-Read the file. Add after the Batch Render menu item:
+`CTXSlateNode.get_layers()` calls `cmds.listConnections('{}.layers'.format(self.node_name), ...)`.
+If the `layers` multi-attribute doesn't exist on the node (pre-Phase-6 or partial creation), this raises an error that may be silently swallowed.
+
+Fix in `core/nodes/wrappers/slate.py`:
 
 ```python
-slate_item = cmds.menuItem(
-    label='Slate Manager...',
-    parent=tools_menu,
-    command='exec(open(r\'{}/launch_slate_manager.py\').read())'.format(plugin_root),
-)
+def _ensure_layers_attr(self):
+    """Add the layers multi-attribute if absent."""
+    if cmds is not None and not cmds.attributeQuery('layers', node=self.node_name, exists=True):
+        cmds.addAttr(self.node_name, longName='layers',
+                     attributeType='message', multi=True, indexMatters=False)
+
+def get_layers(self):
+    """Return list of CTXSlateLayerNode connected to this slate."""
+    if cmds is None:
+        return []
+    self._ensure_layers_attr()
+    connected = cmds.listConnections(
+        '{}.layers'.format(self.node_name),
+        source=True, destination=False
+    ) or []
+    from core.nodes.wrappers.slate_layer import CTXSlateLayerNode
+    return [CTXSlateLayerNode(n) for n in connected]
+```
+
+Same `_ensure` pattern for `parentSlate` attribute in `CTXSlateNode`:
+```python
+def _ensure_parent_slate_attr(self):
+    if cmds is not None and not cmds.attributeQuery('parentSlate', node=self.node_name, exists=True):
+        cmds.addAttr(self.node_name, longName='parentSlate', attributeType='message')
 ```
 
 ---
 
-## 4. `launch_slate_manager.py` — NEW FILE (optional, mirrors launch_batch_render_dockable.py)
+## 6. `add_layer` default — `enabled=True`
+
+`CTXSlateNode.add_layer()` and `SlateManager.add_layer_to_slate()` must default to `enabled=True` so newly added layers are immediately active in the inheritance chain:
 
 ```python
-"""Launch the Slate Manager as a dockable panel in Maya."""
+# core/nodes/wrappers/slate.py
+def add_layer(self, layer_name, renderable=True, enabled=True):  # was: enabled=False
 
-import maya.cmds as cmds
+# core/slate/manager.py
+def add_layer_to_slate(slate, layer_name, renderable=True, override_enabled=True):  # was: False
 
-
-def launch_slate_manager():
-    control_name = 'SlateManagerDockControl'
-
-    if cmds.dockControl(control_name, exists=True):
-        cmds.dockControl(control_name, edit=True, visible=True, raise_=True)
-        return
-
-    from ui.slate_manager_dialog import SlateManagerDialog
-    dialog = SlateManagerDialog.open_or_raise()
-
-    cmds.dockControl(
-        control_name,
-        label='Slate Manager',
-        area='right',
-        content=dialog.objectName(),
-        width=460,
-        allowedArea=['right', 'left'],
-    )
-
-
-launch_slate_manager()
+# ui/slate_manager_dialog.py  _on_add_layer()
+self._current_slate.add_layer(name, renderable=True, enabled=True)  # was: False
 ```
 
 ---
 
-## Completion Criteria
+## 7. Launch Script — Two-Window Fix
 
-- [ ] `ui/slate_manager_dialog.py` created — full Gaffer-mirrored UI
-- [ ] Left panel: slate list with `+ New Slate`, `Set Parent...`, `Remove` buttons
-- [ ] Right panel: layer table with Layer Name / Renderable / Override / Source columns
-- [ ] `Add Layer` popup lists scene render layers, filter box, checkboxes
-- [ ] Edit / Commit / Cancel flow identical to Gaffer Manager
-- [ ] Commit uses snapshot-diff to write only changed values
-- [ ] Cancel restores snapshot
-- [ ] Source column shows `(own)` / `(seq)` / `(mas)` / `(–)`
-- [ ] Renderable checkbox greyed out when Override unchecked
-- [ ] `open_or_raise()` classmethod prevents duplicate instances
-- [ ] `select_slate(slate)` pre-selects a slate in the list
-- [ ] `ui/main_window.py`: table has 9 columns after 6-F
-- [ ] `+SLT` / `SLT` button in col 7, turns blue when slate exists
-- [ ] `_on_slate_click()` creates/opens slate, mirrors `_on_gaffer_click()` exactly
-- [ ] Shot-switch refreshes Slate Manager (same as Gaffer Manager refresh)
-- [ ] Slate Manager menu item added to Tools menu
-- [ ] No regressions in existing test suite
+Do NOT call `dlg.show()` before `cmds.dockControl`. `dockControl` handles show internally:
+
+```python
+# launch_slate_manager.py — correct pattern (same as launch_batch_render_dockable.py)
+dlg = SlateManagerDialog(parent=get_maya_main_window())
+SlateManagerDialog._instance = dlg
+# NO dlg.show() here
+window_ptr = omui.MQtUtil.findWindow(dlg.objectName())
+if window_ptr:
+    cmds.dockControl(dock_control_name, ..., content=dlg.objectName(), ...)
+else:
+    dlg.show()
+```
+
+---
+
+## Completion Criteria (Round 4)
+
+- [ ] `SlateManager.create_sequence_slate(seq_node, name=None, ...)` accepts name param
+- [ ] `SlateManager.create_shot_slate(shot_node, name=None, ...)` accepts name param
+- [ ] UI passes user-entered name to SlateManager
+- [ ] Slate combo shows `slateName` attribute, not Maya node name
+- [ ] `SlateManagerDialog.resize(545, 600)` — matches MainWindow width
+- [ ] `closeEvent` uses `QtWidgets.QMainWindow.closeEvent(self, event)` (not super())
+- [ ] `showEvent` calls `_refresh_slate_combo()` to reload state on reopen
+- [ ] `CTXSlateNode.get_layers()` has `_ensure_layers_attr()` guard
+- [ ] `CTXSlateNode._ensure_parent_slate_attr()` guard added
+- [ ] `add_layer` defaults: `enabled=True` everywhere
+- [ ] `_refresh_layer_table` shows ALL parent layers as (inh), no `override_enabled` filter
+- [ ] All rows editable in Edit Mode; inherited rows auto-create local entry on Commit
+- [ ] No `dlg.show()` before `cmds.dockControl` in launch script
+- [ ] `CTXSlateOriginalsNode` created (see Stream 6-G) and wired into `SlateResolver.apply_to_scene()`

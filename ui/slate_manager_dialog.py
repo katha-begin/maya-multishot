@@ -81,7 +81,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         self.setObjectName('SlateManagerDialog')
         self.setWindowTitle('Slate Manager')
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.Tool)
-        self.resize(600, 500)
+        self.resize(545, 600)
 
         self._current_slate = None
         self._edit_mode = False
@@ -94,7 +94,12 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         """Clear instance reference on close."""
         SlateManagerDialog._instance = None
-        super(SlateManagerDialog, self).closeEvent(event)
+        QtWidgets.QMainWindow.closeEvent(self, event)
+
+    def showEvent(self, event):
+        """Refresh combo on reopen so scene state is always current."""
+        QtWidgets.QMainWindow.showEvent(self, event)
+        self._refresh_slate_combo()
 
     # ------------------------------------------------------------------
     # UI setup
@@ -239,19 +244,16 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
         # Layer table (full width -- no splitter)
         self._layer_table = QtWidgets.QTableWidget()
-        self._layer_table.setColumnCount(4)
+        self._layer_table.setColumnCount(2)
         self._layer_table.setHorizontalHeaderLabels(
-            ['Layer Name', 'Renderable', 'Override', 'Source']
+            ['Layer', 'Renderable']
         )
 
         tbl_header = self._layer_table.horizontalHeader()
         tbl_header.setStretchLastSection(False)
         tbl_header.setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
-        for col in (1, 2, 3):
-            tbl_header.setSectionResizeMode(col, QtWidgets.QHeaderView.Fixed)
+        tbl_header.setSectionResizeMode(1, QtWidgets.QHeaderView.Fixed)
         self._layer_table.setColumnWidth(1, 80)   # Renderable
-        self._layer_table.setColumnWidth(2, 70)   # Override
-        self._layer_table.setColumnWidth(3, 70)   # Source
 
         self._layer_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
         self._layer_table.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
@@ -383,15 +385,27 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         restore_idx = 0
         for i, sn in enumerate(slates):
             try:
-                slate_name = sn.get_attribute('slateName') or sn.node_name
-                slate_type = sn.get_attribute('slateType') or '?'
+                try:
+                    slate_name = cmds.getAttr('{}.slateName'.format(sn.node_name))
+                except Exception:
+                    slate_name = None
+                if not slate_name:
+                    slate_name = sn.node_name
+
+                slate_type = 'master'
+                try:
+                    slate_type = cmds.getAttr('{}.slateType'.format(sn.node_name))
+                except Exception:
+                    pass
+
                 if slate_type == 'master':
                     label = '[Master] {}'.format(slate_name)
+                elif slate_type == 'sequence':
+                    label = '[seq] {}'.format(slate_name)
                 else:
-                    label = '[{}] {}'.format(slate_type.capitalize(), slate_name)
+                    label = '[shot] {}'.format(slate_name)
             except Exception:
                 label = sn.node_name
-                slate_name = sn.node_name
 
             self._slate_combo.addItem(label, sn)
             if current_name and sn.node_name == current_name:
@@ -409,6 +423,13 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         self._update_chain_label()
         self._refresh_layer_table()
 
+    def _slate_display_name(self, slate_node):
+        """Return the slateName attribute value for display, falling back to node name."""
+        try:
+            return cmds.getAttr('{}.slateName'.format(slate_node.node_name))
+        except Exception:
+            return slate_node.node_name
+
     def _update_chain_label(self):
         """Update the chain info label to show the inheritance path."""
         if self._current_slate is None:
@@ -416,13 +437,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
             return
         try:
             chain = SlateResolver.build_chain(self._current_slate)
-            names = []
-            for sn in reversed(chain):
-                try:
-                    n = sn.get_attribute('slateName') or sn.node_name
-                except Exception:
-                    n = sn.node_name
-                names.append(n)
+            names = [self._slate_display_name(sn) for sn in reversed(chain)]
             self._chain_label.setText('Chain: {}'.format(' > '.join(names)))
         except Exception:
             self._chain_label.setText('Chain: -')
@@ -432,79 +447,77 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------
 
     def _refresh_layer_table(self):
-        """Redraw the layer table for the currently selected slate."""
+        """Redraw the layer table for the currently selected slate.
+
+        Shows local layers (defined on this slate) normally and inherited
+        layers (from parent slates only) in gray with '(inh)' suffix.
+        Mirrors the gaffer attribute table pattern.
+        """
         self._layer_table.setRowCount(0)
         if self._current_slate is None:
             return
 
+        # Build parent chain (index 0 = current slate)
         try:
-            resolved = SlateResolver.resolve_layer_state(self._current_slate)
+            chain = SlateResolver.build_chain(self._current_slate)
         except Exception as exc:
-            logger.warning('SlateResolver failed: %s', exc)
-            resolved = {}
+            logger.warning('SlateResolver.build_chain failed: %s', exc)
+            chain = [self._current_slate]
 
+        # Own layers on the current slate
         try:
-            layers = self._current_slate.get_layers()
-        except Exception as exc:
-            logger.warning('get_layers failed: %s', exc)
-            layers = []
+            own_layers = {
+                l.get_layer_name(): l
+                for l in self._current_slate.get_layers()
+                if l.get_layer_name()
+            }
+        except Exception:
+            own_layers = {}
 
-        self._layer_table.setRowCount(len(layers))
-
-        for row, layer_entry in enumerate(layers):
+        # Inherited layers: in parent slates, not already owned locally.
+        # Show all parent layers regardless of override_enabled so users can
+        # see and take ownership of any inherited layer.
+        inherited = {}  # layer_name -> (layer_entry, source_slate)
+        for slate_node in chain[1:]:
             try:
-                name = layer_entry.get_layer_name()
-                renderable = layer_entry.get_renderable()
-                override_enabled = layer_entry.is_override_enabled()
+                for layer_entry in slate_node.get_layers():
+                    name = layer_entry.get_layer_name()
+                    if name and name not in own_layers and name not in inherited:
+                        inherited[name] = (layer_entry, slate_node)
             except Exception:
-                name = '?'
-                renderable = True
-                override_enabled = False
+                continue
 
-            # Col 0: Layer Name (read-only)
-            name_item = QtWidgets.QTableWidgetItem(name)
+        # Build ordered row list: own first, then inherited
+        rows = []
+        for name, layer_entry in sorted(own_layers.items()):
+            rows.append(('local', name, layer_entry))
+        for name, (layer_entry, _src) in sorted(inherited.items()):
+            rows.append(('inh', name, layer_entry))
+
+        self._layer_table.setRowCount(len(rows))
+        gray = QtGui.QColor('#888888')
+
+        for row, (kind, name, layer_entry) in enumerate(rows):
+            is_local = kind == 'local'
+
+            # Col 0: Layer name -- real name stored in UserRole
+            display_name = name if is_local else '{} (inh)'.format(name)
+            name_item = QtWidgets.QTableWidgetItem(display_name)
+            name_item.setData(QtCore.Qt.UserRole, name)
             name_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
+            if not is_local:
+                name_item.setForeground(gray)
             self._layer_table.setItem(row, 0, name_item)
 
             # Col 1: Renderable checkbox
             renderable_cb = QtWidgets.QCheckBox()
-            renderable_cb.setChecked(renderable)
-            renderable_cb.setEnabled(self._edit_mode and override_enabled)
+            try:
+                renderable_cb.setChecked(layer_entry.get_renderable())
+            except Exception:
+                renderable_cb.setChecked(True)
+            # All rows editable in edit mode; inherited rows show as grayed text only
+            renderable_cb.setEnabled(self._edit_mode)
             self._layer_table.setCellWidget(row, 1, self._center_widget(renderable_cb))
-
-            # Col 2: Override checkbox (renderableEnabled)
-            override_cb = QtWidgets.QCheckBox()
-            override_cb.setChecked(override_enabled)
-            override_cb.setEnabled(self._edit_mode)
-            override_cb.stateChanged.connect(
-                lambda state, rcb=renderable_cb: rcb.setEnabled(
-                    self._edit_mode and bool(state)
-                )
-            )
-            self._layer_table.setCellWidget(row, 2, self._center_widget(override_cb))
-
-            # Col 3: Source indicator
-            layer_state = resolved.get(name, {})
-            if not layer_state.get('overridden'):
-                source_text = '(-)'
-            elif layer_state.get('source') == self._current_slate.node_name:
-                source_text = '(own)'
-            else:
-                source_node = layer_state.get('source', '')
-                source_text = '(inh)'
-                if source_node and cmds is not None:
-                    try:
-                        slate_type = cmds.getAttr('{}.slateType'.format(source_node))
-                        source_text = '({})'.format(str(slate_type)[:3])
-                    except Exception:
-                        pass
-
-            source_item = QtWidgets.QTableWidgetItem(source_text)
-            source_item.setFlags(QtCore.Qt.ItemIsEnabled)
-            source_item.setForeground(
-                QtGui.QColor('#CCCCCC') if source_text == '(own)' else QtGui.QColor('#888888')
-            )
-            self._layer_table.setItem(row, 3, source_item)
 
         # Re-apply search filter
         self._on_search_changed(self._search_box.text())
@@ -547,24 +560,32 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         self._refresh_layer_table()
 
     def _commit_edit(self):
-        """Write table state to CTX nodes (snapshot-diff pattern)."""
+        """Write table state to CTX nodes (snapshot-diff pattern).
+
+        For local rows: update existing layer entry if value changed.
+        For inherited rows that changed: create a local layer entry on this
+        slate (taking ownership), then set the new value.
+        """
         if self._current_slate is None:
             self._exit_edit_mode()
             return
         current_state = self._read_table_state()
         for layer_name, state in current_state.items():
             snap = self._snapshot.get(layer_name, {})
+            if state['renderable'] == snap.get('renderable'):
+                continue  # Unchanged -- skip
             try:
                 layer_entry = self._current_slate.get_layer_by_name(layer_name)
-            except Exception:
-                layer_entry = None
-            if layer_entry is None:
-                continue
-            try:
-                if state['renderableEnabled'] != snap.get('renderableEnabled'):
-                    layer_entry.set_override_enabled(state['renderableEnabled'])
-                if state['renderable'] != snap.get('renderable'):
+                if layer_entry is None:
+                    # Inherited layer changed -- take ownership by creating local entry
+                    layer_entry = self._current_slate.add_layer(
+                        layer_name,
+                        renderable=state['renderable'],
+                        enabled=True,
+                    )
+                else:
                     layer_entry.set_renderable(state['renderable'])
+                    layer_entry.set_override_enabled(True)
             except Exception as exc:
                 logger.error('Failed to write layer %s: %s', layer_name, exc)
         self._exit_edit_mode()
@@ -605,10 +626,15 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
     # ------------------------------------------------------------------
 
     def _capture_snapshot(self):
-        """Return {layer_name: {renderable, renderableEnabled}} from CTX nodes."""
+        """Return {layer_name: {renderable, renderableEnabled}} from CTX nodes.
+
+        Captures own layers and the resolved value of inherited layers so that
+        _commit_edit can detect which inherited rows the user changed.
+        """
         snap = {}
         if self._current_slate is None:
             return snap
+        # Own layers
         try:
             for layer_entry in self._current_slate.get_layers():
                 name = layer_entry.get_layer_name()
@@ -619,16 +645,30 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                     }
         except Exception as exc:
             logger.warning('Snapshot capture failed: %s', exc)
+        # Inherited layers (resolved value from parent chain)
+        try:
+            chain = SlateResolver.build_chain(self._current_slate)
+            for slate_node in chain[1:]:
+                for layer_entry in slate_node.get_layers():
+                    name = layer_entry.get_layer_name()
+                    if name and name not in snap:
+                        snap[name] = {
+                            'renderable': layer_entry.get_renderable(),
+                            'renderableEnabled': layer_entry.is_override_enabled(),
+                        }
+        except Exception:
+            pass
         return snap
 
     def _read_table_state(self):
-        """Read current widget state from the layer table."""
+        """Read current widget state from all rows (local and inherited)."""
         state = {}
         for row in range(self._layer_table.rowCount()):
             name_item = self._layer_table.item(row, 0)
             if name_item is None:
                 continue
-            name = name_item.text()
+            is_inherited = name_item.text().endswith(' (inh)')
+            real_name = name_item.data(QtCore.Qt.UserRole) or name_item.text()
 
             renderable = False
             rnd_container = self._layer_table.cellWidget(row, 1)
@@ -637,17 +677,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                 if cb is not None:
                     renderable = cb.isChecked()
 
-            override_enabled = False
-            ov_container = self._layer_table.cellWidget(row, 2)
-            if ov_container is not None:
-                cb = ov_container.findChild(QtWidgets.QCheckBox)
-                if cb is not None:
-                    override_enabled = cb.isChecked()
-
-            state[name] = {
-                'renderable': renderable,
-                'renderableEnabled': override_enabled,
-            }
+            state[real_name] = {'renderable': renderable, 'is_inherited': is_inherited}
         return state
 
     # ------------------------------------------------------------------
@@ -723,16 +753,9 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
             if parent_slate is False:
                 return  # User cancelled
 
-            new_slate = CTXSlateNode.create(
-                slateName=name.strip(),
-                slateType='sequence',
-                scopeCode=seq_code,
+            new_slate = SlateManager.create_sequence_slate(
+                seq, name=name.strip(), parent_slate=parent_slate
             )
-            seq.set_slate(new_slate)
-
-            if parent_slate is not None:
-                new_slate.set_parent_slate(parent_slate)
-                logger.info('Parent slate set: %s', parent_slate.node_name)
 
             logger.info("Created sequence slate '%s' for seq '%s'",
                         new_slate.node_name, seq_code)
@@ -796,16 +819,9 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
             if parent_slate is False:
                 return
 
-            new_slate = CTXSlateNode.create(
-                slateName=name.strip(),
-                slateType='shot',
-                scopeCode=shot_id,
+            new_slate = SlateManager.create_shot_slate(
+                shot, name=name.strip(), parent_slate=parent_slate
             )
-            shot.set_slate(new_slate)
-
-            if parent_slate is not None:
-                new_slate.set_parent_slate(parent_slate)
-                logger.info('Parent slate set: %s', parent_slate.node_name)
 
             logger.info("Created shot slate '%s' for shot '%s'",
                         new_slate.node_name, shot_id)
@@ -1053,7 +1069,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
         for name in dlg.get_selected_layer_names():
             try:
-                self._current_slate.add_layer(name, renderable=True, enabled=False)
+                self._current_slate.add_layer(name, renderable=True, enabled=True)
                 logger.info('Added layer %r to slate %s', name, self._current_slate.node_name)
             except Exception as exc:
                 logger.error('Failed to add layer %r: %s', name, exc)

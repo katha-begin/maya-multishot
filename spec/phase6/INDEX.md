@@ -24,12 +24,13 @@ inheritance model to the Gaffer system. UI mirrors Gaffer Manager 100%.
 
 | Stream | Document | Round | Status |
 |--------|----------|-------|--------|
-| 6-A | [Lock Core — Mixin, LockManager, Schema Changes](./STREAM_6A_LOCK_CORE.md) | 1 | Not Started |
-| 6-B | [Lock UI — Column, Context Menu, Gaffer Banner](./STREAM_6B_LOCK_UI.md) | 2 | Not Started |
-| 6-C | [Slate Nodes — Schemas, Wrappers, Connections](./STREAM_6C_SLATE_NODES.md) | 1 | Not Started |
-| 6-D | [Slate Core — SlateManager, SlateResolver, Shot-Switch](./STREAM_6D_SLATE_CORE.md) | 2 | Not Started |
-| 6-E | [Slate Batch — ScenePreparer, Frame Range Default](./STREAM_6E_SLATE_BATCH.md) | 3 | Not Started |
-| 6-F | [Slate UI — SlateManagerDialog, +SLT Column](./STREAM_6F_SLATE_UI.md) | 3 | Not Started |
+| 6-A | [Lock Core — Mixin, LockManager, Schema Changes](./STREAM_6A_LOCK_CORE.md) | 1 | Complete |
+| 6-B | [Lock UI — Column, Context Menu, Gaffer Banner](./STREAM_6B_LOCK_UI.md) | 2 | Complete |
+| 6-C | [Slate Nodes — Schemas, Wrappers, Connections](./STREAM_6C_SLATE_NODES.md) | 1 | Complete |
+| 6-D | [Slate Core — SlateManager, SlateResolver, Shot-Switch](./STREAM_6D_SLATE_CORE.md) | 2 | Complete |
+| 6-E | [Slate Batch — ScenePreparer, Frame Range Default](./STREAM_6E_SLATE_BATCH.md) | 3 | Complete |
+| 6-F | [Slate UI — SlateManagerDialog, +SLT Column](./STREAM_6F_SLATE_UI.md) | 4 | In Progress (spec revised) |
+| 6-G | [Slate Originals — CTXSlateOriginalsNode, restore_originals()](./STREAM_6G_SLATE_ORIGINALS.md) | 4 | Not Started |
 
 ---
 
@@ -39,6 +40,7 @@ inheritance model to the Gaffer system. UI mirrors Gaffer Manager 100%.
 Round 1 (parallel):  6-A + 6-C         (no dependencies)
 Round 2 (parallel):  6-B + 6-D         (6-B needs 6-A; 6-D needs 6-C)
 Round 3 (parallel):  6-E + 6-F         (6-E needs 6-D; 6-F needs 6-D)
+Round 4 (parallel):  6-F fixes + 6-G   (6-G needs 6-D; 6-F Round 4 needs 6-G spec)
 ```
 
 ---
@@ -73,10 +75,13 @@ core/nodes/wrappers/slate_layer.py        <- 6-C
 core/slate/__init__.py                    <- 6-D
 core/slate/manager.py                     <- 6-D
 core/slate/resolver.py                    <- 6-D
+core/nodes/schemas/slate_originals.py     <- 6-G
+core/nodes/wrappers/slate_originals.py    <- 6-G
 ui/slate_manager_dialog.py                <- 6-F
 tests/test_lock_manager.py                <- 6-A
 tests/test_slate_nodes.py                 <- 6-C
 tests/test_slate_resolver.py              <- 6-D
+tests/test_slate_originals.py             <- 6-G
 ```
 
 ## Modified Files

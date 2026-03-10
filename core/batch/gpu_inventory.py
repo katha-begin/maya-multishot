@@ -79,11 +79,11 @@ def detect_gpus():
             except (ValueError, IndexError) as exc:
                 logger.warning("Failed to parse GPU line %r: %s", line, exc)
 
-        logger.info("Detected %d GPU(s): %s", len(gpus), [g.name for g in gpus])
+        logger.debug("Detected %d GPU(s): %s", len(gpus), [g.name for g in gpus])
         return gpus
 
     except FileNotFoundError:
-        logger.info("nvidia-smi not found -- no NVIDIA GPUs detected")
+        logger.debug("nvidia-smi not found -- no NVIDIA GPUs detected")
         return []
     except subprocess.TimeoutExpired:
         logger.warning("nvidia-smi timed out")
