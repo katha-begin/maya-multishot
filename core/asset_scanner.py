@@ -15,9 +15,11 @@ from __future__ import print_function
 
 import os
 import re
-import logging
 
-logger = logging.getLogger(__name__)
+from core.logging_config import get_logger
+from core.renderers import get_active_renderer, get_preferred_extensions
+
+logger = get_logger(__name__)
 
 
 class AssetScanner(object):
@@ -175,10 +177,12 @@ class AssetScanner(object):
         logger.info("Scanning department: %s at %s", dept, publish_path)
 
         # Collect version directories, sort latest first
+        ver_pattern = self.config.get_token_pattern('ver') if self.config else None
+        ver_pattern = ver_pattern or r'^v\d+$'
         version_dirs = []
         for item in os.listdir(publish_path):
             item_path = os.path.join(publish_path, item)
-            if os.path.isdir(item_path) and re.match(r'^v\d+$', item):
+            if os.path.isdir(item_path) and re.match(ver_pattern, item):
                 version_dirs.append((item, item_path))
 
         if not version_dirs:
@@ -189,10 +193,31 @@ class AssetScanner(object):
         logger.info("Found %d versions: %s", len(version_dirs), [v[0] for v in version_dirs])
 
         # First occurrence per key = latest version (versions sorted latest first)
+        config_exts = self.config.get_extensions() if self.config else []
+        if config_exts:
+            extensions = tuple('.' + e for e in config_exts)
+        else:
+            extensions = ('.abc', '.rs', '.ma', '.mb', '.vdb', '.ass')
+        # Determine renderer-preferred extension order once (outside version loop)
+        try:
+            _renderer = get_active_renderer()
+            _preferred = get_preferred_extensions(_renderer, self.config)
+        except Exception:
+            _renderer = 'unknown'
+            _preferred = []
+
+        def _ext_rank(fname):
+            ext = os.path.splitext(fname)[1].lstrip('.')
+            try:
+                return _preferred.index(ext)
+            except ValueError:
+                return len(_preferred)
+
         unique_assets = {}
         for version, version_path in version_dirs:
-            for filename in os.listdir(version_path):
-                if not filename.endswith(('.abc', '.rs', '.ma', '.mb', '.vdb', '.ass')):
+            filenames = sorted(os.listdir(version_path), key=_ext_rank)
+            for filename in filenames:
+                if not filename.endswith(extensions):
                     continue
                 asset_info = self._parse_filename(filename)
                 if not asset_info:
@@ -349,8 +374,9 @@ class AssetScanner(object):
 
         shot_part, asset_part = parts
 
-        # Check if this is a camera asset (ends with _camera)
-        if asset_part.endswith('_camera'):
+        # Check if this is a camera asset (ends with camera suffix)
+        cam_suffix = self.config.get_camera_file_suffix() if self.config else '_camera'
+        if asset_part.endswith(cam_suffix):
             return {
                 'type': 'CAM',
                 'name': asset_part,   # Full name: SWA_Ep04_SH0170_camera

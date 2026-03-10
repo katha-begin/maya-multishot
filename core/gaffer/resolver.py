@@ -12,16 +12,38 @@ except ImportError:
 
 from ..nodes.wrappers.gaffer import CTXLightGafferNode
 from ..nodes.wrappers.light_context import CTXLightContextNode
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
+
+
+def _get_supported_attributes(config=None):
+    """Return list of all supported gaffer attributes.
+
+    Uses config if provided, falls back to the hardcoded list on the class.
+
+    Args:
+        config: ProjectConfig instance, or None
+
+    Returns:
+        list: Attribute names (e.g. ['intensity', 'exposure', 'color', ...])
+    """
+    if config is not None:
+        simple = config.get_gaffer_simple_attributes()
+        compound = list(config.get_gaffer_compound_attributes().keys())
+        if simple or compound:
+            return simple + compound
+    return list(AttributeResolver.SUPPORTED_ATTRIBUTES)
 
 
 class AttributeResolver(object):
     """Resolver for attribute inheritance in gaffer chains.
-    
+
     Walks the gaffer chain from child to parent to find the first
     enabled value for each attribute.
     """
-    
-    # Supported attributes
+
+    # Supported attributes — kept as fallback for callers that do not pass config
     SUPPORTED_ATTRIBUTES = [
         'intensity',
         'exposure',
@@ -199,13 +221,15 @@ class AttributeResolver(object):
             return delta
 
     @staticmethod
-    def resolve_all_attributes(gaffer, light_name):
+    def resolve_all_attributes(gaffer, light_name, config=None):
         """Resolve all attributes for a light.
-        
+
         Args:
             gaffer (CTXLightGafferNode or str): Starting gaffer
             light_name (str): Light name to resolve
-            
+            config (ProjectConfig, optional): Project config for attribute list.
+                If None, uses the hardcoded SUPPORTED_ATTRIBUTES fallback.
+
         Returns:
             dict: Resolved attributes:
                 {
@@ -220,9 +244,13 @@ class AttributeResolver(object):
                 Attributes not enabled anywhere in chain are omitted.
         """
         resolved = {}
-        
-        for attribute in AttributeResolver.SUPPORTED_ATTRIBUTES:
-            result = AttributeResolver.resolve_attribute(gaffer, light_name, attribute)
+
+        for attribute in _get_supported_attributes(config):
+            try:
+                result = AttributeResolver.resolve_attribute(gaffer, light_name, attribute)
+            except ValueError:
+                # Attribute from config not yet in SUPPORTED_ATTRIBUTES validation list
+                continue
             if result is not None:
                 resolved[attribute] = result
 
@@ -272,12 +300,14 @@ class AttributeResolver(object):
         }
 
     @staticmethod
-    def get_all_attribute_sources(gaffer, light_name):
+    def get_all_attribute_sources(gaffer, light_name, config=None):
         """Get source information for all attributes.
 
         Args:
             gaffer (CTXLightGafferNode or str): Starting gaffer
             light_name (str): Light name
+            config (ProjectConfig, optional): Project config for attribute list.
+                If None, uses the hardcoded SUPPORTED_ATTRIBUTES fallback.
 
         Returns:
             dict: Source information for each attribute:
@@ -290,8 +320,11 @@ class AttributeResolver(object):
         """
         sources = {}
 
-        for attribute in AttributeResolver.SUPPORTED_ATTRIBUTES:
-            source = AttributeResolver.get_attribute_source(gaffer, light_name, attribute)
+        for attribute in _get_supported_attributes(config):
+            try:
+                source = AttributeResolver.get_attribute_source(gaffer, light_name, attribute)
+            except ValueError:
+                continue
             if source is not None:
                 sources[attribute] = source
 

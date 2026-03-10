@@ -414,6 +414,121 @@ class ProjectConfig(object):
             return None
         return render_config.get('camera')
 
+    def get_logging_config(self):
+        """Get logging configuration.
+
+        Returns:
+            dict: Logging config with keys: level, file, verbose.
+                  Defaults to {'level': 'INFO', 'file': None, 'verbose': False}
+                  if the 'logging' section is absent from the config file.
+        """
+        return self.data.get('logging', {'level': 'INFO', 'file': None, 'verbose': False})
+
+    def get_token_pattern(self, token_name):
+        """Return regex pattern for a token from config.
+
+        Args:
+            token_name (str): Token name (e.g. 'ver', 'ep', 'shot')
+
+        Returns:
+            str: Regex pattern string, or None if not defined
+        """
+        return self.data.get('tokens', {}).get(token_name, {}).get('pattern')
+
+    def get_extensions(self):
+        """Return supported file extensions list from config.
+
+        Returns:
+            list: List of extension strings (without leading dot, e.g. ['abc', 'vdb']),
+                  or empty list if not defined. Note: the config stores extensions with
+                  a leading dot (e.g. '.abc') so this method strips them for consistency
+                  with the callers that add their own dot prefix.
+        """
+        raw = self.data.get('extensions', [])
+        return [e.lstrip('.') for e in raw]
+
+    def get_camera_file_suffix(self):
+        """Return camera file suffix pattern from config.
+
+        Returns:
+            str: Camera file suffix (e.g. '_camera'), defaults to '_camera' if not set
+        """
+        return self.data.get('assetDiscovery', {}).get('cameraFileSuffix', '_camera')
+
+    def get_gaffer_attributes(self):
+        """Return gaffer attribute definition dict from config.
+
+        Returns:
+            dict: Gaffer attribute definitions with 'simple' and 'compound' keys,
+                  or empty dict if not defined
+        """
+        return self.data.get('gafferAttributes', {})
+
+    def get_gaffer_simple_attributes(self):
+        """Return list of simple (scalar) gaffer attribute names.
+
+        Returns:
+            list: Simple attribute names (e.g. ['intensity', 'exposure', ...])
+        """
+        return self.get_gaffer_attributes().get('simple', [])
+
+    def get_gaffer_compound_attributes(self):
+        """Return dict of compound gaffer attribute names to their components.
+
+        Returns:
+            dict: Maps compound name to component list
+                  (e.g. {'color': ['colorR', 'colorG', 'colorB'], ...})
+        """
+        return self.get_gaffer_attributes().get('compound', {})
+
+    def get_renderer_config(self, renderer_name):
+        """Return config dict for a specific renderer.
+
+        Args:
+            renderer_name (str): 'redshift' | 'arnold' | 'maya'
+
+        Returns:
+            dict or None
+        """
+        return self.data.get('renderers', {}).get(renderer_name)
+
+    def get_standin_node_type(self, renderer_name):
+        """Return the standin node type for a renderer.
+
+        Args:
+            renderer_name (str): Renderer name.
+
+        Returns:
+            str or None: Node type string (e.g. 'RedshiftProxyMesh') or None.
+        """
+        cfg = self.get_renderer_config(renderer_name) or {}
+        return cfg.get('standinNodeType')
+
+    def get_standin_file_attr(self, renderer_name):
+        """Return the standin file attribute name for a renderer.
+
+        Args:
+            renderer_name (str): Renderer name.
+
+        Returns:
+            str or None: Attribute name (e.g. 'fileName') or None.
+        """
+        cfg = self.get_renderer_config(renderer_name) or {}
+        return cfg.get('standinFileAttr')
+
+    def get_preferred_extensions(self, renderer_name):
+        """Return preferred file extensions for a renderer.
+
+        Args:
+            renderer_name (str): Renderer name.
+
+        Returns:
+            list: Extensions in preference order, without leading dot.
+                  Empty list if renderer not in config.
+        """
+        cfg = self.get_renderer_config(renderer_name) or {}
+        return cfg.get('preferredExtensions', [])
+
     def __repr__(self):
         """String representation of ProjectConfig."""
         return "ProjectConfig(config_path='{}', version='{}')".format(

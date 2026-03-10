@@ -16,6 +16,9 @@ except ImportError:
 from ..nodes.wrappers.gaffer import CTXLightGafferNode
 from ..nodes.wrappers.light_context import CTXLightContextNode
 from ..renderers import get_maya_attr
+from ..logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class GafferManager(object):
@@ -95,8 +98,8 @@ class GafferManager(object):
                 if not originals_node.has_light(resolved_shape):
                     originals_node.store_light(resolved_shape, captured)
             except Exception as orig_err:
-                print("GafferManager: could not store originals for '{}': {}".format(
-                    resolved_shape, orig_err))
+                logger.warning("GafferManager: could not store originals for '%s': %s",
+                               resolved_shape, orig_err)
             # Simple scalar attrs
             _SIMPLE = ['intensity', 'exposure', 'temperature', 'muted',
                        'spread', 'areaSpread',
@@ -124,8 +127,8 @@ class GafferManager(object):
                         light_ctx.set_attribute(sub, captured[sub])
                     light_ctx.set_attribute('{}Enabled'.format(group), True)
         except Exception as e:
-            print("GafferManager.add_light_to_gaffer: could not capture values for '{}': {}".format(
-                resolved_shape, e))
+            logger.warning("GafferManager.add_light_to_gaffer: could not capture values for '%s': %s",
+                           resolved_shape, e)
 
         return light_ctx
     

@@ -16,6 +16,9 @@ from __future__ import division
 from __future__ import print_function
 
 from core.nodes.wrappers import CTXManagerNode, CTXSequenceNode, CTXShotNode, CTXAssetNode
+from core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class ContextManager(object):
@@ -238,7 +241,7 @@ class ContextManager(object):
                 callback(event_type, data)
             except Exception as e:
                 # Log error but don't stop other callbacks
-                print("Error in callback: {}".format(e))
+                logger.error("Error in callback: %s", e)
 
     def set_silent_mode(self, silent):
         """Enable/disable silent mode to prevent callback loops.
