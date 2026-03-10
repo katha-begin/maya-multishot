@@ -198,6 +198,16 @@
       "assetType": "CAM"
     }
   },
+  "batchRender": {
+    "reservedGpus": 1,
+    "tempSceneMaxCount": 5,
+    "tempSceneDir": null,
+    "logDir": null,
+    "frameHandles": 0,
+    "redshift": {
+      "gpuEnvVar": "REDSHIFT_GPUDEVICES"
+    }
+  },
   "cache": {
     "lastUpdated": null,
     "episodes": [],

@@ -178,6 +178,28 @@ def build_parser():
         help='Do not save the scene after import',
     )
 
+    # ------------------------------------------------------------------ #
+    # batch-render
+    # ------------------------------------------------------------------ #
+    p_batch = subparsers.add_parser('batch-render', help='Render multiple shots in batch')
+    p_batch.add_argument('--scene', metavar='FILE', help='Scene file (.ma/.mb)')
+    p_batch.add_argument('--shots', nargs='+', metavar='SHOT',
+                         help='Shot IDs as ep_seq_shot (e.g. Ep04_sq0070_SH0170)')
+    p_batch.add_argument('--all-shots', action='store_true',
+                         help='Use all CTX shots in scene')
+    p_batch.add_argument('--layers', nargs='+', metavar='LAYER',
+                         help='Render layers (default: all renderable)')
+    p_batch.add_argument('--start-frame', type=int, metavar='N',
+                         help='Override start frame')
+    p_batch.add_argument('--end-frame', type=int, metavar='N',
+                         help='Override end frame')
+    p_batch.add_argument('--reserve-gpus', type=int, metavar='N',
+                         help='Number of GPUs to reserve for interactive use')
+    p_batch.add_argument('--dry-run', action='store_true',
+                         help='Prepare scenes but do not render')
+    p_batch.add_argument('--no-save', action='store_true',
+                         help='Do not save temp scenes after render')
+
     return parser
 
 
@@ -383,6 +405,54 @@ def _cmd_import_gaffer(args, api):
     return 0 if result.get('success') else 1
 
 
+def _cmd_batch_render(args, api, output):
+    """Handle batch-render command.
+
+    Args:
+        args: Parsed argparse namespace.
+        api: PipelineAPI instance.
+        output (callable): Called with result dict.
+
+    Returns:
+        int: 0 on success, 1 on failure.
+    """
+    shots = []
+
+    if getattr(args, 'all_shots', False):
+        # Discover shots from CTXShotNode.list_all() -- requires Maya
+        try:
+            from core.nodes.wrappers import CTXShotNode
+            shot_nodes = CTXShotNode.list_all()
+            for sn in shot_nodes:
+                shots.append({'ep': sn.ep, 'seq': sn.seq, 'shot': sn.shot})
+        except Exception as exc:
+            output({'success': False, 'error': 'Failed to list shots: %s' % exc})
+            return 1
+    elif getattr(args, 'shots', None):
+        for shot_str in args.shots:
+            parts = shot_str.split('_', 2)
+            if len(parts) != 3:
+                output({'success': False,
+                        'error': 'Invalid shot ID %r (expected ep_seq_shot)' % shot_str})
+                return 1
+            shots.append({'ep': parts[0], 'seq': parts[1], 'shot': parts[2]})
+    else:
+        output({'success': False, 'error': '--shots or --all-shots required'})
+        return 1
+
+    result = api.batch_render(
+        shots=shots,
+        scene_file=getattr(args, 'scene', None),
+        render_layers=getattr(args, 'layers', None),
+        start_frame=getattr(args, 'start_frame', None),
+        end_frame=getattr(args, 'end_frame', None),
+        dry_run=getattr(args, 'dry_run', False),
+        reserved_gpus=getattr(args, 'reserve_gpus', None),
+    )
+    output(result)
+    return 0 if result.get('success') else 1
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -407,6 +477,22 @@ def main(argv=None):
     from tools.pipeline_api import PipelineAPI
     api = PipelineAPI(config_path=args.config)
 
+    # Output helper used by commands that accept an output callable
+    def _output(result):
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            success = result.get('success', False)
+            status = 'OK' if success else 'FAILED'
+            error = result.get('error') or result.get('message', '')
+            total = result.get('total', 0)
+            done = result.get('done', 0)
+            failed = result.get('failed', 0)
+            print('[%s] total=%d done=%d failed=%d%s' % (
+                status, total, done, failed,
+                (' -- ' + error if error and not success else ''),
+            ))
+
     # Dispatch
     command = args.command
     if command == 'scan-assets':
@@ -421,6 +507,8 @@ def main(argv=None):
         return _cmd_export_gaffer(args, api)
     elif command == 'import-gaffer':
         return _cmd_import_gaffer(args, api)
+    elif command == 'batch-render':
+        sys.exit(_cmd_batch_render(args, api, _output))
     else:
         parser.error('Unknown command: %s' % command)
         return 2

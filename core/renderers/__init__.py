@@ -128,3 +128,28 @@ def get_maya_attr(light_shape, gaffer_attr):
         'shadowEnable': 'useDepthMapShadows',
     }
     return MAYA_DEFAULT_ATTR_MAP.get(gaffer_attr)
+
+
+def get_gpu_env_var(renderer_name, config=None):
+    """Return the GPU device env var name for a renderer, or None.
+
+    Looks up batchRender.<renderer_name>.gpuEnvVar in config.
+    Returns None if the renderer has no config entry or no adapter support.
+    Does NOT hardcode any renderer-specific values.
+
+    Args:
+        renderer_name (str): Renderer name (e.g. 'redshift', 'arnold').
+        config: Optional ProjectConfig instance.
+
+    Returns:
+        str|None: Env var name, or None if not configured.
+    """
+    if config is None:
+        return None
+    try:
+        batch_cfg = config.get_batch_render_config()
+        renderer_cfg = batch_cfg.get(renderer_name, {})
+        return renderer_cfg.get('gpuEnvVar') or None
+    except Exception as exc:
+        logger.warning("Failed to get GPU env var for %s: %s", renderer_name, exc)
+        return None

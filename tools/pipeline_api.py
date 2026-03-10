@@ -445,6 +445,84 @@ class PipelineAPI(object):
                 'lights_exported': 0,
             }
 
+    def batch_render(self, shots, scene_file=None,
+                     render_layers=None, start_frame=None, end_frame=None,
+                     on_progress=None, dry_run=False, reserved_gpus=None):
+        """Render multiple shots in batch using available GPUs.
+
+        No Maya required for queuing. Maya required for prepare + render steps.
+
+        Args:
+            shots (list): List of (ep, seq, shot) tuples or dicts with ep/seq/shot keys.
+            scene_file (str|None): Scene to open. None = current scene.
+            render_layers (list[str]|None): Layers to render. None = all renderable.
+            start_frame (int|None): Override start. None = from CTXShotNode.
+            end_frame (int|None): Override end. None = from CTXShotNode.
+            on_progress (callable|None): Called with (job, layer, status, message).
+            dry_run (bool): If True, prepare scenes but do not render.
+            reserved_gpus (int|None): GPUs to reserve. None = from config.
+
+        Returns:
+            dict: {
+                'success': bool,
+                'total': int,
+                'done': int,
+                'failed': int,
+                'jobs': list[dict],
+            }
+        """
+        from core.batch.render_queue import RenderQueue
+
+        orig = None
+        try:
+            if reserved_gpus is not None and self._config:
+                # Temporarily override reserved GPUs in config
+                orig = self._config.data.get('batchRender', {}).get('reservedGpus', 1)
+                self._config.data.setdefault('batchRender', {})['reservedGpus'] = reserved_gpus
+
+            queue = RenderQueue(self._config, self._platform_config)
+
+            for item in shots:
+                if isinstance(item, dict):
+                    ep = item['ep']
+                    seq = item['seq']
+                    shot = item['shot']
+                else:
+                    ep, seq, shot = item[0], item[1], item[2]
+                queue.add_shot(
+                    ep, seq, shot,
+                    scene_file=scene_file,
+                    start_frame=start_frame,
+                    end_frame=end_frame,
+                    render_layers=render_layers,
+                )
+
+            queue.start(on_progress=on_progress, dry_run=dry_run)
+            queue.wait()
+
+            summary = queue.get_summary()
+            summary['success'] = summary['failed'] == 0
+
+            return summary
+
+        except Exception as exc:
+            logger.exception("batch_render failed: %s", exc)
+            return {
+                'success': False,
+                'total': len(shots),
+                'done': 0,
+                'failed': len(shots),
+                'jobs': [],
+            }
+
+        finally:
+            # Restore original reserved_gpus if we overrode it
+            if reserved_gpus is not None and self._config and orig is not None:
+                try:
+                    self._config.data['batchRender']['reservedGpus'] = orig
+                except Exception:
+                    pass
+
     def import_gaffer(self, ep, seq, shot, json_path, scene_file=None, save=True):
         """Load gaffer JSON and apply it to a shot in a Maya scene.
 

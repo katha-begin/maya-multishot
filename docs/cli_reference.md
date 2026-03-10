@@ -281,6 +281,103 @@ python tools/cli.py import-gaffer --scene file.ma --ep Ep04 --seq sq0070 --shot 
 
 ---
 
+### `batch-render`
+
+Render multiple shots in batch using available GPUs.
+Enqueues shots, prepares per-shot temp scenes, and dispatches renders.
+**Requires Maya.**
+
+```
+python tools/cli.py batch-render --ep EP --seq SEQ --shot SHOT [OPTIONS]
+```
+
+At least one `--ep/--seq/--shot` triplet is required. Repeat the flags to queue
+multiple shots:
+
+```
+python tools/cli.py batch-render \
+  --ep Ep04 --seq sq0070 --shot SH0170 \
+  --ep Ep04 --seq sq0070 --shot SH0180
+```
+
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--ep EP` | yes | Episode code, e.g. `Ep04`. Repeat per shot. |
+| `--seq SEQ` | yes | Sequence code, e.g. `sq0070`. Repeat per shot. |
+| `--shot SHOT` | yes | Shot code, e.g. `SH0170`. Repeat per shot. |
+| `--scene FILE` | no | Scene file to open. Defaults to current open scene. |
+| `--layer LAYER` | no | Render layer name. Repeat to include multiple layers. Default: all renderable. |
+| `--start-frame N` | no | Override start frame for all shots. Default: from CTXShotNode. |
+| `--end-frame N` | no | Override end frame for all shots. Default: from CTXShotNode. |
+| `--reserved-gpus N` | no | GPUs to keep free for interactive use. Default: from config (`batchRender.reservedGpus`). |
+| `--dry-run` | no | Prepare temp scenes but do not invoke the renderer. |
+| `--no-save` | no | Do not save modified scenes after render. |
+
+**Exit codes:** `0` all shots succeeded, `1` one or more shots failed.
+
+**Example — render all shots, all renderable layers:**
+```
+python tools/cli.py batch-render \
+  --ep Ep04 --seq sq0070 --shot SH0170 \
+  --ep Ep04 --seq sq0070 --shot SH0180
+```
+```
+Batch render complete: 2/2 succeeded
+  Ep04_sq0070_SH0170  beauty  GPU 1  DONE
+  Ep04_sq0070_SH0180  beauty  GPU 2  DONE
+```
+
+**Example — specific layers only:**
+```
+python tools/cli.py batch-render \
+  --ep Ep04 --seq sq0070 --shot SH0170 \
+  --layer beauty --layer shadow
+```
+
+**Example — dry run (prepare scenes only):**
+```
+python tools/cli.py batch-render \
+  --ep Ep04 --seq sq0070 --shot SH0170 \
+  --dry-run
+```
+```
+Dry run complete: 1 scene(s) prepared, no frames rendered
+  Ep04_sq0070_SH0170  beauty  (dry run)
+```
+
+**Example — JSON output:**
+```
+python tools/cli.py --json batch-render \
+  --ep Ep04 --seq sq0070 --shot SH0170
+```
+```json
+{
+  "success": true,
+  "total": 1,
+  "done": 1,
+  "failed": 0,
+  "jobs": [
+    {
+      "shot_id": "Ep04_sq0070_SH0170",
+      "layer": "beauty",
+      "gpu_index": 1,
+      "status": "done",
+      "frames_total": 80,
+      "frames_done": 80
+    }
+  ]
+}
+```
+
+**Example — reserve 2 GPUs for interactive work:**
+```
+python tools/cli.py batch-render \
+  --ep Ep04 --seq sq0070 --shot SH0170 \
+  --reserved-gpus 2
+```
+
+---
+
 ## Environment Variables
 
 | Variable | Description |

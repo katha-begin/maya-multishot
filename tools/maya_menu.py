@@ -106,6 +106,14 @@ def create_ctx_menu():
             parent=menu
         )
 
+        # Add Batch Render menu item
+        cmds.menuItem(
+            label="Batch Render...",
+            command=lambda *args: open_batch_render_dialog(),
+            annotation="Open Batch Render dialog",
+            parent=menu
+        )
+
         # Add separator
         cmds.menuItem(divider=True, parent=menu)
 
@@ -467,6 +475,24 @@ def open_gaffer_manager():
             button=["OK"],
             defaultButton="OK"
         )
+
+
+# Global reference to keep Batch Render dialog alive (prevent garbage collection)
+_batch_render_dialog = None
+
+
+def open_batch_render_dialog():
+    """Open Batch Render dialog using dockable launcher."""
+    import sys
+    import os
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    try:
+        exec(open(os.path.join(repo_root, 'launch_batch_render_dockable.py')).read())
+    except Exception as exc:
+        import maya.cmds as cmds
+        cmds.warning("Failed to launch Batch Render: {}".format(exc))
 
 
 def open_asset_manager():
