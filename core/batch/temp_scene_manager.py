@@ -139,11 +139,11 @@ class TempSceneManager(object):
         Returns:
             TempSceneManager
         """
-        temp_dir = config.get_temp_scene_dir()
+        temp_dir = config.get_temp_scene_dir() if config else None
         if not temp_dir:
             if scene_file:
                 temp_dir = os.path.join(os.path.dirname(scene_file), 'batch_temp')
             else:
                 temp_dir = os.path.join(os.path.expanduser('~'), 'maya_batch_temp')
-        max_count = config.get_temp_scene_max_count()
+        max_count = config.get_temp_scene_max_count() if config else 10
         return cls(temp_dir, max_count)

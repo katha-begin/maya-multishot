@@ -119,7 +119,10 @@ class RenderQueue(object):
                 on_progress(job, None, 'preparing', 'Preparing scene')
             result = _prepare_on_main(preparer, job)
             if not result.get('success'):
-                logger.error("Prepare failed for %s: %s", job.shot_id, result.get('message'))
+                msg = result.get('message', 'Prepare failed')
+                logger.error("Prepare failed for %s: %s", job.shot_id, msg)
+                if on_progress:
+                    on_progress(job, None, 'failed', msg)
 
         if dry_run:
             logger.info("Dry run complete -- skipping dispatch")
