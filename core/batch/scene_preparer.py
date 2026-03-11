@@ -70,6 +70,7 @@ class ScenePreparer(object):
                 save=False,
                 apply_paths=True,
                 apply_gaffer=True,
+                apply_slate=True,
             )
             if not result.get('success'):
                 raise RuntimeError("set_active_shot failed: %s" % result.get('message'))
