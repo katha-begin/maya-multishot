@@ -277,12 +277,12 @@ class PipelineAPI(object):
             }
 
     def set_active_shot(self, ep, seq, shot, scene_file=None, save=True,
-                        apply_paths=True, apply_gaffer=True):
+                        apply_paths=True, apply_gaffer=True, apply_slate=True):
         """Set a shot as the active shot in a Maya scene.
 
         Performs the same operations as clicking "Set" in the Context Manager UI:
         marks the shot active on the CTX_Manager node, updates all asset paths,
-        and applies the gaffer chain.
+        applies the gaffer chain, and applies slate render-layer renderable flags.
 
         Requires Maya.
 
@@ -294,6 +294,9 @@ class PipelineAPI(object):
             save (bool): If True, save the scene after applying.
             apply_paths (bool): If True, update asset file paths via NodeManager.
             apply_gaffer (bool): If True, apply gaffer chain to Maya lights.
+            apply_slate (bool): If True, apply slate render-layer renderable flags
+                via SlateResolver.apply_to_scene(). Restores originals if no slate
+                found at shot or sequence level.
 
         Returns:
             dict: {
@@ -302,6 +305,7 @@ class PipelineAPI(object):
                 'output_file': str|None,
                 'assets_updated': int,
                 'gaffer_applied': bool,
+                'slate_applied': bool,
             }
         """
         self._require_maya()
@@ -375,6 +379,20 @@ class PipelineAPI(object):
                 except Exception as exc:
                     logger.warning("set_active_shot: gaffer apply failed: %s", exc)
 
+            # Apply slate render-layer renderable flags
+            slate_applied = False
+            if apply_slate:
+                try:
+                    from core.slate.resolver import SlateResolver
+                    slate = SlateResolver._get_slate_for_node(shot_node)
+                    if slate is not None:
+                        SlateResolver.apply_to_scene(shot_node)
+                        slate_applied = True
+                    else:
+                        SlateResolver.restore_originals()
+                except Exception as exc:
+                    logger.warning("set_active_shot: slate apply failed: %s", exc)
+
             output_file = None
             if save:
                 cmds.file(save=True, force=True)
@@ -386,6 +404,7 @@ class PipelineAPI(object):
                 'output_file': output_file,
                 'assets_updated': assets_updated,
                 'gaffer_applied': gaffer_applied,
+                'slate_applied': slate_applied,
             }
 
         except Exception as exc:
