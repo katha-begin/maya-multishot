@@ -106,17 +106,22 @@ def launch_dockable():
     # Create main window with Maya main window as parent
     main_window = MainWindow(parent=get_maya_main_window())
 
+    # Process Qt events so the window is registered with Maya's window manager
+    # before we call MQtUtil.findWindow(). Without this the pointer is often
+    # None on slower machines, causing the fallback to a plain floating window.
+    QtWidgets.QApplication.processEvents()
+
     # Get the window's pointer for Maya
     window_ptr = omui.MQtUtil.findWindow(main_window.objectName())
 
+    # Always remove a stale dockControl from a previous session, regardless of
+    # whether findWindow() succeeded (fixes the case where the race condition
+    # fired last time and left an orphaned dockControl).
+    dock_control_name = "MultishotManagerDockControl"
+    if cmds.dockControl(dock_control_name, exists=True):
+        cmds.deleteUI(dock_control_name)
+
     if window_ptr:
-        # Try to create a dockControl for it (Maya 2016 and earlier style)
-        dock_control_name = "MultishotManagerDockControl"
-
-        # Delete existing dock control if it exists
-        if cmds.dockControl(dock_control_name, exists=True):
-            cmds.deleteUI(dock_control_name)
-
         try:
             # Create dock control with calculated width
             # Get recommended width from MainWindow class

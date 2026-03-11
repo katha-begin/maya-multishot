@@ -66,6 +66,9 @@ def launch_dockable():
     dlg = BatchRenderDialog(parent=get_maya_main_window())
     BatchRenderDialog._instance = dlg
 
+    # Allow Qt to register the window with Maya's window manager before findWindow()
+    QtWidgets.QApplication.processEvents()
+
     window_ptr = omui.MQtUtil.findWindow(dlg.objectName())
 
     dock_control_name = 'BatchRenderDockControl'
