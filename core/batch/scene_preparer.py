@@ -135,11 +135,17 @@ class ScenePreparer(object):
                     # No slate -- fall back to all renderable layers in scene
                     job.resolved_layers = rs_mgr.get_layer_names(renderable_only=True)
                     if not job.resolved_layers:
+                        logger.warning(
+                            "Job %s: no renderable layers found via Render Setup"
+                            " (is_available=%s) -- falling back to defaultRenderLayer",
+                            job.shot_id, rs_mgr.is_available()
+                        )
                         job.resolved_layers = ['defaultRenderLayer']
-                    logger.debug(
-                        "Job %s: no slate -- using scene renderable layers: %s",
-                        job.shot_id, job.resolved_layers
-                    )
+                    else:
+                        logger.info(
+                            "Job %s: no slate -- using scene renderable layers: %s",
+                            job.shot_id, job.resolved_layers
+                        )
 
             # Step 6: Set defaultRenderGlobals
             self._set_render_globals(job)
