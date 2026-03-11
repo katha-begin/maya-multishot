@@ -2441,16 +2441,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_quick_render(self, rows):
         """Queue first and last frame render for selected shots.
 
-        Creates two single-frame RenderJob per shot (start frame + end frame),
-        using the current active render layer. Opens BatchRenderDialog.
+        Creates two single-frame RenderJob per shot (start frame + end frame).
+        Layers are resolved by ScenePreparer (slate -> renderable -> defaultRenderLayer).
+        Opens BatchRenderDialog.
 
         Args:
             rows (list[int]): Selected row indices.
         """
         from core.batch import render_state as rs
-        from core.batch.render_setup_manager import RenderSetupManager
-
-        active_layer = RenderSetupManager().get_active_layer_name()
 
         jobs_config = []  # list of dicts to pass to dialog
 
@@ -2474,16 +2472,16 @@ class MainWindow(QtWidgets.QMainWindow):
             rs.set_status(shot_id, rs.QUEUED)
 
             # Two single-frame jobs: first frame and last frame
+            # No explicit render_layers -- ScenePreparer resolves via slate then
+            # renderable layers (clapper icon), falling back to defaultRenderLayer
             jobs_config.append({
                 'ep': ep, 'seq': seq, 'shot': shot,
-                'start_frame': start, 'end_frame': start,  # first frame
-                'render_layers': [active_layer],
+                'start_frame': start, 'end_frame': start,
                 'label': '%s_%s_%s frame %d' % (ep, seq, shot, start),
             })
             jobs_config.append({
                 'ep': ep, 'seq': seq, 'shot': shot,
-                'start_frame': end, 'end_frame': end,  # last frame
-                'render_layers': [active_layer],
+                'start_frame': end, 'end_frame': end,
                 'label': '%s_%s_%s frame %d' % (ep, seq, shot, end),
             })
 

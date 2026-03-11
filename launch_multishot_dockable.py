@@ -26,8 +26,26 @@ if repo_root not in sys.path:
     sys.path.insert(0, repo_root)
     print("Added to sys.path: {}".format(repo_root))
 
+# Clear __pycache__ directories so stale .pyc files never shadow new .py files.
+# This is critical on remote/network machines where deployment copies new .py files
+# but leaves old compiled bytecode in place.
+import shutil
+_pycache_cleared = 0
+for _root, _dirs, _files in os.walk(repo_root):
+    for _d in list(_dirs):
+        if _d == '__pycache__':
+            _pycache_path = os.path.join(_root, _d)
+            try:
+                shutil.rmtree(_pycache_path)
+                _pycache_cleared += 1
+            except Exception as _e:
+                print("Warning: could not remove {}: {}".format(_pycache_path, _e))
+            _dirs.remove(_d)  # don't recurse into it
+if _pycache_cleared:
+    print("Cleared {} __pycache__ directories".format(_pycache_cleared))
+
 # Clear cached modules
-modules_to_remove = [key for key in list(sys.modules.keys()) 
+modules_to_remove = [key for key in list(sys.modules.keys())
                      if key.startswith(('ui', 'core', 'config', 'tools'))]
 for module in modules_to_remove:
     del sys.modules[module]
