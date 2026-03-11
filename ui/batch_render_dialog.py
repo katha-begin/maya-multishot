@@ -240,6 +240,11 @@ class RenderSettingsDialog(QtWidgets.QDialog):
         self._reserve_spin.setFixedWidth(60)
         layout.addRow('Reserve GPUs:', self._reserve_spin)
 
+        # Log console
+        self._log_console_check = QtWidgets.QCheckBox('Auto-show on render start')
+        self._log_console_check.setChecked(self._settings.get('show_log_console', False))
+        layout.addRow('Log Console:', self._log_console_check)
+
         # OK / Cancel
         btn_row = QtWidgets.QHBoxLayout()
         btn_row.addStretch()
@@ -261,6 +266,7 @@ class RenderSettingsDialog(QtWidgets.QDialog):
     def get_settings(self):
         """Return updated settings dict."""
         return {
+            'show_log_console': self._log_console_check.isChecked(),
             'auto_frame': self._auto_check.isChecked(),
             'start_frame': self._start_spin.value(),
             'end_frame': self._end_spin.value(),
@@ -297,6 +303,7 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
             'temp_max': 5,
             'temp_dir': '',
             'reserve_gpus': 1,
+            'show_log_console': False,
         }
         # List of row dicts for the Configure tab shot table.
         # Each entry: {ep, seq, shot, start_frame, end_frame, frame_range_mode}
@@ -344,6 +351,12 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
         settings_action = QtWidgets.QAction('Settings', self)
         settings_action.triggered.connect(self._open_settings)
         tools_menu.addAction(settings_action)
+        tools_menu.addSeparator()
+        self._log_console_action = QtWidgets.QAction('Show Log Console', self)
+        self._log_console_action.setCheckable(True)
+        self._log_console_action.setChecked(self._settings.get('show_log_console', False))
+        self._log_console_action.triggered.connect(self._on_toggle_log_console)
+        tools_menu.addAction(self._log_console_action)
 
         # Central widget
         container = QtWidgets.QWidget()
@@ -987,16 +1000,49 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
                 status_item.setText(display)
                 if color:
                     status_item.setForeground(color)
+
+            # Log console: tail log file when a layer starts rendering
+            if status_lower == 'rendering':
+                log_path = getattr(job, 'log_path', None)
+                if log_path and self._settings.get('show_log_console', False):
+                    try:
+                        from ui.log_console_dialog import LogConsoleDialog
+                        console = LogConsoleDialog.get_or_create(parent=self)
+                        console.watch_file(log_path)
+                        console.show()
+                        console.raise_()
+                    except Exception as exc:
+                        logger.warning('Log console update failed: %s', exc)
             break
 
     # ------------------------------------------------------------------
     # Settings
     # ------------------------------------------------------------------
 
+    def _on_toggle_log_console(self, checked):
+        """Show or hide the log console window."""
+        self._settings['show_log_console'] = checked
+        from ui.log_console_dialog import LogConsoleDialog
+        if checked:
+            console = LogConsoleDialog.get_or_create(parent=self)
+            console.show()
+            console.raise_()
+        else:
+            if LogConsoleDialog._instance is not None:
+                try:
+                    LogConsoleDialog._instance.hide()
+                except RuntimeError:
+                    pass
+
     def _open_settings(self):
         dlg = RenderSettingsDialog(self._settings, parent=self)
         if dlg.exec_() == QtWidgets.QDialog.Accepted:
             self._settings = dlg.get_settings()
+            # Sync log console menu action with saved setting
+            if hasattr(self, '_log_console_action'):
+                self._log_console_action.setChecked(
+                    self._settings.get('show_log_console', False)
+                )
 
     # ------------------------------------------------------------------
     # Lifecycle

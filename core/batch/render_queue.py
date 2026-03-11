@@ -1,9 +1,38 @@
 # -*- coding: utf-8 -*-
 """Render queue: manages a list of RenderJob objects and dispatches them across GPUs."""
 
+import threading
+
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _prepare_on_main(preparer, job):
+    """Execute preparer.prepare(job) on Maya's main thread.
+
+    ScenePreparer calls maya.cmds which is not thread-safe. When called from a
+    background thread (e.g. BatchRenderDialog's render thread), this function
+    routes the call through maya.utils.executeInMainThreadWithResult so that
+    Maya's internal lock is acquired safely.
+
+    Falls back to a direct call when already on the main thread or when Maya
+    is not available (headless / test mode).
+
+    Args:
+        preparer (ScenePreparer): The preparer instance.
+        job (RenderJob): The job to prepare.
+
+    Returns:
+        dict: Result dict from preparer.prepare().
+    """
+    try:
+        import maya.utils as maya_utils
+        if threading.current_thread() is threading.main_thread():
+            return preparer.prepare(job)
+        return maya_utils.executeInMainThreadWithResult(preparer.prepare, job)
+    except ImportError:
+        return preparer.prepare(job)
 
 
 class RenderQueue(object):
@@ -88,7 +117,7 @@ class RenderQueue(object):
         for job in self._jobs:
             if on_progress:
                 on_progress(job, None, 'preparing', 'Preparing scene')
-            result = preparer.prepare(job)
+            result = _prepare_on_main(preparer, job)
             if not result.get('success'):
                 logger.error("Prepare failed for %s: %s", job.shot_id, result.get('message'))
 

@@ -86,6 +86,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         self._current_slate = None
         self._edit_mode = False
         self._snapshot = {}
+        self._promoted_layers = set()  # layers promoted from (inh) in last commit
 
         self._setup_ui()
         self._connect_signals()
@@ -420,6 +421,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         """Handle combo selection change."""
         wrapper = self._slate_combo.itemData(index)
         self._current_slate = wrapper  # None if "No slates found" placeholder
+        self._promoted_layers = set()
         self._update_chain_label()
         self._refresh_layer_table()
 
@@ -496,6 +498,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
         self._layer_table.setRowCount(len(rows))
         gray = QtGui.QColor('#888888')
+        orange = QtGui.QColor('#FFA000')
 
         for row, (kind, name, layer_entry) in enumerate(rows):
             is_local = kind == 'local'
@@ -507,6 +510,8 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
             name_item.setFlags(QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable)
             if not is_local:
                 name_item.setForeground(gray)
+            elif name in self._promoted_layers:
+                name_item.setForeground(orange)
             self._layer_table.setItem(row, 0, name_item)
 
             # Col 1: Renderable checkbox
@@ -517,6 +522,15 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                 renderable_cb.setChecked(True)
             # All rows editable in edit mode; inherited rows show as grayed text only
             renderable_cb.setEnabled(self._edit_mode)
+
+            # During edit mode: connect (inh) rows for live visual feedback
+            if self._edit_mode and not is_local:
+                orig = self._snapshot.get(name, {}).get('renderable', True)
+                renderable_cb.stateChanged.connect(
+                    lambda state, r=row, n=name, orig_val=orig:
+                        self._on_inh_row_changed(r, n, orig_val, bool(state))
+                )
+
             self._layer_table.setCellWidget(row, 1, self._center_widget(renderable_cb))
 
         # Re-apply search filter
@@ -531,6 +545,23 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                 self._layer_table.setRowHidden(row, bool(text))
                 continue
             self._layer_table.setRowHidden(row, bool(text) and text not in name_item.text().lower())
+
+    def _on_inh_row_changed(self, row, layer_name, original_renderable, new_value):
+        """Live visual feedback when an inherited row's checkbox is changed in edit mode.
+
+        If the value differs from the snapshot, the row previews its promoted state:
+        text becomes orange, '(inh)' suffix is removed.
+        If reverted to original, the row restores gray '(inh)' display.
+        """
+        name_item = self._layer_table.item(row, 0)
+        if name_item is None:
+            return
+        if new_value != original_renderable:
+            name_item.setText(layer_name)
+            name_item.setForeground(QtGui.QColor('#FFA000'))
+        else:
+            name_item.setText('{} (inh)'.format(layer_name))
+            name_item.setForeground(QtGui.QColor('#888888'))
 
     def _center_widget(self, widget):
         """Wrap a widget in a centered container for table cells."""
@@ -549,6 +580,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         """Snapshot current state and switch to edit mode."""
         if self._current_slate is None:
             return
+        self._promoted_layers = set()
         self._snapshot = self._capture_snapshot()
         self._edit_mode = True
         self._edit_mode_label.setText('Edit Mode: ON')
@@ -583,6 +615,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
                         renderable=state['renderable'],
                         enabled=True,
                     )
+                    self._promoted_layers.add(layer_name)
                 else:
                     layer_entry.set_renderable(state['renderable'])
                     layer_entry.set_override_enabled(True)
