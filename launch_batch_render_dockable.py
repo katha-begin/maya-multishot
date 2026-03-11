@@ -54,7 +54,13 @@ def get_maya_main_window():
 def launch_dockable():
     from ui.batch_render_dialog import BatchRenderDialog
 
-    # Close existing instance
+    dock_control_name = 'BatchRenderDockControl'
+
+    # Remove old dockControl FIRST to avoid objectName collision with the new window
+    if cmds.dockControl(dock_control_name, exists=True):
+        cmds.deleteUI(dock_control_name)
+
+    # Close existing instance if it survived module clearing
     if BatchRenderDialog._instance is not None:
         try:
             BatchRenderDialog._instance.close()
@@ -63,17 +69,16 @@ def launch_dockable():
             pass
         BatchRenderDialog._instance = None
 
+    # Flush pending deleteLater() events before creating new window
+    QtWidgets.QApplication.processEvents()
+
     dlg = BatchRenderDialog(parent=get_maya_main_window())
     BatchRenderDialog._instance = dlg
 
-    # Allow Qt to register the window with Maya's window manager before findWindow()
+    # Allow Qt to register the new window with Maya's window manager
     QtWidgets.QApplication.processEvents()
 
     window_ptr = omui.MQtUtil.findWindow(dlg.objectName())
-
-    dock_control_name = 'BatchRenderDockControl'
-    if cmds.dockControl(dock_control_name, exists=True):
-        cmds.deleteUI(dock_control_name)
 
     if window_ptr:
         try:

@@ -49,7 +49,13 @@ def get_maya_main_window():
 def launch_dockable():
     from ui.slate_manager_dialog import SlateManagerDialog
 
-    # Close existing instance
+    dock_control_name = 'SlateManagerDockControl'
+
+    # Remove old dockControl FIRST to avoid objectName collision with the new window
+    if cmds.dockControl(dock_control_name, exists=True):
+        cmds.deleteUI(dock_control_name)
+
+    # Close existing instance if it survived module clearing
     if SlateManagerDialog._instance is not None:
         try:
             SlateManagerDialog._instance.close()
@@ -58,17 +64,16 @@ def launch_dockable():
             pass
         SlateManagerDialog._instance = None
 
+    # Flush pending deleteLater() events before creating new window
+    QtWidgets.QApplication.processEvents()
+
     dlg = SlateManagerDialog(parent=get_maya_main_window())
     SlateManagerDialog._instance = dlg
 
-    # Allow Qt to register the window with Maya's window manager before findWindow()
+    # Allow Qt to register the new window with Maya's window manager
     QtWidgets.QApplication.processEvents()
 
     window_ptr = omui.MQtUtil.findWindow(dlg.objectName())
-
-    dock_control_name = 'SlateManagerDockControl'
-    if cmds.dockControl(dock_control_name, exists=True):
-        cmds.deleteUI(dock_control_name)
 
     if window_ptr:
         try:
