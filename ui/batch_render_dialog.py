@@ -859,7 +859,7 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
         # Append rows to task table
         for jc in jobs_config:
             shot_id = '%s_%s_%s' % (jc['ep'], jc['seq'], jc['shot'])
-            layers = jc.get('render_layers') or ['defaultRenderLayer']
+            layers = jc.get('render_layers') or ['-']
             for layer in layers:
                 row = self._task_table.rowCount()
                 self._task_table.insertRow(row)
@@ -982,8 +982,13 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
             row_layer = self._task_table.item(row, 1)
             if not row_shot or row_shot.text() != shot_id:
                 continue
-            if layer and row_layer and row_layer.text() not in (layer, '(all renderable)', '-'):
-                continue
+            if layer and row_layer:
+                row_layer_text = row_layer.text()
+                if row_layer_text == '-':
+                    # Placeholder row — fill in the actual resolved layer name
+                    row_layer.setText(layer)
+                elif row_layer_text not in (layer, '(all renderable)'):
+                    continue
 
             # GPU
             if hasattr(job, 'gpu_index') and job.gpu_index is not None:
