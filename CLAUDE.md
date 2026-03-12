@@ -12,7 +12,7 @@ Maya Multishot Pipeline is a Maya plugin that lets artists work on multiple shot
 
 ---
 
-## 2. Current State (2026-03-11)
+## 2. Current State (2026-03-12)
 
 | Phase | Status | Branch |
 |---|---|---|
@@ -20,7 +20,8 @@ Maya Multishot Pipeline is a Maya plugin that lets artists work on multiple shot
 | Phase 2 — UI & Tools Framework | ✅ Complete | `feature/ui-tools-framework` |
 | Phase 3 — Gaffer System | ✅ Complete (core + UI) | `feature/ui-tools-framework` |
 | Phase 4 — Production & Automation | ✅ Complete (Streams A–E) | `feature/phase4-production-automation` |
-| **Phase 5 — Batch Render** | **✅ Complete** | `feature/batch-render` |
+| Phase 5 — Batch Render | ✅ Complete | `feature/batch-render` |
+| **Phase 6 — Lock System & Slate Manager** | **✅ Complete** | `feature/phase6-lock-slate` |
 
 ### Phase 3 — Complete ✅
 
@@ -123,11 +124,72 @@ Full task docs at: `spec/phase5/` (INDEX.md + STREAM_1A through STREAM_4)
 - GPU env var comes from config only — if renderer not in config, var is simply not set
 - `CTXShotNode` API: always use `get_ep_code()`, `get_seq_code()`, `get_shot_code()` — NOT `.ep`, `.seq`, `.shot`
 - `BatchRenderDialog` must be `QMainWindow` (not `QDialog`) for `cmds.dockControl` compatibility
+- `PipelineAPI.batch_render()` must call `self._get_config()` / `self._get_platform_config()` (lazy loaders) — NOT `self._config` / `self._platform_config` (both `None` until lazy-loaded)
+- `cmds.dockControl` ordering: delete old dockControl FIRST → `processEvents()` → create new window → `processEvents()` → `findWindow()` → `dockControl(content=...)`. Skipping any step causes second-launch docking to fail silently.
+- Batch render task table: use `'-'` as layer placeholder for auto-resolved jobs; fill in actual layer name on first progress callback (row text == `'-'`)
 
 **Remaining gaps (deferred):**
 - Farm render hook (Deadline/Tractor) — not implemented
 - VRay renderer adapter — deferred
 - No undo/redo for batch operations
+
+### Phase 6 — Lock System & Slate Manager ✅
+
+Full task docs at: `spec/phase6/` (INDEX.md + STREAM_6A through STREAM_6G)
+
+**Stream 6-A — Lock Core:**
+- `core/nodes/schemas/lock_mixin.py` — `LockSchemaMixin` with `is_locked`, `locked_by`, `locked_at` attributes
+- `core/lock_manager.py` — `LockManager` static class: `lock_node()`, `unlock_node()`, `is_locked()`, `lock_sequence()` (cascades to all shots), `is_effectively_locked()`
+- Shot, Sequence, Gaffer, Asset schemas inherit `LockSchemaMixin`
+
+**Stream 6-B — Lock UI:**
+- `ui/main_window.py` — `Lck` column (col 1); lock/unlock context menu items
+- `ui/gaffer_manager_dialog.py` — lock enforcement banner; Edit Mode disabled when node is locked
+- `closeEvent`/`showEvent` use explicit `QtWidgets.QMainWindow.closeEvent(self, event)` — avoids stale `super()` after Maya module reload
+
+**Stream 6-C — Slate Nodes:**
+- `core/nodes/schemas/slate.py` — `CTXSlateSchema` (attrs: slateName, slateType, scopeCode, enabled, notes; connections: parentSlate single + layers multi)
+- `core/nodes/schemas/slate_layer.py` — `CTXSlateLayerSchema` (attrs: layerName, renderable, renderableEnabled)
+- `core/nodes/wrappers/slate.py` — `CTXSlateNode` with `_ensure_layers_attr()` + `_ensure_parent_slate_attr()` guards for pre-Phase-6 nodes
+- `core/nodes/wrappers/slate_layer.py` — `CTXSlateLayerNode`
+- Shot/Sequence wrappers gain `get_slate()`, `set_slate()`, `clear_slate()` + `_ensure_slate_attr()` guard
+
+**Stream 6-D — Slate Core:**
+- `core/slate/manager.py` — `SlateManager`: create/get slates, `add_layer_to_slate()`, naming convention `seq_{seq_code}` / `{seq_code}_{shot_code}`
+- `core/slate/resolver.py` — `SlateResolver`: `build_chain()` (circular guard), `resolve_layer_state()`, `apply_to_scene()`, `restore_originals()`, `_get_slate_for_node()`
+- `ui/main_window.py` — 9 columns: `#`, `Lck`, `Shot`, `Frame Range`, `Set`, `Ver`, `Gaf`, `Slt`, `Rnd`. `+Slt` button mirrors `+GAF`.
+
+**Stream 6-E — Slate Batch:**
+- `core/batch/scene_preparer.py` — 3-level layer priority: explicit layers > slate > scene fallback
+- `project_configs/ctx_config.json` — `slateManager` config section
+- `tools/pipeline_api.py` — `get_shot_slate_layers()` helper
+- `tools/cli.py` — `--use-slate-layers` flag on `batch-render` command
+
+**Stream 6-F — Slate UI:**
+- `ui/slate_manager_dialog.py` — `SlateManagerDialog(QMainWindow)`, dockable (545px), layout mirrors GafferManager exactly:
+  - Dropdown header (`_slate_combo`) with `[Master]`/`[seq ...]`/`[shot ...]` labels
+  - 2-column layer table (Layer, Renderable); inherited layers shown as `(inh)` rows in gray
+  - Edit mode: snapshot/diff pattern; auto-creates local layer entry when inherited row is changed in edit mode
+  - `_create_sequence_slate()` / `_create_shot_slate()` dispatch with user-specified name
+- `launch_slate_manager.py` — `cmds.dockControl` launch. Do NOT call `dlg.show()` before dockControl — causes two windows.
+- Shot-switch: Slate Manager auto-selects shot slate; falls back to sequence slate if shot has no slate
+
+**Stream 6-G — Slate Originals:**
+- `core/nodes/schemas/slate_originals.py` — `CTXSlateOriginalsSchema` singleton network node
+- `core/nodes/wrappers/slate_originals.py` — `CTXSlateOriginalsNode`: `get_or_create()`, `store_layer()`, `get_layer_renderable()`, `has_layer()`, `get_all()`, `clear()`
+- `SlateResolver.apply_to_scene()` captures originals before first override; restores originals for non-overridden layers
+- `SlateResolver.restore_originals()` restores all layers when shot has no slate at any level
+
+**Key design decisions (do not revert):**
+- `_ensure_*_attr()` pattern on all slate wrappers — required for pre-Phase-6 Maya nodes that lack the attribute
+- Slate layer `enabled=True` by default — layers participate in chain resolution unless explicitly disabled
+- SlateManager inherits same UI patterns as GafferManager (dropdown not left-panel list, edit mode, snapshot/diff commit)
+- `closeEvent`/`showEvent` in any `QMainWindow` subclass: use `QtWidgets.QMainWindow.closeEvent(self, event)` explicitly — never `super()` — to avoid stale class object after Maya module reload
+- `gpu_inventory.detect_gpus()` logs at DEBUG not INFO — avoids log spam when called frequently
+
+**Remaining gaps (deferred):**
+- Stream 6-G `restore_all()` method name in spec differs from implementation (`clear()`) — cosmetic
+- Live Maya testing for slate originals capture/restore flow (other flows validated in Maya)
 
 ---
 
