@@ -609,14 +609,15 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
         return None
 
     asset_part = parts[1]  # e.g. SETS_KitBedRoomIntA_001
-    asset_tokens = asset_part.split('_', 2)  # ['SETS', 'KitBedRoomIntA', '001']
+    # Mirror _parse_filename: type=first token, variant=last token, name=everything between
+    asset_tokens = asset_part.split('_')
     if len(asset_tokens) < 3:
         logger.error('Cannot parse asset part from SETS abc: {}'.format(asset_part))
         return None
 
-    set_name = asset_tokens[1]   # KitBedRoomIntA
-    set_id = asset_tokens[2]     # 001
-    set_namespace = asset_part   # SETS_KitBedRoomIntA_001
+    set_id = asset_tokens[-1]                      # 001
+    set_name = '_'.join(asset_tokens[1:-1])         # KitBedRoomIntA (handles underscores in name)
+    set_namespace = asset_part                      # SETS_KitBedRoomIntA_001
 
     # Create namespace if missing
     if not cmds.namespace(exists=set_namespace):
@@ -643,12 +644,12 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
     locators = cmds.ls('{}:*_Loc'.format(set_namespace), type='transform') or []
     logger.info('Found {} locators in {}'.format(len(locators), set_namespace))
 
-    # Track first geo reference per component so duplicates can use cmds.instance
-    component_master = {}  # component_key -> top_node
+    # Track first geo reference per component TYPE (name only, not id) for instancing
+    component_master = {}  # component_name -> top_node of first reference
 
     for locator in locators:
         loc_short = locator.split(':')[-1]  # e.g. KBDIntCelling_001_Loc
-        # Extract component_name and component_id: strip _Loc suffix, split on last _
+        # Strip _Loc suffix, then split on last _ to get (component_name, component_id)
         loc_base = loc_short[:-4] if loc_short.endswith('_Loc') else loc_short
         loc_tokens = loc_base.rsplit('_', 1)
         if len(loc_tokens) != 2:
@@ -657,11 +658,9 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
 
         component_name = loc_tokens[0]   # KBDIntCelling
         component_id = loc_tokens[1]     # 001
-        component_key = '{}_{}'.format(component_name, component_id)
-        nested_ns = '{}:{}'.format(set_namespace, component_key)
+        # Unique namespace per locator; master key is component_name only
+        nested_ns = '{}:{}_{}'.format(set_namespace, component_name, component_id)
 
-        # Read hero path from locator attribute
-        hero_path_attr = '{}:snow__pub_location'.format(set_namespace) + ':' + loc_short
         # Attribute lives on the locator itself
         hero_attr = '{}.snow__pub_location'.format(locator)
         if not cmds.objExists(hero_attr):
@@ -675,25 +674,31 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
 
         geo_file = os.path.join(hero_path, '{}_geo.abc'.format(component_name))
         shader_file = os.path.join(hero_path, '{}_rsshade.ma'.format(component_name))
-        shader_ns = '{}_shade'.format(nested_ns)
+        # Shader namespace is shared by all instances (lives on first/master occurrence)
+        master_shader_ns = '{}_shade'.format(
+            '{}:{}_001'.format(set_namespace, component_name))
 
-        # State check
-        geo_exists = (cmds.namespace(exists=nested_ns) and
-                      bool(cmds.ls('{}:*'.format(nested_ns), type='transform')))
-        shader_exists = (cmds.namespace(exists=shader_ns) and
-                         bool(cmds.ls('{}:*'.format(shader_ns))))
+        # Check if this locator already has geo children (handles re-import/merge)
+        locator_children = cmds.listRelatives(locator, children=True, type='transform') or []
+        geo_already_parented = len(locator_children) > 0
 
-        if geo_exists and shader_exists:
+        # Shader check against master namespace (shared across all instances)
+        shader_exists = (cmds.namespace(exists=master_shader_ns) and
+                         bool(cmds.ls('{}:*'.format(master_shader_ns))))
+
+        if geo_already_parented and shader_exists:
             continue
 
-        # Reference geo when needed
-        if not geo_exists:
+        is_instance = False
+
+        # Reference geo or instance from master
+        if not geo_already_parented:
             if not os.path.exists(geo_file):
                 logger.warning('Geo file not found: {}'.format(geo_file))
                 continue
 
-            if component_key not in component_master:
-                # First time — reference the geo
+            if component_name not in component_master:
+                # First locator for this component — create a real reference
                 if not cmds.namespace(exists=nested_ns):
                     cmds.namespace(add=nested_ns)
                 try:
@@ -710,14 +715,14 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
 
                 if top_nodes:
                     top_node = top_nodes[0]
-                    component_master[component_key] = top_node
-                    # Parent to locator and reset TRS
+                    component_master[component_name] = top_node
+                    # Parent to locator and zero TRS
                     cmds.parent(top_node, locator)
                     cmds.xform(top_node, translation=[0, 0, 0], rotation=[0, 0, 0])
                     cmds.xform(top_node, scale=[1, 1, 1])
             else:
-                # Subsequent locator — instance the master
-                master_root = component_master[component_key]
+                # Subsequent locator of same component — instance the master geo
+                master_root = component_master[component_name]
                 try:
                     instance_nodes = cmds.instance(master_root)
                     if instance_nodes:
@@ -725,24 +730,29 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
                         cmds.parent(inst_node, locator)
                         cmds.xform(inst_node, translation=[0, 0, 0], rotation=[0, 0, 0])
                         cmds.xform(inst_node, scale=[1, 1, 1])
+                        is_instance = True
                 except Exception as e:
                     logger.error('Failed to instance {}: {}'.format(master_root, e))
                     continue
 
-        # Reference shader when needed
+        # Instances share the master's shape node — shader already applied, skip
+        if is_instance:
+            continue
+
+        # Reference shader (once per component; shared by all instances via master shape)
         if not shader_exists and os.path.exists(shader_file):
-            if not cmds.namespace(exists=shader_ns):
-                cmds.namespace(add=shader_ns)
+            if not cmds.namespace(exists=master_shader_ns):
+                cmds.namespace(add=master_shader_ns)
             try:
-                cmds.file(shader_file, reference=True, namespace=shader_ns,
+                cmds.file(shader_file, reference=True, namespace=master_shader_ns,
                           loadReferenceDepth='all', mergeNamespacesOnClash=False)
             except Exception as e:
                 logger.error('Failed to reference shader {}: {}'.format(shader_file, e))
 
-        # Assign shaders
-        if cmds.namespace(exists=shader_ns):
+        # Assign shaders to master geo namespace
+        if cmds.namespace(exists=master_shader_ns):
             try:
-                assign_shaders_to_geometry(shader_ns, nested_ns)
+                assign_shaders_to_geometry(master_shader_ns, nested_ns)
             except Exception as e:
                 logger.error('Shader assignment failed for {}: {}'.format(nested_ns, e))
 
