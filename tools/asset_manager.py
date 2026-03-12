@@ -619,37 +619,43 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
     set_name = '_'.join(asset_tokens[1:-1])         # KitBedRoomIntA (handles underscores in name)
     set_namespace = asset_part                      # SETS_KitBedRoomIntA_001
 
-    # Create namespace if missing
-    if not cmds.namespace(exists=set_namespace):
-        cmds.namespace(add=set_namespace)
+    # Check if this SET was already imported (namespace exists)
+    set_exists = cmds.namespace(exists=set_namespace)
 
-    # Import or merge
-    prev_ns = cmds.namespaceInfo(currentNamespace=True)
-    cmds.namespace(setNamespace=set_namespace)
-    try:
+    if set_exists:
+        # Already imported — merge the alembic to reposition locators
         main_grp = '{}:Main_Grp'.format(set_namespace)
         if cmds.objExists(main_grp):
-            cmds.select(main_grp)
-            cmds.AbcImport(sets_abc_path, mode='merge',
-                           connect=main_grp, fitTimeRange=False)
+            try:
+                cmds.select(main_grp)
+                cmds.AbcImport(sets_abc_path, mode='merge',
+                               connect=main_grp, fitTimeRange=False)
+                logger.info('Merged SETS alembic: {}'.format(sets_abc_path))
+            except Exception as e:
+                logger.error('AbcImport merge failed for {}: {}'.format(sets_abc_path, e))
+                return None
         else:
+            logger.warning('Namespace exists but Main_Grp not found: {}'.format(main_grp))
+    else:
+        # Fresh import
+        cmds.namespace(add=set_namespace)
+        prev_ns = cmds.namespaceInfo(currentNamespace=True)
+        cmds.namespace(setNamespace=set_namespace)
+        try:
             cmds.AbcImport(sets_abc_path, mode='import', fitTimeRange=False)
-    except Exception as e:
-        logger.error('AbcImport failed for {}: {}'.format(sets_abc_path, e))
+        except Exception as e:
+            logger.error('AbcImport failed for {}: {}'.format(sets_abc_path, e))
+            cmds.namespace(setNamespace=prev_ns)
+            return None
         cmds.namespace(setNamespace=prev_ns)
-        return None
-    cmds.namespace(setNamespace=prev_ns)
 
     # Gather locators
     locators = cmds.ls('{}:*_Loc'.format(set_namespace), type='transform') or []
     logger.info('Found {} locators in {}'.format(len(locators), set_namespace))
 
-    # Track first geo reference per component TYPE (name only, not id) for instancing
-    component_master = {}  # component_name -> top_node of first reference
-
     for locator in locators:
         loc_short = locator.split(':')[-1]  # e.g. KBDIntCelling_001_Loc
-        # Strip _Loc suffix, then split on last _ to get (component_name, component_id)
+        # Asset names are camelCase — strip _Loc, split once on last _ for id
         loc_base = loc_short[:-4] if loc_short.endswith('_Loc') else loc_short
         loc_tokens = loc_base.rsplit('_', 1)
         if len(loc_tokens) != 2:
@@ -658,15 +664,23 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
 
         component_name = loc_tokens[0]   # KBDIntCelling
         component_id = loc_tokens[1]     # 001
-        # Unique namespace per locator; master key is component_name only
         nested_ns = '{}:{}_{}'.format(set_namespace, component_name, component_id)
+        shader_ns = '{}_shade'.format(nested_ns)
 
-        # Attribute lives on the locator itself
+        # Check state: geo parented to locator, shader referenced
+        locator_children = cmds.listRelatives(locator, children=True, type='transform') or []
+        has_geo = len(locator_children) > 0
+        shader_exists = (cmds.namespace(exists=shader_ns) and
+                         bool(cmds.ls('{}:*'.format(shader_ns))))
+
+        if has_geo and shader_exists:
+            continue
+
+        # Need hero_path for geo and/or shader files
         hero_attr = '{}.snow__pub_location'.format(locator)
         if not cmds.objExists(hero_attr):
             logger.warning('No snow__pub_location on {}'.format(locator))
             continue
-
         hero_path = cmds.getAttr(hero_attr) or ''
         if not hero_path:
             logger.warning('Empty snow__pub_location on {}'.format(locator))
@@ -674,85 +688,44 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
 
         geo_file = os.path.join(hero_path, '{}_geo.abc'.format(component_name))
         shader_file = os.path.join(hero_path, '{}_rsshade.ma'.format(component_name))
-        # Shader namespace is shared by all instances (lives on first/master occurrence)
-        master_shader_ns = '{}_shade'.format(
-            '{}:{}_001'.format(set_namespace, component_name))
 
-        # Check if this locator already has geo children (handles re-import/merge)
-        locator_children = cmds.listRelatives(locator, children=True, type='transform') or []
-        geo_already_parented = len(locator_children) > 0
-
-        # Shader check against master namespace (shared across all instances)
-        shader_exists = (cmds.namespace(exists=master_shader_ns) and
-                         bool(cmds.ls('{}:*'.format(master_shader_ns))))
-
-        if geo_already_parented and shader_exists:
-            continue
-
-        is_instance = False
-
-        # Reference geo or instance from master
-        if not geo_already_parented:
+        # Reference geo if not already present
+        if not has_geo:
             if not os.path.exists(geo_file):
                 logger.warning('Geo file not found: {}'.format(geo_file))
                 continue
-
-            if component_name not in component_master:
-                # First locator for this component — create a real reference
-                if not cmds.namespace(exists=nested_ns):
-                    cmds.namespace(add=nested_ns)
-                try:
-                    cmds.file(geo_file, reference=True, namespace=nested_ns,
-                              loadReferenceDepth='all', mergeNamespacesOnClash=False)
-                except Exception as e:
-                    logger.error('Failed to reference geo {}: {}'.format(geo_file, e))
-                    continue
-
-                # Find top-level transforms in nested_ns
-                all_in_ns = cmds.ls('{}:*'.format(nested_ns), type='transform') or []
-                top_nodes = [n for n in all_in_ns
-                             if not (cmds.listRelatives(n, parent=True, fullPath=False) or [None])[0]]
-
-                if top_nodes:
-                    top_node = top_nodes[0]
-                    component_master[component_name] = top_node
-                    # Parent to locator and zero TRS
-                    cmds.parent(top_node, locator)
-                    cmds.xform(top_node, translation=[0, 0, 0], rotation=[0, 0, 0])
-                    cmds.xform(top_node, scale=[1, 1, 1])
-            else:
-                # Subsequent locator of same component — instance the master geo
-                master_root = component_master[component_name]
-                try:
-                    instance_nodes = cmds.instance(master_root)
-                    if instance_nodes:
-                        inst_node = instance_nodes[0]
-                        cmds.parent(inst_node, locator)
-                        cmds.xform(inst_node, translation=[0, 0, 0], rotation=[0, 0, 0])
-                        cmds.xform(inst_node, scale=[1, 1, 1])
-                        is_instance = True
-                except Exception as e:
-                    logger.error('Failed to instance {}: {}'.format(master_root, e))
-                    continue
-
-        # Instances share the master's shape node — shader already applied, skip
-        if is_instance:
-            continue
-
-        # Reference shader (once per component; shared by all instances via master shape)
-        if not shader_exists and os.path.exists(shader_file):
-            if not cmds.namespace(exists=master_shader_ns):
-                cmds.namespace(add=master_shader_ns)
+            if not cmds.namespace(exists=nested_ns):
+                cmds.namespace(add=nested_ns)
             try:
-                cmds.file(shader_file, reference=True, namespace=master_shader_ns,
+                cmds.file(geo_file, reference=True, namespace=nested_ns,
+                          loadReferenceDepth='all', mergeNamespacesOnClash=False)
+            except Exception as e:
+                logger.error('Failed to reference geo {}: {}'.format(geo_file, e))
+                continue
+
+            # Find top-level transform and parent to locator
+            all_in_ns = cmds.ls('{}:*'.format(nested_ns), type='transform') or []
+            top_nodes = [n for n in all_in_ns
+                         if not (cmds.listRelatives(n, parent=True, fullPath=False) or [None])[0]]
+            if top_nodes:
+                cmds.parent(top_nodes[0], locator)
+                cmds.xform(top_nodes[0], translation=[0, 0, 0], rotation=[0, 0, 0])
+                cmds.xform(top_nodes[0], scale=[1, 1, 1])
+
+        # Reference shader if not already present
+        if not shader_exists and os.path.exists(shader_file):
+            if not cmds.namespace(exists=shader_ns):
+                cmds.namespace(add=shader_ns)
+            try:
+                cmds.file(shader_file, reference=True, namespace=shader_ns,
                           loadReferenceDepth='all', mergeNamespacesOnClash=False)
             except Exception as e:
                 logger.error('Failed to reference shader {}: {}'.format(shader_file, e))
 
-        # Assign shaders to master geo namespace
-        if cmds.namespace(exists=master_shader_ns):
+        # Assign shaders
+        if cmds.namespace(exists=shader_ns):
             try:
-                assign_shaders_to_geometry(master_shader_ns, nested_ns)
+                assign_shaders_to_geometry(shader_ns, nested_ns)
             except Exception as e:
                 logger.error('Shader assignment failed for {}: {}'.format(nested_ns, e))
 
