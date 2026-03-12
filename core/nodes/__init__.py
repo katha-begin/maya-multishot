@@ -29,11 +29,17 @@ nodes_legacy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(nodes_legacy)
 
 NodeManager = nodes_legacy.NodeManager
+NODE_TYPE_AI_STANDIN = nodes_legacy.NODE_TYPE_AI_STANDIN
+NODE_TYPE_RS_PROXY = nodes_legacy.NODE_TYPE_RS_PROXY
+NODE_TYPE_REFERENCE = nodes_legacy.NODE_TYPE_REFERENCE
 
 __all__ = [
     'NodeSchema',
     'NodeFactory',
     'NodeWrapper',
     'NodeManager',  # Legacy support
+    'NODE_TYPE_AI_STANDIN',
+    'NODE_TYPE_RS_PROXY',
+    'NODE_TYPE_REFERENCE',
 ]
 
