@@ -668,44 +668,50 @@ class MainWindow(QtWidgets.QMainWindow):
             self._shots = []
 
             # Add each shot to table
+            failed_shots = []
             for shot_node in existing_shots:
-                # Load metadata from JSON if available
-                if metadata_loader:
-                    shot_id = shot_node.get_shot_id()
-                    shot_root = self._build_shot_root_path(shot_node)
+                node_label = shot_node.node_name if hasattr(shot_node, 'node_name') else str(shot_node)
+                try:
+                    # Load metadata from JSON if available
+                    if metadata_loader:
+                        shot_id = shot_node.get_shot_id()
+                        shot_root = self._build_shot_root_path(shot_node)
+                        metadata = metadata_loader.load_all_metadata(shot_id, shot_root)
 
-                    logger.info("DEBUG: Loading metadata for shot %s", shot_id)
-                    logger.info("DEBUG: Shot root path: %s", shot_root)
+                        # Update CTX_Shot node with metadata
+                        if 'frame_range' in metadata:
+                            start, end = metadata['frame_range']
+                            try:
+                                shot_node.set_frame_range(start, end)
+                            except Exception as fr_err:
+                                logger.warning("Could not update frame range for %s: %s", node_label, fr_err)
 
-                    metadata = metadata_loader.load_all_metadata(shot_id, shot_root)
+                        if 'fps' in metadata:
+                            try:
+                                shot_node.set_fps(metadata['fps'])
+                            except Exception as fps_err:
+                                logger.warning("Could not update FPS for %s: %s", node_label, fps_err)
 
-                    logger.info("DEBUG: Loaded metadata: %s", metadata)
+                    shot_data = {
+                        'project': self._config.get_project_code() if self._config else 'SWA',
+                        'ep': shot_node.get_ep_code(),
+                        'seq': shot_node.get_seq_code(),
+                        'shot': shot_node.get_shot_code(),
+                        'ctx_node': shot_node,
+                        'version': 'v001',
+                        'is_active': shot_node.is_active()
+                    }
 
-                    # Update CTX_Shot node with metadata
-                    if 'frame_range' in metadata:
-                        start, end = metadata['frame_range']
-                        shot_node.set_frame_range(start, end)
-                        logger.info("Updated shot %s frame range: %d-%d", shot_id, start, end)
-                    else:
-                        logger.warning("No frame_range in metadata for shot %s", shot_id)
+                    self._add_shot_to_table(shot_data)
 
-                    if 'fps' in metadata:
-                        shot_node.set_fps(metadata['fps'])
-                        logger.info("Updated shot %s FPS: %s", shot_id, metadata['fps'])
-                else:
-                    logger.info("DEBUG: metadata_loader is None, skipping metadata load")
+                except Exception as shot_err:
+                    logger.error("Failed to load shot %s: %s", node_label, shot_err)
+                    import traceback
+                    traceback.print_exc()
+                    failed_shots.append(node_label)
 
-                shot_data = {
-                    'project': self._config.get_project_code() if self._config else 'SWA',
-                    'ep': shot_node.get_ep_code(),
-                    'seq': shot_node.get_seq_code(),
-                    'shot': shot_node.get_shot_code(),
-                    'ctx_node': shot_node,  # Store reference to CTX node
-                    'version': 'v001',  # TODO: Get from shot node
-                    'is_active': shot_node.is_active()
-                }
-
-                self._add_shot_to_table(shot_data)
+            if failed_shots:
+                logger.warning("Skipped %d shot(s) due to errors: %s", len(failed_shots), failed_shots)
 
             # Find and set active shot
             for idx, shot_data in enumerate(self._shots):
@@ -1095,7 +1101,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.shot_table.setItem(row, 0, QtWidgets.QTableWidgetItem(str(row + 1)))
 
         # Column 1: Lock indicator
-        self._update_lock_cell(row, shot_data)
+        try:
+            self._update_lock_cell(row, shot_data)
+        except Exception as lock_err:
+            logger.warning("Lock cell update failed for row %d: %s", row, lock_err)
 
         # Column 2: Shot path (PROJECT_EPISODE_SEQUENCE_SHOT)
         shot_path = "{}_{}_{}_{}".format(

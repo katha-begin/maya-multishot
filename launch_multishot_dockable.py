@@ -95,31 +95,36 @@ def launch_dockable():
 
     from ui.main_window import MainWindow
 
-    # Close existing window if it exists
+    dock_control_name = "MultishotManagerDockControl"
+
+    # Remove any existing dockControl FIRST so there is no embedded window
+    # with the same objectName when we create the new one. If we delete it
+    # after creating the new window, MQtUtil.findWindow() can return the
+    # stale embedded widget's pointer instead of the new window's pointer,
+    # which causes dockControl to silently fail on the second launch.
+    if cmds.dockControl(dock_control_name, exists=True):
+        cmds.deleteUI(dock_control_name)
+
+    # Close existing instance if it survived module clearing
     if MainWindow._instance is not None:
         try:
             MainWindow._instance.close()
             MainWindow._instance.deleteLater()
         except:
             pass
+        MainWindow._instance = None
+
+    # Flush any pending deleteLater() events before creating new window
+    QtWidgets.QApplication.processEvents()
 
     # Create main window with Maya main window as parent
     main_window = MainWindow(parent=get_maya_main_window())
 
-    # Process Qt events so the window is registered with Maya's window manager
-    # before we call MQtUtil.findWindow(). Without this the pointer is often
-    # None on slower machines, causing the fallback to a plain floating window.
+    # Allow Qt to register the new window with Maya's window manager
     QtWidgets.QApplication.processEvents()
 
     # Get the window's pointer for Maya
     window_ptr = omui.MQtUtil.findWindow(main_window.objectName())
-
-    # Always remove a stale dockControl from a previous session, regardless of
-    # whether findWindow() succeeded (fixes the case where the race condition
-    # fired last time and left an orphaned dockControl).
-    dock_control_name = "MultishotManagerDockControl"
-    if cmds.dockControl(dock_control_name, exists=True):
-        cmds.deleteUI(dock_control_name)
 
     if window_ptr:
         try:

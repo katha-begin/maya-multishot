@@ -494,12 +494,15 @@ class PipelineAPI(object):
 
         orig = None
         try:
-            if reserved_gpus is not None and self._config:
-                # Temporarily override reserved GPUs in config
-                orig = self._config.data.get('batchRender', {}).get('reservedGpus', 1)
-                self._config.data.setdefault('batchRender', {})['reservedGpus'] = reserved_gpus
+            config = self._get_config()
+            platform_config = self._get_platform_config()
 
-            queue = RenderQueue(self._config, self._platform_config)
+            if reserved_gpus is not None:
+                # Temporarily override reserved GPUs in config
+                orig = config.data.get('batchRender', {}).get('reservedGpus', 1)
+                config.data.setdefault('batchRender', {})['reservedGpus'] = reserved_gpus
+
+            queue = RenderQueue(config, platform_config)
 
             for item in shots:
                 if isinstance(item, dict):
@@ -536,9 +539,9 @@ class PipelineAPI(object):
 
         finally:
             # Restore original reserved_gpus if we overrode it
-            if reserved_gpus is not None and self._config and orig is not None:
+            if reserved_gpus is not None and orig is not None:
                 try:
-                    self._config.data['batchRender']['reservedGpus'] = orig
+                    config.data['batchRender']['reservedGpus'] = orig
                 except Exception:
                     pass
 
