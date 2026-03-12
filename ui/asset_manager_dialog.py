@@ -802,6 +802,11 @@ class AssetManagerDialog(QtWidgets.QDialog):
             # Redshift Proxy option
             proxy_action = create_menu.addAction("Redshift Proxy (.rs)")
             proxy_action.triggered.connect(lambda: self._on_create_asset_proxy(row))
+
+            # SETS import option
+            if asset_data.get('type') == 'SETS':
+                sets_action = create_menu.addAction("Import Alembic (SET)")
+                sets_action.triggered.connect(lambda: self._on_create_asset_sets(row))
         else:
             # Asset already created - show update/remove options
             menu.addSeparator()
@@ -1752,6 +1757,107 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 "Error",
                 "Failed to create Redshift Proxy:\n{}".format(str(e))
             )
+
+    def _on_create_asset_sets(self, row):
+        """Handle Import Alembic (SET) action for SETS assets.
+
+        Args:
+            row: Table row index
+        """
+        asset_data = self._assets[row]
+        logger.info("Importing SETS alembic for: {} {} {}".format(
+            asset_data['type'], asset_data['name'], asset_data['var']))
+
+        try:
+            from maya import cmds
+        except ImportError:
+            from tests.mock_maya import cmds
+
+        # Build the publish dir for this shot's anim department
+        try:
+            proj_root = self._config.get_root('projRoot')
+            project_code = self._config.get_project_code()
+            scene_base = self._config.get_static_path('sceneBase')
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Config Error",
+                                           "Cannot read config: {}".format(e))
+            return
+
+        publish_dir = os.path.join(
+            proj_root, project_code, scene_base,
+            self._shot_data['ep'],
+            self._shot_data['seq'],
+            self._shot_data['shot'],
+            'anim', 'publish'
+        )
+
+        # Find latest version dir
+        sets_abc_path = None
+        if os.path.exists(publish_dir):
+            import re as _re
+            ver_dirs = sorted(
+                [d for d in os.listdir(publish_dir)
+                 if _re.match(r'v\d{3}', d) and
+                 os.path.isdir(os.path.join(publish_dir, d))],
+                reverse=True
+            )
+            for ver_dir in ver_dirs:
+                ver_path = os.path.join(publish_dir, ver_dir)
+                for fname in os.listdir(ver_path):
+                    if _re.match(r'.*__SETS_.*_.*\.abc$', fname):
+                        # Prefer file matching this asset's name/id
+                        expected = '{}_{}'.format(asset_data['name'], asset_data['var'])
+                        if expected in fname:
+                            sets_abc_path = os.path.join(ver_path, fname)
+                            break
+                if sets_abc_path:
+                    break
+            # Fallback: first SETS abc found if no name match
+            if not sets_abc_path:
+                for ver_dir in ver_dirs:
+                    ver_path = os.path.join(publish_dir, ver_dir)
+                    for fname in os.listdir(ver_path):
+                        if _re.match(r'.*__SETS_.*_.*\.abc$', fname):
+                            sets_abc_path = os.path.join(ver_path, fname)
+                            break
+                    if sets_abc_path:
+                        break
+
+        if not sets_abc_path or not os.path.exists(sets_abc_path):
+            QtWidgets.QMessageBox.warning(
+                self, "File Not Found",
+                "No SETS abc found in:\n{}\n\nPublish directory: {}".format(
+                    publish_dir, publish_dir))
+            return
+
+        from tools.asset_manager import import_sets_asset
+        from config.platform_config import PlatformConfig
+
+        platform_config = PlatformConfig(self._config)
+        shot_info = {
+            'ep': self._shot_data['ep'],
+            'seq': self._shot_data['seq'],
+            'shot': self._shot_data['shot'],
+        }
+
+        try:
+            result_ns = import_sets_asset(shot_info, sets_abc_path, self._config, platform_config)
+            if result_ns:
+                QtWidgets.QMessageBox.information(
+                    self, "SETS Imported",
+                    "Imported SETS alembic as namespace: {}\nFile: {}".format(
+                        result_ns, sets_abc_path))
+                self._load_assets()
+            else:
+                QtWidgets.QMessageBox.warning(
+                    self, "Import Failed",
+                    "import_sets_asset returned None.\nSee Script Editor for details.")
+        except Exception as e:
+            import traceback
+            logger.error("SETS import failed: {}\n{}".format(e, traceback.format_exc()))
+            QtWidgets.QMessageBox.critical(
+                self, "Import Failed",
+                "Failed to import SETS alembic:\n{}".format(str(e)))
 
     def _create_reference_with_shader(self, row, geometry_file, namespace, shader_files, assign_shader, reference_groom_file):
         """Create reference with optional shader and groom assignment.

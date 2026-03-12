@@ -17,8 +17,12 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 
 from tools.base_manager import cmds, MAYA_AVAILABLE, BaseManager
+
+import logging
+logger = logging.getLogger(__name__)
 
 
 class AssetManager(BaseManager):
@@ -131,6 +135,13 @@ class AssetManager(BaseManager):
             ref_node = reference_file(file_path, namespace)
             if ref_node:
                 maya_node = ref_node
+                if asset_type == 'CHAR':
+                    # Find top-level transform in namespace to connect decomposeMatrix
+                    ns_transforms = cmds.ls('{}:*'.format(namespace), type='transform') or []
+                    top_level = [n for n in ns_transforms
+                                 if not (cmds.listRelatives(n, parent=True, fullPath=False) or [None])[0]]
+                    if top_level:
+                        _connect_decomp_matrix(top_level[0], ref_node)
 
         elif ext == '.rs':
             # Create Redshift Proxy with namespace (Phase 3)
@@ -530,3 +541,243 @@ class AssetManager(BaseManager):
             'warnings': warnings
         }
 
+
+def _connect_decomp_matrix(src_xform, dst_node):
+    """Connect src_xform.worldMatrix[0] to dst_node via decomposeMatrix (TRS+Shear).
+
+    If a decomposeMatrix already exists for this node, it is deleted and recreated.
+
+    Args:
+        src_xform (str): Source transform node name
+        dst_node (str): Destination node (reference node or transform) to drive TRS
+    """
+    if not MAYA_AVAILABLE:
+        return
+
+    ns_flat = src_xform.replace(':', '_')
+    decomp_name = 'EE_{}_decomp'.format(ns_flat)
+
+    if cmds.objExists(decomp_name):
+        cmds.delete(decomp_name)
+
+    decomp = cmds.createNode('decomposeMatrix', name=decomp_name)
+    cmds.connectAttr('{}.worldMatrix[0]'.format(src_xform), '{}.inputMatrix'.format(decomp), force=True)
+
+    for out_attr, in_attr in [
+        ('outputTranslate', 'translate'),
+        ('outputRotate', 'rotate'),
+        ('outputScale', 'scale'),
+        ('outputShear', 'shear'),
+    ]:
+        src_plug = '{}.{}'.format(decomp, out_attr)
+        dst_plug = '{}.{}'.format(dst_node, in_attr)
+        if cmds.objExists(dst_plug):
+            try:
+                cmds.connectAttr(src_plug, dst_plug, force=True)
+            except Exception as e:
+                logger.warning('decomposeMatrix: could not connect {} -> {}: {}'.format(
+                    src_plug, dst_plug, e))
+
+    logger.info('decomposeMatrix connected: {} -> {}'.format(src_xform, dst_node))
+
+
+def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
+    """Import or merge a SETS alembic into the scene and build the component hierarchy.
+
+    Args:
+        shot_info (dict): Keys: ep, seq, shot
+        sets_abc_path (str): Full path to the SETS abc file
+        config: ProjectConfig instance
+        platform_config: PlatformConfig instance
+
+    Returns:
+        str: The set_namespace that was imported, or None on failure
+    """
+    if not MAYA_AVAILABLE:
+        logger.warning('Maya not available, cannot import SETS asset')
+        return None
+
+    from core.shader_assignment import assign_shaders_to_geometry
+    from core.reference_manager import reference_file
+    from core.nodes.wrappers import CTXAssetNode, CTXShotNode
+
+    abc_basename = os.path.basename(sets_abc_path)
+    # Parse: Ep09_sq0050_SH0270__SETS_KitBedRoomIntA_001.abc
+    parts = abc_basename.rsplit('.', 1)[0].split('__', 1)
+    if len(parts) != 2:
+        logger.error('Cannot parse SETS abc filename: {}'.format(abc_basename))
+        return None
+
+    asset_part = parts[1]  # e.g. SETS_KitBedRoomIntA_001
+    asset_tokens = asset_part.split('_', 2)  # ['SETS', 'KitBedRoomIntA', '001']
+    if len(asset_tokens) < 3:
+        logger.error('Cannot parse asset part from SETS abc: {}'.format(asset_part))
+        return None
+
+    set_name = asset_tokens[1]   # KitBedRoomIntA
+    set_id = asset_tokens[2]     # 001
+    set_namespace = asset_part   # SETS_KitBedRoomIntA_001
+
+    # Create namespace if missing
+    if not cmds.namespace(exists=set_namespace):
+        cmds.namespace(add=set_namespace)
+
+    # Import or merge
+    prev_ns = cmds.namespaceInfo(currentNamespace=True)
+    cmds.namespace(setNamespace=set_namespace)
+    try:
+        main_grp = '{}:Main_Grp'.format(set_namespace)
+        if cmds.objExists(main_grp):
+            cmds.select(main_grp)
+            cmds.AbcImport(sets_abc_path, mode='merge',
+                           connect=main_grp, fitTimeRange=False)
+        else:
+            cmds.AbcImport(sets_abc_path, mode='import', fitTimeRange=False)
+    except Exception as e:
+        logger.error('AbcImport failed for {}: {}'.format(sets_abc_path, e))
+        cmds.namespace(setNamespace=prev_ns)
+        return None
+    cmds.namespace(setNamespace=prev_ns)
+
+    # Gather locators
+    locators = cmds.ls('{}:*_Loc'.format(set_namespace), type='transform') or []
+    logger.info('Found {} locators in {}'.format(len(locators), set_namespace))
+
+    # Track first geo reference per component so duplicates can use cmds.instance
+    component_master = {}  # component_key -> top_node
+
+    for locator in locators:
+        loc_short = locator.split(':')[-1]  # e.g. KBDIntCelling_001_Loc
+        # Extract component_name and component_id: strip _Loc suffix, split on last _
+        loc_base = loc_short[:-4] if loc_short.endswith('_Loc') else loc_short
+        loc_tokens = loc_base.rsplit('_', 1)
+        if len(loc_tokens) != 2:
+            logger.warning('Cannot parse locator name: {}'.format(loc_short))
+            continue
+
+        component_name = loc_tokens[0]   # KBDIntCelling
+        component_id = loc_tokens[1]     # 001
+        component_key = '{}_{}'.format(component_name, component_id)
+        nested_ns = '{}:{}'.format(set_namespace, component_key)
+
+        # Read hero path from locator attribute
+        hero_path_attr = '{}:snow__pub_location'.format(set_namespace) + ':' + loc_short
+        # Attribute lives on the locator itself
+        hero_attr = '{}.snow__pub_location'.format(locator)
+        if not cmds.objExists(hero_attr):
+            logger.warning('No snow__pub_location on {}'.format(locator))
+            continue
+
+        hero_path = cmds.getAttr(hero_attr) or ''
+        if not hero_path:
+            logger.warning('Empty snow__pub_location on {}'.format(locator))
+            continue
+
+        geo_file = os.path.join(hero_path, '{}_geo.abc'.format(component_name))
+        shader_file = os.path.join(hero_path, '{}_rsshade.ma'.format(component_name))
+        shader_ns = '{}_shade'.format(nested_ns)
+
+        # State check
+        geo_exists = (cmds.namespace(exists=nested_ns) and
+                      bool(cmds.ls('{}:*'.format(nested_ns), type='transform')))
+        shader_exists = (cmds.namespace(exists=shader_ns) and
+                         bool(cmds.ls('{}:*'.format(shader_ns))))
+
+        if geo_exists and shader_exists:
+            continue
+
+        # Reference geo when needed
+        if not geo_exists:
+            if not os.path.exists(geo_file):
+                logger.warning('Geo file not found: {}'.format(geo_file))
+                continue
+
+            if component_key not in component_master:
+                # First time — reference the geo
+                if not cmds.namespace(exists=nested_ns):
+                    cmds.namespace(add=nested_ns)
+                try:
+                    cmds.file(geo_file, reference=True, namespace=nested_ns,
+                              loadReferenceDepth='all', mergeNamespacesOnClash=False)
+                except Exception as e:
+                    logger.error('Failed to reference geo {}: {}'.format(geo_file, e))
+                    continue
+
+                # Find top-level transforms in nested_ns
+                all_in_ns = cmds.ls('{}:*'.format(nested_ns), type='transform') or []
+                top_nodes = [n for n in all_in_ns
+                             if not (cmds.listRelatives(n, parent=True, fullPath=False) or [None])[0]]
+
+                if top_nodes:
+                    top_node = top_nodes[0]
+                    component_master[component_key] = top_node
+                    # Parent to locator and reset TRS
+                    cmds.parent(top_node, locator)
+                    cmds.xform(top_node, translation=[0, 0, 0], rotation=[0, 0, 0])
+                    cmds.xform(top_node, scale=[1, 1, 1])
+            else:
+                # Subsequent locator — instance the master
+                master_root = component_master[component_key]
+                try:
+                    instance_nodes = cmds.instance(master_root)
+                    if instance_nodes:
+                        inst_node = instance_nodes[0]
+                        cmds.parent(inst_node, locator)
+                        cmds.xform(inst_node, translation=[0, 0, 0], rotation=[0, 0, 0])
+                        cmds.xform(inst_node, scale=[1, 1, 1])
+                except Exception as e:
+                    logger.error('Failed to instance {}: {}'.format(master_root, e))
+                    continue
+
+        # Reference shader when needed
+        if not shader_exists and os.path.exists(shader_file):
+            if not cmds.namespace(exists=shader_ns):
+                cmds.namespace(add=shader_ns)
+            try:
+                cmds.file(shader_file, reference=True, namespace=shader_ns,
+                          loadReferenceDepth='all', mergeNamespacesOnClash=False)
+            except Exception as e:
+                logger.error('Failed to reference shader {}: {}'.format(shader_file, e))
+
+        # Assign shaders
+        if cmds.namespace(exists=shader_ns):
+            try:
+                assign_shaders_to_geometry(shader_ns, nested_ns)
+            except Exception as e:
+                logger.error('Shader assignment failed for {}: {}'.format(nested_ns, e))
+
+    # Create CTX_Asset node (one per SETS abc)
+    shot_code = shot_info.get('shot', '')
+    ep_code = shot_info.get('ep', '')
+    seq_code = shot_info.get('seq', '')
+
+    # Find existing CTX_Shot node
+    shot_node_obj = None
+    all_network = cmds.ls(type='network') or []
+    ctx_shot_nodes = [n for n in all_network if n.startswith('CTX_Shot_')]
+    for sn in ctx_shot_nodes:
+        try:
+            tmp = CTXShotNode(sn)
+            if tmp.get_shot_code() == shot_code:
+                shot_node_obj = tmp
+                break
+        except Exception:
+            continue
+
+    if shot_node_obj is None:
+        shot_node_obj = CTXShotNode.create(ep_code=ep_code, seq_code=seq_code, shot_code=shot_code)
+
+    ctx_asset_obj = CTXAssetNode.create(
+        asset_type='SETS',
+        asset_name=set_name,
+        variant=set_id,
+        namespace=set_namespace,
+        shot_code=shot_code
+    )
+    shot_node_obj.add_asset(ctx_asset_obj)
+    ctx_asset_obj.set_file_path(sets_abc_path)
+    ctx_asset_obj.set_version('v001')
+
+    logger.info('SETS import complete: namespace={}, ctx_node={}'.format(
+        set_namespace, ctx_asset_obj.node_name))
+    return set_namespace
