@@ -135,13 +135,6 @@ class AssetManager(BaseManager):
             ref_node = reference_file(file_path, namespace)
             if ref_node:
                 maya_node = ref_node
-                if asset_type == 'CHAR':
-                    # Find top-level transform in namespace to connect decomposeMatrix
-                    ns_transforms = cmds.ls('{}:*'.format(namespace), type='transform') or []
-                    top_level = [n for n in ns_transforms
-                                 if not (cmds.listRelatives(n, parent=True, fullPath=False) or [None])[0]]
-                    if top_level:
-                        _connect_decomp_matrix(top_level[0])
 
         elif ext == '.rs':
             # Create Redshift Proxy with namespace (Phase 3)
@@ -542,23 +535,21 @@ class AssetManager(BaseManager):
         }
 
 
-def _connect_decomp_matrix(src_xform, dst_node=None):
+def _connect_decomp_matrix(src_xform, dst_node):
     """Connect src_xform.worldMatrix[0] to dst_node via decomposeMatrix (TRS+Shear).
 
-    If a decomposeMatrix already exists for this node, it is deleted and recreated.
-    When dst_node is None, only the input matrix is connected (outputs available
-    for other tools to wire up later).
+    If a decomposeMatrix already exists for the destination, it is deleted first.
+    Naming convention: EE_{dst_flat}_decomp (one decomp per destination node).
 
     Args:
-        src_xform (str): Source transform node name
-        dst_node (str, optional): Destination transform to drive TRS.  If None,
-            only the decomp input is connected.
+        src_xform (str): Source transform node (geo group)
+        dst_node (str): Destination node (place3dTexture) to drive TRS
     """
     if not MAYA_AVAILABLE:
         return
 
-    ns_flat = src_xform.replace(':', '_')
-    decomp_name = 'EE_{}_decomp'.format(ns_flat)
+    dst_flat = dst_node.replace(':', '_')
+    decomp_name = 'EE_{}_decomp'.format(dst_flat)
 
     if cmds.objExists(decomp_name):
         cmds.delete(decomp_name)
@@ -566,24 +557,87 @@ def _connect_decomp_matrix(src_xform, dst_node=None):
     decomp = cmds.createNode('decomposeMatrix', name=decomp_name)
     cmds.connectAttr('{}.worldMatrix[0]'.format(src_xform), '{}.inputMatrix'.format(decomp), force=True)
 
-    if dst_node:
-        for out_attr, in_attr in [
-            ('outputTranslate', 'translate'),
-            ('outputRotate', 'rotate'),
-            ('outputScale', 'scale'),
-            ('outputShear', 'shear'),
-        ]:
-            src_plug = '{}.{}'.format(decomp, out_attr)
-            dst_plug = '{}.{}'.format(dst_node, in_attr)
-            if cmds.objExists(dst_plug):
-                try:
-                    cmds.connectAttr(src_plug, dst_plug, force=True)
-                except Exception as e:
-                    logger.warning('decomposeMatrix: could not connect {} -> {}: {}'.format(
-                        src_plug, dst_plug, e))
+    for out_attr, in_attr in [
+        ('outputTranslate', 'translate'),
+        ('outputRotate', 'rotate'),
+        ('outputScale', 'scale'),
+        ('outputShear', 'shear'),
+    ]:
+        src_plug = '{}.{}'.format(decomp, out_attr)
+        dst_plug = '{}.{}'.format(dst_node, in_attr)
+        if cmds.objExists(dst_plug):
+            try:
+                cmds.connectAttr(src_plug, dst_plug, force=True)
+            except Exception as e:
+                logger.warning('decomposeMatrix: could not connect {} -> {}: {}'.format(
+                    src_plug, dst_plug, e))
 
-    logger.info('decomposeMatrix created: {} (src: {}, dst: {})'.format(
-        decomp_name, src_xform, dst_node or 'none'))
+    logger.info('decomposeMatrix linked: {} -> {} via {}'.format(src_xform, dst_node, decomp_name))
+
+
+def _connect_place3d_for_char(geo_namespace, shader_namespace):
+    """Find place3dTexture nodes in shader_namespace and connect each to its
+    matching geo transform in geo_namespace via decomposeMatrix.
+
+    Pairing convention (mirrors igl_shot_build):
+      shader: {shader_ns}:Body_Place3dTexture  ->  geo: {geo_ns}:Body_Grp
+      suffix strip: '_Place3dTexture' on shader side, '_Grp' on geo side
+
+    Args:
+        geo_namespace (str): Geometry namespace (e.g. 'CHAR_CatStompie_001')
+        shader_namespace (str): Shader namespace (e.g. 'CHAR_CatStompie_001_Shade')
+
+    Returns:
+        int: Number of pairs connected
+    """
+    if not MAYA_AVAILABLE:
+        return 0
+
+    place_suffix = '_Place3dTexture'
+    geo_suffix = '_Grp'
+
+    places = cmds.ls('{}:*'.format(shader_namespace), type='place3dTexture') or []
+    if not places:
+        logger.info('No place3dTexture nodes in {} -- skipping decomposeMatrix'.format(
+            shader_namespace))
+        return 0
+
+    # Build lookup: short name -> full path for geo transforms
+    geo_transforms = cmds.ls('{}:*'.format(geo_namespace), type='transform') or []
+    geo_map = {}
+    for g in geo_transforms:
+        short = g.split(':')[-1]
+        geo_map[short] = g
+
+    connected = 0
+    for place_node in places:
+        short_place = place_node.split(':')[-1]
+        # Strip suffix to get base name, then look for matching geo
+        if short_place.endswith(place_suffix):
+            base = short_place[:-len(place_suffix)]
+        else:
+            base = short_place
+
+        wanted = base + geo_suffix
+        xform = geo_map.get(wanted)
+
+        # Fuzzy fallback: find any geo transform starting with base
+        if not xform:
+            for short_geo, full_geo in geo_map.items():
+                if short_geo.startswith(base):
+                    xform = full_geo
+                    break
+
+        if xform:
+            _connect_decomp_matrix(xform, place_node)
+            connected += 1
+        else:
+            logger.warning('decomposeMatrix: no geo match for {} (tried {})'.format(
+                place_node, wanted))
+
+    logger.info('decomposeMatrix: connected {}/{} place3dTexture pairs ({} -> {})'.format(
+        connected, len(places), geo_namespace, shader_namespace))
+    return connected
 
 
 def import_sets_asset(shot_info, sets_abc_path, config, platform_config):

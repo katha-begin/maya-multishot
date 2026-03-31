@@ -1898,15 +1898,6 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 ref_node = cmds.referenceQuery(geometry_file, referenceNode=True)
                 logger.info("DEBUG: Queried reference node: {}".format(ref_node))
 
-            # 1b. Connect decomposeMatrix for CHAR assets
-            if asset_data['type'] == 'CHAR':
-                from tools.asset_manager import _connect_decomp_matrix
-                ns_transforms = cmds.ls('{}:*'.format(namespace), type='transform') or []
-                top_level = [n for n in ns_transforms
-                             if not (cmds.listRelatives(n, parent=True, fullPath=False) or [None])[0]]
-                if top_level:
-                    _connect_decomp_matrix(top_level[0])
-
             # 2. Assign shader if requested
             if assign_shader and shader_files.get('shader'):
                 shader_file = shader_files['shader']
@@ -1922,6 +1913,11 @@ class AssetManagerDialog(QtWidgets.QDialog):
                     # Assign shaders to geometry
                     logger.info("Assigning shaders from {} to {}".format(shader_namespace, namespace))
                     assign_shaders_to_geometry(shader_namespace, namespace)
+
+                    # Connect decomposeMatrix: geo transforms -> place3dTexture nodes
+                    if asset_data['type'] == 'CHAR':
+                        from tools.asset_manager import _connect_place3d_for_char
+                        _connect_place3d_for_char(namespace, shader_namespace)
 
             # 3. Reference groom if requested
             if reference_groom_file and shader_files.get('groom'):
