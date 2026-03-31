@@ -141,7 +141,7 @@ class AssetManager(BaseManager):
                     top_level = [n for n in ns_transforms
                                  if not (cmds.listRelatives(n, parent=True, fullPath=False) or [None])[0]]
                     if top_level:
-                        _connect_decomp_matrix(top_level[0], ref_node)
+                        _connect_decomp_matrix(top_level[0])
 
         elif ext == '.rs':
             # Create Redshift Proxy with namespace (Phase 3)
@@ -542,14 +542,17 @@ class AssetManager(BaseManager):
         }
 
 
-def _connect_decomp_matrix(src_xform, dst_node):
+def _connect_decomp_matrix(src_xform, dst_node=None):
     """Connect src_xform.worldMatrix[0] to dst_node via decomposeMatrix (TRS+Shear).
 
     If a decomposeMatrix already exists for this node, it is deleted and recreated.
+    When dst_node is None, only the input matrix is connected (outputs available
+    for other tools to wire up later).
 
     Args:
         src_xform (str): Source transform node name
-        dst_node (str): Destination node (reference node or transform) to drive TRS
+        dst_node (str, optional): Destination transform to drive TRS.  If None,
+            only the decomp input is connected.
     """
     if not MAYA_AVAILABLE:
         return
@@ -563,22 +566,24 @@ def _connect_decomp_matrix(src_xform, dst_node):
     decomp = cmds.createNode('decomposeMatrix', name=decomp_name)
     cmds.connectAttr('{}.worldMatrix[0]'.format(src_xform), '{}.inputMatrix'.format(decomp), force=True)
 
-    for out_attr, in_attr in [
-        ('outputTranslate', 'translate'),
-        ('outputRotate', 'rotate'),
-        ('outputScale', 'scale'),
-        ('outputShear', 'shear'),
-    ]:
-        src_plug = '{}.{}'.format(decomp, out_attr)
-        dst_plug = '{}.{}'.format(dst_node, in_attr)
-        if cmds.objExists(dst_plug):
-            try:
-                cmds.connectAttr(src_plug, dst_plug, force=True)
-            except Exception as e:
-                logger.warning('decomposeMatrix: could not connect {} -> {}: {}'.format(
-                    src_plug, dst_plug, e))
+    if dst_node:
+        for out_attr, in_attr in [
+            ('outputTranslate', 'translate'),
+            ('outputRotate', 'rotate'),
+            ('outputScale', 'scale'),
+            ('outputShear', 'shear'),
+        ]:
+            src_plug = '{}.{}'.format(decomp, out_attr)
+            dst_plug = '{}.{}'.format(dst_node, in_attr)
+            if cmds.objExists(dst_plug):
+                try:
+                    cmds.connectAttr(src_plug, dst_plug, force=True)
+                except Exception as e:
+                    logger.warning('decomposeMatrix: could not connect {} -> {}: {}'.format(
+                        src_plug, dst_plug, e))
 
-    logger.info('decomposeMatrix connected: {} -> {}'.format(src_xform, dst_node))
+    logger.info('decomposeMatrix created: {} (src: {}, dst: {})'.format(
+        decomp_name, src_xform, dst_node or 'none'))
 
 
 def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
