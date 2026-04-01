@@ -535,57 +535,193 @@ class AssetManager(BaseManager):
         }
 
 
-def _connect_decomp_matrix(src_xform, dst_node):
+def _unlock_trs(node):
+    """Unlock and make keyable all TRS channel attributes on *node*.
+
+    Place3dTexture nodes often ship with locked or non-keyable channels.
+    This must be called before connecting decomposeMatrix outputs or
+    snapping TRS values.
+
+    Args:
+        node (str): Maya node name
+    """
+    for ch in ('translateX', 'translateY', 'translateZ',
+               'rotateX', 'rotateY', 'rotateZ',
+               'scaleX', 'scaleY', 'scaleZ'):
+        plug = '{}.{}'.format(node, ch)
+        if cmds.objExists(plug):
+            try:
+                if cmds.getAttr(plug, lock=True):
+                    cmds.setAttr(plug, lock=False)
+                cmds.setAttr(plug, keyable=True)
+            except Exception:
+                pass
+
+
+def _snap_trs_world(src_xform, dst_node):
+    """Copy world-space T/R and local S from *src_xform* to *dst_node*.
+
+    This is the initial "snap" that positions the Place3dTexture at the same
+    location as the geo transform BEFORE the live decomposeMatrix connection
+    is made, so there is no visible jump.
+
+    Args:
+        src_xform (str): Source transform (geo group)
+        dst_node (str): Destination node (place3dTexture)
+    """
+    _unlock_trs(dst_node)
+    try:
+        t = cmds.xform(src_xform, q=True, ws=True, t=True)
+        r = cmds.xform(src_xform, q=True, ws=True, ro=True)
+        s = cmds.getAttr('{}.scale'.format(src_xform))[0]
+        cmds.xform(dst_node, ws=True, t=t)
+        cmds.xform(dst_node, ws=True, ro=r)
+        cmds.setAttr('{}.scale'.format(dst_node), s[0], s[1], s[2], type='double3')
+    except Exception as e:
+        logger.warning('snap_trs_world failed {} -> {}: {}'.format(
+            src_xform, dst_node, e))
+
+
+def _connect_decomp_matrix(src_xform, dst_node, force=False):
     """Connect src_xform.worldMatrix[0] to dst_node via decomposeMatrix (TRS+Shear).
 
-    If a decomposeMatrix already exists for the destination, it is deleted first.
-    Naming convention: EE_{dst_flat}_decomp (one decomp per destination node).
+    Mirrors the logic in igl_shot_build._matrix_transfer_transform:
+    - Unlocks TRS on dst before connecting
+    - Checks for an existing decomposeMatrix on dst; skips if already correct
+    - Naming convention: EE_{dst_flat}_decomp (one decomp per destination)
 
     Args:
         src_xform (str): Source transform node (geo group)
         dst_node (str): Destination node (place3dTexture) to drive TRS
+        force (bool): If True, replace existing decomposeMatrix connection
+
+    Returns:
+        str: Status — 'matrix-linked', 'already-connected', 'skipped', or 'error: ...'
     """
     if not MAYA_AVAILABLE:
-        return
+        return 'skipped'
 
-    dst_flat = dst_node.replace(':', '_')
-    decomp_name = 'EE_{}_decomp'.format(dst_flat)
+    try:
+        _unlock_trs(dst_node)
 
-    if cmds.objExists(decomp_name):
-        cmds.delete(decomp_name)
+        # Check if dst already has a decomposeMatrix driving it
+        existing_decomp = None
+        for attr in ('translate', 'rotate', 'scale'):
+            conns = cmds.listConnections(
+                '{}.{}'.format(dst_node, attr),
+                source=True, destination=False, type='decomposeMatrix') or []
+            if conns:
+                existing_decomp = conns[0]
+                break
 
-    decomp = cmds.createNode('decomposeMatrix', name=decomp_name)
-    cmds.connectAttr('{}.worldMatrix[0]'.format(src_xform), '{}.inputMatrix'.format(decomp), force=True)
+        if existing_decomp and not force:
+            # Check if it is already wired to the correct source
+            input_conns = cmds.listConnections(
+                '{}.inputMatrix'.format(existing_decomp),
+                source=True, destination=False, plugs=True) or []
+            expected = '{}.worldMatrix[0]'.format(src_xform)
+            if expected in input_conns:
+                return 'already-connected'
+            # Wrong source but force not set — leave it alone
+            return 'skipped'
 
-    for out_attr, in_attr in [
-        ('outputTranslate', 'translate'),
-        ('outputRotate', 'rotate'),
-        ('outputScale', 'scale'),
-        ('outputShear', 'shear'),
-    ]:
-        src_plug = '{}.{}'.format(decomp, out_attr)
-        dst_plug = '{}.{}'.format(dst_node, in_attr)
-        if cmds.objExists(dst_plug):
-            try:
+        if existing_decomp and force:
+            cmds.delete(existing_decomp)
+
+        dst_flat = dst_node.replace(':', '_')
+        decomp_name = 'EE_{}_decomp'.format(dst_flat)
+
+        if cmds.objExists(decomp_name):
+            cmds.delete(decomp_name)
+
+        decomp = cmds.createNode('decomposeMatrix', name=decomp_name)
+        cmds.connectAttr('{}.worldMatrix[0]'.format(src_xform),
+                         '{}.inputMatrix'.format(decomp), force=True)
+
+        for out_attr, in_attr in [
+            ('outputTranslate', 'translate'),
+            ('outputRotate', 'rotate'),
+            ('outputScale', 'scale'),
+            ('outputShear', 'shear'),
+        ]:
+            src_plug = '{}.{}'.format(decomp, out_attr)
+            dst_plug = '{}.{}'.format(dst_node, in_attr)
+            if cmds.objExists(dst_plug):
                 cmds.connectAttr(src_plug, dst_plug, force=True)
-            except Exception as e:
-                logger.warning('decomposeMatrix: could not connect {} -> {}: {}'.format(
-                    src_plug, dst_plug, e))
 
-    logger.info('decomposeMatrix linked: {} -> {} via {}'.format(src_xform, dst_node, decomp_name))
+        logger.info('decomposeMatrix linked: {} -> {} via {}'.format(
+            src_xform, dst_node, decomp_name))
+        return 'matrix-linked'
+
+    except Exception as e:
+        logger.error('decomposeMatrix failed {} -> {}: {}'.format(
+            src_xform, dst_node, e))
+        return 'error: {}'.format(e)
+
+
+def _find_place3d_pairs(shader_namespace, geo_namespace,
+                        place_suffix='_Place3dTexture', geo_suffix='_Grp',
+                        allow_fuzzy=True):
+    """Find place3dTexture -> geo transform pairs by naming convention.
+
+    Mirrors igl_shot_build._find_place3d_pairs_by_place.
+
+    Args:
+        shader_namespace (str): Shader namespace (e.g. 'CHAR_CatStompie_001_Shade')
+        geo_namespace (str): Geometry namespace (e.g. 'CHAR_CatStompie_001')
+        place_suffix (str): Suffix on place3dTexture short names
+        geo_suffix (str): Suffix on geo transform short names
+        allow_fuzzy (bool): Try prefix match when exact match fails
+
+    Returns:
+        list[dict]: Each dict has keys: place, xform, base, status ('ok'|'missing')
+    """
+    pairs = []
+    places = cmds.ls('{}:*'.format(shader_namespace), type='place3dTexture') or []
+    geos = cmds.ls('{}:*'.format(geo_namespace), type='transform') or []
+    geo_map = {}
+    for g in geos:
+        geo_map[g.split(':')[-1]] = g
+
+    for place_node in places:
+        short = place_node.split(':')[-1]
+        base = short[:-len(place_suffix)] if place_suffix and short.endswith(place_suffix) else short
+        wanted = base + (geo_suffix or '')
+        xform = geo_map.get(wanted)
+
+        if not xform and allow_fuzzy:
+            for short_geo, full_geo in geo_map.items():
+                if geo_suffix:
+                    if short_geo.startswith(base) and short_geo.endswith(geo_suffix):
+                        xform = full_geo
+                        break
+                else:
+                    if short_geo.startswith(base):
+                        xform = full_geo
+                        break
+
+        pairs.append({
+            'place': place_node,
+            'xform': xform,
+            'base': base,
+            'status': 'ok' if xform else 'missing',
+        })
+    return pairs
 
 
 def _connect_place3d_for_char(geo_namespace, shader_namespace):
-    """Find place3dTexture nodes in shader_namespace and connect each to its
-    matching geo transform in geo_namespace via decomposeMatrix.
+    """Find place3dTexture nodes in shader namespace(s) and connect each to
+    its matching geo transform via decomposeMatrix.
 
-    Pairing convention (mirrors igl_shot_build):
-      shader: {shader_ns}:Body_Place3dTexture  ->  geo: {geo_ns}:Body_Grp
-      suffix strip: '_Place3dTexture' on shader side, '_Grp' on geo side
+    Full flow per pair (mirrors igl_shot_build._auto_place3d_linker):
+      1. _snap_trs_world  — position Place3dTexture at geo's world TRS
+      2. _connect_decomp_matrix — live connection via decomposeMatrix
+
+    Handles Maya auto-renamed shader namespaces (_Shade1, _Shade2, etc.).
 
     Args:
         geo_namespace (str): Geometry namespace (e.g. 'CHAR_CatStompie_001')
-        shader_namespace (str): Shader namespace (e.g. 'CHAR_CatStompie_001_Shade')
+        shader_namespace (str): Primary shader namespace (e.g. 'CHAR_CatStompie_001_Shade')
 
     Returns:
         int: Number of pairs connected
@@ -593,51 +729,50 @@ def _connect_place3d_for_char(geo_namespace, shader_namespace):
     if not MAYA_AVAILABLE:
         return 0
 
-    place_suffix = '_Place3dTexture'
-    geo_suffix = '_Grp'
+    # Collect shader namespaces — include auto-renamed variants (_Shade1, _Shade2)
+    shader_namespaces = []
+    if cmds.namespace(exists=shader_namespace):
+        shader_namespaces.append(shader_namespace)
 
-    places = cmds.ls('{}:*'.format(shader_namespace), type='place3dTexture') or []
-    if not places:
-        logger.info('No place3dTexture nodes in {} -- skipping decomposeMatrix'.format(
-            shader_namespace))
+    all_ns = cmds.namespaceInfo(listOnlyNamespaces=True, recurse=True) or []
+    for ns in all_ns:
+        if ns.startswith(shader_namespace) and ns != shader_namespace:
+            # Matches _Shade1, _Shade2, etc.
+            suffix = ns[len(shader_namespace):]
+            if suffix.isdigit():
+                shader_namespaces.append(ns)
+
+    if not shader_namespaces:
+        logger.info('No shader namespace found for {} -- skipping decomposeMatrix'.format(
+            geo_namespace))
         return 0
 
-    # Build lookup: short name -> full path for geo transforms
-    geo_transforms = cmds.ls('{}:*'.format(geo_namespace), type='transform') or []
-    geo_map = {}
-    for g in geo_transforms:
-        short = g.split(':')[-1]
-        geo_map[short] = g
+    total_connected = 0
+    for shd_ns in shader_namespaces:
+        pairs = _find_place3d_pairs(shd_ns, geo_namespace)
 
-    connected = 0
-    for place_node in places:
-        short_place = place_node.split(':')[-1]
-        # Strip suffix to get base name, then look for matching geo
-        if short_place.endswith(place_suffix):
-            base = short_place[:-len(place_suffix)]
-        else:
-            base = short_place
+        for pair in pairs:
+            xform = pair['xform']
+            place = pair['place']
 
-        wanted = base + geo_suffix
-        xform = geo_map.get(wanted)
+            if not xform:
+                logger.warning('decomposeMatrix: no geo match for {} (base: {})'.format(
+                    place, pair['base']))
+                continue
 
-        # Fuzzy fallback: find any geo transform starting with base
-        if not xform:
-            for short_geo, full_geo in geo_map.items():
-                if short_geo.startswith(base):
-                    xform = full_geo
-                    break
+            _snap_trs_world(xform, place)
+            result = _connect_decomp_matrix(xform, place)
+            if result == 'matrix-linked':
+                total_connected += 1
 
-        if xform:
-            _connect_decomp_matrix(xform, place_node)
-            connected += 1
-        else:
-            logger.warning('decomposeMatrix: no geo match for {} (tried {})'.format(
-                place_node, wanted))
+            logger.debug('place3d pair: {} <- {} :: {}'.format(place, xform, result))
 
+    total_places = sum(
+        len(cmds.ls('{}:*'.format(ns), type='place3dTexture') or [])
+        for ns in shader_namespaces)
     logger.info('decomposeMatrix: connected {}/{} place3dTexture pairs ({} -> {})'.format(
-        connected, len(places), geo_namespace, shader_namespace))
-    return connected
+        total_connected, total_places, geo_namespace, ', '.join(shader_namespaces)))
+    return total_connected
 
 
 def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
