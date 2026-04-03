@@ -683,6 +683,34 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 namespace=namespace
             )
 
+            # Set attributes from filesystem scan data
+            new_asset.set_department(asset_data.get('dept', 'anim'))
+            new_asset.set_version(asset_data.get('current', ''))
+            new_asset.set_file_path(asset_data.get('file_path', ''))
+
+            # Extension from filename
+            filename = asset_data.get('filename', '')
+            if filename:
+                ext = os.path.splitext(filename)[1].lstrip('.')
+                if ext:
+                    new_asset.set_extension(ext)
+
+            # Template from config
+            if self._config:
+                asset_type = asset_data['type']
+                if asset_type == 'CAM':
+                    base_tmpl = self._config.get_template('assetPath')
+                    if base_tmpl:
+                        tmpl = base_tmpl.replace(
+                            '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
+                            '$ep_$seq_$shot__$assetName.$ext'
+                        )
+                        new_asset.set_template(tmpl)
+                else:
+                    tmpl = self._config.get_template('assetPath')
+                    if tmpl:
+                        new_asset.set_template(tmpl)
+
             # Wire to shot: asset.message -> shot.assets[i]
             cmds.connectAttr(
                 '{}.message'.format(new_asset.node_name),
