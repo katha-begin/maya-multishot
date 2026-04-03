@@ -475,7 +475,23 @@ class AssetManagerDialog(QtWidgets.QDialog):
                                 asset_namespace, scene_asset['maya_node'], ctx_node))
                             break
                         else:
-                            # Maya node exists but no CTX node for this shot
+                            # Maya ref exists but no CTX node for this shot
+                            # Create one and link it now
+                            shot_node_name = self._shot_data.get('shot_node')
+                            if shot_node_name and asset_data['type'] != 'CAM':
+                                ctx_node = self._create_and_link_ctx_asset(
+                                    asset_data, asset_namespace,
+                                    scene_asset['maya_node'],
+                                    shot_code, shot_node_name)
+                                if ctx_node:
+                                    asset_data['ctx_ready'] = True
+                                    asset_data['ctx_node'] = ctx_node
+                                    matched = True
+                                    logger.info("    AUTO-CREATED CTX node: {} -> {} (CTX: {})".format(
+                                        asset_namespace, scene_asset['maya_node'], ctx_node))
+                                    break
+
+                            # Fallback if creation failed or no shot node
                             asset_data['ctx_ready'] = False
                             matched = True
                             logger.info("    Maya ref found but no CTX node: {} -> {}".format(
@@ -636,6 +652,70 @@ class AssetManagerDialog(QtWidgets.QDialog):
         if linked_count > 0:
             logger.info("      Auto-linked {} node(s) for namespace '{}'".format(
                 linked_count, namespace))
+
+    def _create_and_link_ctx_asset(self, asset_data, namespace, maya_node,
+                                   shot_code, shot_node_name):
+        """Create a CTX_Asset node for an unlinked reference and wire it up.
+
+        Args:
+            asset_data (dict): Asset data from filesystem scan.
+            namespace (str): Asset namespace (e.g. 'CHAR_BuffA_001').
+            maya_node (str): Maya reference node name.
+            shot_code (str): Shot code (e.g. 'SH0140').
+            shot_node_name (str): CTX_Shot node name.
+
+        Returns:
+            str or None: Created CTX_Asset node name, or None on failure.
+        """
+        try:
+            from maya import cmds
+        except ImportError:
+            return None
+
+        from core.nodes.wrappers.asset import CTXAssetNode
+
+        try:
+            new_asset = CTXAssetNode.create(
+                asset_type=asset_data['type'],
+                asset_name=asset_data['name'],
+                variant=asset_data['var'],
+                shot_code=shot_code,
+                namespace=namespace
+            )
+
+            # Wire to shot: asset.message -> shot.assets[i]
+            cmds.connectAttr(
+                '{}.message'.format(new_asset.node_name),
+                '{}.assets'.format(shot_node_name),
+                nextAvailable=True
+            )
+
+            # Link reference -> CTX_Asset.targetNode
+            if not cmds.attributeQuery('targetNode', node=new_asset.node_name,
+                                       exists=True):
+                cmds.addAttr(new_asset.node_name, longName='targetNode',
+                             attributeType='message')
+            cmds.connectAttr(
+                '{}.message'.format(maya_node),
+                '{}.targetNode'.format(new_asset.node_name),
+                force=True
+            )
+
+            # Assign to display layer
+            if self._layer_manager:
+                from core.nodes.wrappers.shot import CTXShotNode
+                shot_wrapper = CTXShotNode(shot_node_name)
+                self._layer_manager.assign_to_layer_from_ctx_asset(
+                    new_asset, shot_wrapper)
+
+            logger.info("Created and linked CTX_Asset %s for %s",
+                        new_asset.node_name, namespace)
+            return new_asset.node_name
+
+        except Exception as exc:
+            logger.warning("Failed to create CTX_Asset for %s: %s",
+                           namespace, exc)
+            return None
 
     def _populate_asset_table(self):
         """Populate asset table with asset data."""
