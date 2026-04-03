@@ -786,12 +786,12 @@ class AssetManagerDialog(QtWidgets.QDialog):
         asset_data = self._assets[row]
 
         # Check if asset is actually in scene (has valid targetNode link)
-        is_in_scene = self._check_asset_in_scene(asset_data)
+        scene_state = self._check_asset_in_scene(asset_data)
 
         # Create context menu
         menu = QtWidgets.QMenu(self)
 
-        if not is_in_scene:
+        if scene_state != 'managed':
             # Asset not created - show Create Asset submenu
             create_menu = menu.addMenu("Create Asset")
 
