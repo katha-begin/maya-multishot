@@ -684,32 +684,40 @@ class AssetManagerDialog(QtWidgets.QDialog):
             )
 
             # Set attributes from filesystem scan data
-            new_asset.set_department(asset_data.get('dept', 'anim'))
-            new_asset.set_version(asset_data.get('current', ''))
-            new_asset.set_file_path(asset_data.get('file_path', ''))
-
-            # Extension from filename
+            dept = asset_data.get('dept', 'anim')
+            version = asset_data.get('current', '')
+            file_path = asset_data.get('file_path', '')
             filename = asset_data.get('filename', '')
+
+            new_asset.set_department(dept)
+            new_asset.set_version(version)
+            new_asset.set_file_path(file_path)
+
+            # Extension from filename or file_path
+            ext = ''
             if filename:
                 ext = os.path.splitext(filename)[1].lstrip('.')
-                if ext:
-                    new_asset.set_extension(ext)
+            elif file_path:
+                ext = os.path.splitext(file_path)[1].lstrip('.')
+            if ext:
+                new_asset.set_extension(ext)
+            logger.info("  set_extension(%s) from filename=%s", ext, filename)
 
             # Template from config
-            if self._config:
-                asset_type = asset_data['type']
-                if asset_type == 'CAM':
-                    base_tmpl = self._config.get_template('assetPath')
+            tmpl = ''
+            if self._config and hasattr(self._config, 'get_template'):
+                if asset_data['type'] == 'CAM':
+                    base_tmpl = self._config.get_template('assetPath') or ''
                     if base_tmpl:
                         tmpl = base_tmpl.replace(
                             '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
                             '$ep_$seq_$shot__$assetName.$ext'
                         )
-                        new_asset.set_template(tmpl)
                 else:
-                    tmpl = self._config.get_template('assetPath')
-                    if tmpl:
-                        new_asset.set_template(tmpl)
+                    tmpl = self._config.get_template('assetPath') or ''
+            if tmpl:
+                new_asset.set_template(tmpl)
+            logger.info("  set_template(%s) config=%s", tmpl[:60] if tmpl else '', self._config is not None)
 
             # Wire to shot: asset.message -> shot.assets[i]
             cmds.connectAttr(
