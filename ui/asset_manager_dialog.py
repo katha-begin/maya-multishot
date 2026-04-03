@@ -1418,11 +1418,37 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 "All assets are already up to date."
             )
 
+    def _update_display_layers_for_nodes(self, node_names):
+        """Assign newly reconciled CTX_Asset nodes to the correct display layer.
+
+        Args:
+            node_names (list): CTX_Asset node name strings.
+        """
+        if not self._layer_manager or not node_names:
+            return
+
+        shot_node_name = self._shot_data.get('shot_node')
+        if not shot_node_name:
+            return
+
+        from core.nodes.wrappers.asset import CTXAssetNode
+        from core.nodes.wrappers.shot import CTXShotNode
+
+        shot_wrapper = CTXShotNode(shot_node_name)
+        for node_name in node_names:
+            try:
+                asset_wrapper = CTXAssetNode(node_name)
+                self._layer_manager.assign_to_layer_from_ctx_asset(
+                    asset_wrapper, shot_wrapper)
+            except Exception as exc:
+                logger.warning("Failed to assign %s to display layer: %s",
+                               node_name, exc)
+
     def _on_link_asset_to_shot(self, row):
         """Link an unlinked asset to the current shot via reconciler.
 
-        Creates a CTX_Asset node for this reference and wires it to the shot,
-        then refreshes the table.
+        Creates a CTX_Asset node for this reference, wires it to the shot,
+        assigns it to the correct display layer, then refreshes the table.
 
         Args:
             row: Table row index
@@ -1450,6 +1476,10 @@ class AssetManagerDialog(QtWidgets.QDialog):
             logger.info("Link result: created=%d, linked=%d, skipped=%d",
                         stats['created'], stats['linked'], stats['skipped'])
 
+            # Assign new/linked assets to display layers
+            affected = stats['created_nodes'] + stats['linked_nodes']
+            self._update_display_layers_for_nodes(affected)
+
             # Refresh scene assets and table
             self._load_assets()
 
@@ -1473,6 +1503,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
         # Phase 1: reconcile unlinked assets
         reconciled = False
+        stats = None
         if shot_node_name:
             try:
                 from core.asset_reconciler import reconcile_assets_for_shot
@@ -1481,6 +1512,10 @@ class AssetManagerDialog(QtWidgets.QDialog):
                     reconciled = True
                     logger.info("Validate: reconciled created=%d linked=%d",
                                 stats['created'], stats['linked'])
+
+                    # Assign new/linked assets to display layers
+                    affected = stats['created_nodes'] + stats['linked_nodes']
+                    self._update_display_layers_for_nodes(affected)
             except Exception as exc:
                 logger.warning("Validate: reconcile failed: %s", exc)
 
@@ -1498,7 +1533,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
         # Report
         lines = []
-        if reconciled:
+        if reconciled and stats:
             lines.append("Reconciled {} created, {} linked.".format(
                 stats['created'], stats['linked']))
         else:

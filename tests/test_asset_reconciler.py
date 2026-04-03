@@ -240,10 +240,12 @@ class TestReconcileAssets(unittest.TestCase):
 
         self.assertEqual(stats['created'], 1)
         self.assertEqual(stats['skipped'], 0)
+        self.assertEqual(len(stats['created_nodes']), 1)
 
         created_nodes = [n for n in self.mock.nodes
                          if n.startswith('CTX_Asset_') and 'BuffA' in n]
         self.assertEqual(len(created_nodes), 1)
+        self.assertIn(created_nodes[0], stats['created_nodes'])
         self.assertEqual(
             self.mock.getAttr('{}.namespace'.format(created_nodes[0])),
             'CHAR_BuffA_001'
@@ -327,6 +329,7 @@ class TestReconcileAssets(unittest.TestCase):
 
         self.assertEqual(stats['created'], 0)
         self.assertGreaterEqual(stats['linked'], 1)
+        self.assertIn('CTX_Asset_CHAR_DeerA_SH0140', stats['linked_nodes'])
 
         wired = any(
             src == 'CTX_Asset_CHAR_DeerA_SH0140.message' and
@@ -364,7 +367,9 @@ class TestReconcileAssets(unittest.TestCase):
     def test_nonexistent_shot_returns_zeros(self):
         """Returns zeros for a non-existent shot node."""
         stats = self.recon_mod.reconcile_assets_for_shot('CTX_Shot_DOES_NOT_EXIST')
-        self.assertEqual(stats, {'created': 0, 'linked': 0, 'skipped': 0})
+        self.assertEqual(stats['created'], 0)
+        self.assertEqual(stats['linked'], 0)
+        self.assertEqual(stats['skipped'], 0)
 
     def test_accepts_wrapper_object(self):
         """Accepts a wrapper-like object with .node_name."""
@@ -380,7 +385,9 @@ class TestReconcileAssets(unittest.TestCase):
         """Returns zeros when Maya is not available."""
         self.recon_mod.MAYA_AVAILABLE = False
         stats = self.recon_mod.reconcile_assets_for_shot(self.shot_name)
-        self.assertEqual(stats, {'created': 0, 'linked': 0, 'skipped': 0})
+        self.assertEqual(stats['created'], 0)
+        self.assertEqual(stats['linked'], 0)
+        self.assertEqual(stats['skipped'], 0)
 
     def test_multi_part_asset_name(self):
         """Handles references with multi-part asset names correctly."""

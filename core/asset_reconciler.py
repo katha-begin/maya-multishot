@@ -185,30 +185,37 @@ def reconcile_assets_for_shot(shot_node):
         shot_node: CTXShotNode wrapper instance or node name string.
 
     Returns:
-        dict: {'created': int, 'linked': int, 'skipped': int}
+        dict: {'created': int, 'linked': int, 'skipped': int,
+               'created_nodes': list, 'linked_nodes': list}
+              created_nodes/linked_nodes contain CTX_Asset node name strings.
     """
+    empty = {'created': 0, 'linked': 0, 'skipped': 0,
+             'created_nodes': [], 'linked_nodes': []}
+
     if not MAYA_AVAILABLE:
         logger.warning("reconcile_assets_for_shot: Maya not available")
-        return {'created': 0, 'linked': 0, 'skipped': 0}
+        return empty
 
     node_name = shot_node if isinstance(shot_node, str) else shot_node.node_name
 
     if not cmds.objExists(node_name):
         logger.warning("reconcile_assets_for_shot: shot node does not exist: %s",
                         node_name)
-        return {'created': 0, 'linked': 0, 'skipped': 0}
+        return empty
 
     shot_code = _get_shot_code(node_name)
     if not shot_code:
         logger.warning("reconcile_assets_for_shot: could not determine shot code "
                         "from %s", node_name)
-        return {'created': 0, 'linked': 0, 'skipped': 0}
+        return empty
 
     logger.info("Reconciling assets for shot %s (%s)", shot_code, node_name)
 
     created = 0
     linked = 0
     skipped = 0
+    created_nodes = []
+    linked_nodes = []
 
     references = cmds.ls(type='reference') or []
 
@@ -239,6 +246,7 @@ def reconcile_assets_for_shot(shot_node):
 
         if existing:
             # Ensure it is wired to the shot
+            was_linked = False
             if not _is_connected_to_shot(existing, node_name):
                 cmds.connectAttr(
                     '{}.message'.format(existing),
@@ -247,6 +255,7 @@ def reconcile_assets_for_shot(shot_node):
                 )
                 logger.info("  Wired existing %s to %s", existing, node_name)
                 linked += 1
+                was_linked = True
 
             # Ensure targetNode link exists
             target_conns = cmds.listConnections(
@@ -257,6 +266,10 @@ def reconcile_assets_for_shot(shot_node):
             if not target_conns:
                 _link_reference_to_ctx(ref_node, existing)
                 linked += 1
+                was_linked = True
+
+            if was_linked:
+                linked_nodes.append(existing)
             else:
                 skipped += 1
         else:
@@ -284,8 +297,10 @@ def reconcile_assets_for_shot(shot_node):
             _link_reference_to_ctx(ref_node, new_asset.node_name)
 
             created += 1
+            created_nodes.append(new_asset.node_name)
 
     logger.info("Reconcile complete for %s: created=%d, linked=%d, skipped=%d",
                  shot_code, created, linked, skipped)
 
-    return {'created': created, 'linked': linked, 'skipped': skipped}
+    return {'created': created, 'linked': linked, 'skipped': skipped,
+            'created_nodes': created_nodes, 'linked_nodes': linked_nodes}
