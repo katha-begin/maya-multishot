@@ -1408,14 +1408,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Update current shot display
                 self._update_current_shot_display()
 
-                # Trigger context change callback to resolve paths
-                # This will call _on_context_changed() which resolves asset paths
-                logger.info("Triggering context change callback for path resolution")
-                self._context_manager.set_active_shot(shot_node)
-
-                # Reconcile assets: create missing CTX_Asset nodes for
-                # references that exist in scene but have no CTX link
-                # to this shot.
+                # Reconcile assets BEFORE path resolution so that newly
+                # created CTX_Asset nodes also get their paths resolved.
                 try:
                     from core.asset_reconciler import reconcile_assets_for_shot
                     recon = reconcile_assets_for_shot(shot_node)
@@ -1424,6 +1418,11 @@ class MainWindow(QtWidgets.QMainWindow):
                                     recon['created'], recon['linked'], recon['skipped'])
                 except Exception as exc:
                     logger.warning("Asset reconciliation failed (non-fatal): %s", exc)
+
+                # Trigger context change callback to resolve paths for ALL
+                # assets (including ones just created by reconciliation).
+                logger.info("Triggering context change callback for path resolution")
+                self._context_manager.set_active_shot(shot_node)
 
                 # Switch display layers: move active shot assets to CTX_Active, others to CTX_Inactive
                 if self._layer_manager:

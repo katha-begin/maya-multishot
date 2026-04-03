@@ -2413,6 +2413,22 @@ class AssetManagerDialog(QtWidgets.QDialog):
         else:
             logger.warning("No reference found for namespace '{}' — link skipped".format(namespace))
 
+        # Assign new CTX_Asset to display layer (CTX_Active for current shot)
+        if self._layer_manager and ctx_asset_name:
+            shot_node_name = self._shot_data.get('shot_node')
+            if shot_node_name:
+                try:
+                    from core.nodes.wrappers.asset import CTXAssetNode as _CTXAssetNode
+                    from core.nodes.wrappers.shot import CTXShotNode as _CTXShotNode
+                    asset_wrapper = _CTXAssetNode(ctx_asset_name)
+                    shot_wrapper = _CTXShotNode(shot_node_name)
+                    self._layer_manager.assign_to_layer_from_ctx_asset(
+                        asset_wrapper, shot_wrapper)
+                    logger.info("Assigned %s to display layer", ctx_asset_name)
+                except Exception as exc:
+                    logger.warning("Failed to assign %s to display layer: %s",
+                                   ctx_asset_name, exc)
+
         # Update asset data in the table
         asset_data['ctx_node'] = ctx_asset_name
         asset_data['maya_node'] = maya_node
