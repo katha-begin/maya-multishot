@@ -513,40 +513,43 @@ class AssetManagerDialog(QtWidgets.QDialog):
         logger.info("=" * 80)
 
     def _check_asset_in_scene(self, asset_data):
-        """Check if asset actually exists in scene by checking CTX_Asset targetNode link.
+        """Check if asset actually exists in scene.
+
+        Checks two paths:
+          1. CTX_Asset targetNode link (fully managed).
+          2. Fallback: maya_node detected via namespace match (unlinked).
 
         Args:
             asset_data (dict): Asset data dictionary
 
         Returns:
-            bool: True if asset has valid Maya node in scene, False otherwise
+            str: 'managed' if CTX link is valid,
+                 'unlinked' if Maya ref exists but no CTX link,
+                 'missing' if asset is not in scene at all.
         """
         try:
             from maya import cmds
         except ImportError:
             from tests.mock_maya import cmds
 
+        # Path 1: fully managed via CTX_Asset -> targetNode
         ctx_node = asset_data.get('ctx_node')
-        if not ctx_node or not cmds.objExists(ctx_node):
-            return False
+        if ctx_node and cmds.objExists(ctx_node):
+            if cmds.attributeQuery('targetNode', node=ctx_node, exists=True):
+                connections = cmds.listConnections(
+                    '{}.targetNode'.format(ctx_node),
+                    source=True, destination=False
+                )
+                if connections and cmds.objExists(connections[0]):
+                    asset_data['maya_node'] = connections[0]
+                    return 'managed'
 
-        # Check if CTX_Asset has targetNode attribute
-        if not cmds.attributeQuery('targetNode', node=ctx_node, exists=True):
-            return False
+        # Path 2: Maya reference found via namespace but no CTX link
+        maya_node = asset_data.get('maya_node')
+        if maya_node and cmds.objExists(maya_node):
+            return 'unlinked'
 
-        # Check if targetNode is connected
-        connections = cmds.listConnections('{}.targetNode'.format(ctx_node), source=True, destination=False)
-        if not connections:
-            return False
-
-        # Check if the connected Maya node exists
-        maya_node = connections[0]
-        if not cmds.objExists(maya_node):
-            return False
-
-        # Update asset_data with the actual Maya node
-        asset_data['maya_node'] = maya_node
-        return True
+        return 'missing'
 
     def _find_ctx_for_shot_namespace(self, shot_code, namespace):
         """Find CTX_Asset node matching a shot code and namespace.
@@ -705,15 +708,16 @@ class AssetManagerDialog(QtWidgets.QDialog):
             self.asset_table.setCellWidget(row, 6, file_status_widget)
 
             # Column 7: Status - Check if asset is in scene and version status
-            # First check if asset is actually in the scene by checking targetNode link
-            is_in_scene = self._check_asset_in_scene(asset_data)
+            scene_state = self._check_asset_in_scene(asset_data)
 
-            if not is_in_scene:
-                # Asset not in scene
+            if scene_state == 'missing':
                 status_widget = QtWidgets.QLabel("Missing")
                 status_widget.setStyleSheet("color: red; font-weight: bold;")
+            elif scene_state == 'unlinked':
+                status_widget = QtWidgets.QLabel("Unlinked")
+                status_widget.setStyleSheet("color: #E0E020; font-weight: bold;")
             else:
-                # Asset is in scene - check version status
+                # 'managed' — asset is in scene with CTX link
                 status = asset_data['status']
                 if status == 'valid':
                     status_widget = QtWidgets.QLabel("Up-to-date")

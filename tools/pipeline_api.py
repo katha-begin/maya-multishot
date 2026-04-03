@@ -342,6 +342,14 @@ class PipelineAPI(object):
                 except Exception:
                     pass
 
+            # Reconcile assets: create missing CTX_Asset nodes for
+            # references present in scene but not linked to this shot.
+            try:
+                from core.asset_reconciler import reconcile_assets_for_shot
+                reconcile_assets_for_shot(shot_node)
+            except Exception as exc:
+                logger.warning("set_active_shot: asset reconcile failed: %s", exc)
+
             # Update asset paths
             assets_updated = 0
             if apply_paths:
