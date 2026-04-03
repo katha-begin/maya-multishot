@@ -791,8 +791,27 @@ class AssetManagerDialog(QtWidgets.QDialog):
         # Create context menu
         menu = QtWidgets.QMenu(self)
 
-        if scene_state != 'managed':
-            # Asset not created - show Create Asset submenu
+        if scene_state == 'unlinked':
+            # Maya reference exists but no CTX_Asset node -- offer to link
+            link_action = menu.addAction("Link to Shot")
+            link_action.triggered.connect(lambda: self._on_link_asset_to_shot(row))
+
+            menu.addSeparator()
+
+            # Also offer Create Asset as fallback
+            create_menu = menu.addMenu("Create Asset")
+            ref_action = create_menu.addAction("Reference (.ma/.mb)")
+            ref_action.triggered.connect(lambda: self._on_create_asset_reference(row))
+            standin_action = create_menu.addAction("StandIn (.abc)")
+            standin_action.triggered.connect(lambda: self._on_create_asset_standin(row))
+            proxy_action = create_menu.addAction("Redshift Proxy (.rs)")
+            proxy_action.triggered.connect(lambda: self._on_create_asset_proxy(row))
+            if asset_data.get('type') == 'SETS':
+                sets_action = create_menu.addAction("Import Alembic (SET)")
+                sets_action.triggered.connect(lambda: self._on_create_asset_sets(row))
+
+        elif scene_state == 'missing':
+            # Asset not in scene at all - show Create Asset submenu
             create_menu = menu.addMenu("Create Asset")
 
             # Reference option
@@ -1399,13 +1418,101 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 "All assets are already up to date."
             )
 
+    def _on_link_asset_to_shot(self, row):
+        """Link an unlinked asset to the current shot via reconciler.
+
+        Creates a CTX_Asset node for this reference and wires it to the shot,
+        then refreshes the table.
+
+        Args:
+            row: Table row index
+        """
+        asset_data = self._assets[row]
+        shot_node_name = self._shot_data.get('shot_node')
+
+        if not shot_node_name:
+            QtWidgets.QMessageBox.warning(
+                self, "No Shot Node",
+                "No CTX_Shot node found for this shot. "
+                "Cannot link asset."
+            )
+            return
+
+        namespace = "{}_{}_{}".format(
+            asset_data['type'], asset_data['name'], asset_data['var']
+        )
+
+        logger.info("Linking asset %s to shot %s", namespace, shot_node_name)
+
+        try:
+            from core.asset_reconciler import reconcile_assets_for_shot
+            stats = reconcile_assets_for_shot(shot_node_name)
+            logger.info("Link result: created=%d, linked=%d, skipped=%d",
+                        stats['created'], stats['linked'], stats['skipped'])
+
+            # Refresh scene assets and table
+            self._load_assets()
+
+            QtWidgets.QMessageBox.information(
+                self, "Link Complete",
+                "Linked {} asset(s), created {} CTX node(s).".format(
+                    stats['linked'], stats['created'])
+            )
+        except Exception as exc:
+            logger.error("Failed to link asset: %s", exc)
+            QtWidgets.QMessageBox.warning(
+                self, "Link Failed",
+                "Failed to link asset:\n{}".format(exc)
+            )
+
     def _on_validate_all(self):
-        """Handle Validate All button click."""
+        """Validate all assets: reconcile unlinked references, check files."""
         logger.info("Validate All clicked")
+
+        shot_node_name = self._shot_data.get('shot_node')
+
+        # Phase 1: reconcile unlinked assets
+        reconciled = False
+        if shot_node_name:
+            try:
+                from core.asset_reconciler import reconcile_assets_for_shot
+                stats = reconcile_assets_for_shot(shot_node_name)
+                if stats['created'] or stats['linked']:
+                    reconciled = True
+                    logger.info("Validate: reconciled created=%d linked=%d",
+                                stats['created'], stats['linked'])
+            except Exception as exc:
+                logger.warning("Validate: reconcile failed: %s", exc)
+
+        # Phase 2: check file existence for all assets
+        missing_files = []
+        for asset_data in self._assets:
+            fp = asset_data.get('file_path', '')
+            if fp and not os.path.exists(fp):
+                missing_files.append("{} {} {}".format(
+                    asset_data['type'], asset_data['name'], asset_data['var']))
+
+        # Refresh table to reflect reconciliation
+        if reconciled:
+            self._load_assets()
+
+        # Report
+        lines = []
+        if reconciled:
+            lines.append("Reconciled {} created, {} linked.".format(
+                stats['created'], stats['linked']))
+        else:
+            lines.append("All assets already linked.")
+
+        if missing_files:
+            lines.append("")
+            lines.append("Missing files ({}):\n  {}".format(
+                len(missing_files), "\n  ".join(missing_files)))
+        else:
+            lines.append("All asset files exist on disk.")
+
         QtWidgets.QMessageBox.information(
-            self,
-            "Validate All",
-            "Validate All functionality will be implemented in Phase 4C.\n\nWill check file existence for all assets."
+            self, "Validate All", "\n".join(lines)
         )
 
     def _on_apply(self):
