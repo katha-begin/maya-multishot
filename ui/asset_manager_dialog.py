@@ -2178,8 +2178,14 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
                     # Connect decomposeMatrix: geo transforms -> place3dTexture nodes
                     if asset_data['type'] == 'CHAR':
-                        from tools.asset_manager import _connect_place3d_for_char
+                        from tools.asset_manager import (
+                            _connect_place3d_for_char,
+                            _connect_shading_attributes,
+                        )
                         _connect_place3d_for_char(namespace, shader_namespace)
+                        # Wire ShadingAttr_Grp.snow__*_buffer -> shader_ns:*_buffer.default
+                        # (drives redshiftUserDataInteger / redshiftUserDataScalar nodes)
+                        _connect_shading_attributes(namespace, shader_namespace)
 
             # 3. Reference groom if requested
             if reference_groom_file and shader_files.get('groom'):

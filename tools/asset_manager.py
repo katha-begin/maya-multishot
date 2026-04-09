@@ -775,6 +775,111 @@ def _connect_place3d_for_char(geo_namespace, shader_namespace):
     return total_connected
 
 
+def _connect_shading_attributes(geo_namespace, shader_namespace):
+    """Connect ShadingAttr_Grp.snow__* attributes to shader-side .default plugs.
+
+    Mirrors igl_shot_build._connect_shading_attributes. Used to drive
+    redshiftUserDataInteger / redshiftUserDataScalar nodes from the animation
+    cache buffer attributes published on ShadingAttr_Grp.
+
+    Connects:
+        {geo_ns}:ShadingAttr_Grp.snow__{attrName}
+            -> {shader_ns}:{attrName}.default
+
+    Example:
+        CHAR_KitMum_001:ShadingAttr_Grp.snow__EyeSpec_R_buffer
+            -> CHAR_KitMum_001_Shade:EyeSpec_R_buffer.default
+
+    Handles Maya auto-renamed shader namespaces (_Shade1, _Shade2, ...) the
+    same way as _connect_place3d_for_char.
+
+    Args:
+        geo_namespace (str): Geometry namespace (e.g. 'CHAR_KitMum_001')
+        shader_namespace (str): Primary shader namespace (e.g. 'CHAR_KitMum_001_Shade')
+
+    Returns:
+        int: Number of attribute connections successfully created
+    """
+    if not MAYA_AVAILABLE:
+        return 0
+
+    shading_grp = '{}:ShadingAttr_Grp'.format(geo_namespace)
+    if not cmds.objExists(shading_grp):
+        logger.info('No ShadingAttr_Grp in {} -- skipping snow__ wiring'.format(
+            geo_namespace))
+        return 0
+
+    try:
+        all_attrs = cmds.listAttr(shading_grp, userDefined=True) or []
+    except Exception as e:
+        logger.warning('listAttr failed on {}: {}'.format(shading_grp, e))
+        return 0
+
+    snow_attrs = [a for a in all_attrs if a.startswith('snow__')]
+    if not snow_attrs:
+        logger.info('No snow__ attributes on {} -- nothing to wire'.format(shading_grp))
+        return 0
+
+    # Collect shader namespaces -- include auto-renamed variants (_Shade1, _Shade2)
+    shader_namespaces = []
+    if cmds.namespace(exists=shader_namespace):
+        shader_namespaces.append(shader_namespace)
+
+    all_ns = cmds.namespaceInfo(listOnlyNamespaces=True, recurse=True) or []
+    for ns in all_ns:
+        if ns.startswith(shader_namespace) and ns != shader_namespace:
+            suffix = ns[len(shader_namespace):]
+            if suffix.isdigit():
+                shader_namespaces.append(ns)
+
+    if not shader_namespaces:
+        logger.info('No shader namespace found for {} -- skipping snow__ wiring'.format(
+            geo_namespace))
+        return 0
+
+    total_connected = 0
+    total_missing = 0
+    total_already = 0
+
+    for snow_attr in snow_attrs:
+        target_attr = snow_attr[len('snow__'):]
+        source_plug = '{}.{}'.format(shading_grp, snow_attr)
+
+        # Try each shader namespace until one has the target plug
+        wired_any = False
+        for shd_ns in shader_namespaces:
+            target_plug = '{}:{}.default'.format(shd_ns, target_attr)
+            if not cmds.objExists(target_plug):
+                continue
+
+            existing = cmds.listConnections(
+                source_plug, destination=True, plugs=True) or []
+            if target_plug in existing:
+                total_already += 1
+                wired_any = True
+                continue
+
+            try:
+                cmds.connectAttr(source_plug, target_plug, force=True)
+                total_connected += 1
+                wired_any = True
+                logger.debug('snow__ linked: {} -> {}'.format(source_plug, target_plug))
+            except Exception as e:
+                logger.warning('snow__ connect failed {} -> {}: {}'.format(
+                    source_plug, target_plug, e))
+
+        if not wired_any:
+            total_missing += 1
+            logger.debug('snow__ no target for {} (looked in {})'.format(
+                source_plug, ', '.join(shader_namespaces)))
+
+    logger.info(
+        'snow__ wiring: {} connected, {} already-wired, {} no-target ({} -> {})'.format(
+            total_connected, total_already, total_missing,
+            geo_namespace, ', '.join(shader_namespaces)))
+    return total_connected
+
+
 def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
     """Import or merge a SETS alembic into the scene and build the component hierarchy.
 
