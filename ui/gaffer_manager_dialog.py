@@ -889,6 +889,39 @@ class GafferManagerDialog(QtWidgets.QDialog):
     # Edit Mode
     # ------------------------------------------------------------------
 
+    # HUD block ID for viewport edit-mode indicator
+    _EDIT_HUD_BLOCK = 'GafferEditModeHUD'
+
+    def _show_viewport_hud(self):
+        """Show a persistent 'GAFFER EDIT MODE' HUD in the Maya 3D viewport."""
+        if not cmds:
+            return
+        try:
+            if cmds.headsUpDisplay(self._EDIT_HUD_BLOCK, exists=True):
+                cmds.headsUpDisplay(self._EDIT_HUD_BLOCK, remove=True)
+            gaffer_name = self._current_gaffer.get_gaffer_name() if self._current_gaffer else '?'
+            cmds.headsUpDisplay(
+                self._EDIT_HUD_BLOCK,
+                section=2, block=0,
+                blockSize='large',
+                label='GAFFER EDIT MODE  [{}]'.format(gaffer_name),
+                labelFontSize='large',
+                command=lambda: '',
+                event='idle',
+            )
+        except Exception as e:
+            logger.debug("HUD show failed (non-fatal): %s", e)
+
+    def _hide_viewport_hud(self):
+        """Remove the viewport edit-mode HUD."""
+        if not cmds:
+            return
+        try:
+            if cmds.headsUpDisplay(self._EDIT_HUD_BLOCK, exists=True):
+                cmds.headsUpDisplay(self._EDIT_HUD_BLOCK, remove=True)
+        except Exception as e:
+            logger.debug("HUD hide failed (non-fatal): %s", e)
+
     def _on_enter_edit_mode(self):
         if not self._current_gaffer:
             QtWidgets.QMessageBox.warning(self, "No Gaffer Selected",
@@ -926,6 +959,9 @@ class GafferManagerDialog(QtWidgets.QDialog):
 
             # Unlock all interactive table controls and detail panel
             self._set_editing_enabled(True)
+
+            # Show viewport HUD so the artist knows edit mode is active
+            self._show_viewport_hud()
 
             logger.info("Edit mode entered for: {}".format(
                 self._current_gaffer.get_gaffer_name()))
@@ -1007,6 +1043,9 @@ class GafferManagerDialog(QtWidgets.QDialog):
 
         # Lock all interactive controls back to read-only
         self._set_editing_enabled(False)
+
+        # Remove viewport HUD
+        self._hide_viewport_hud()
 
     # ------------------------------------------------------------------
     # Gaffer creation (unified Sequence + Shot)
@@ -1578,10 +1617,11 @@ class GafferManagerDialog(QtWidgets.QDialog):
 
     def showEvent(self, event):
         """Refresh lock state when dialog becomes visible."""
-        QtWidgets.QMainWindow.showEvent(self, event)
+        QtWidgets.QDialog.showEvent(self, event)
         self._refresh_lock_state()
 
     def closeEvent(self, event):
-        """Clear singleton reference on close."""
+        """Clear singleton reference and viewport HUD on close."""
+        self._hide_viewport_hud()
         GafferManagerDialog._instance = None
-        QtWidgets.QMainWindow.closeEvent(self, event)
+        QtWidgets.QDialog.closeEvent(self, event)

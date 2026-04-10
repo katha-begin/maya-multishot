@@ -69,7 +69,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._asset_manager_dialogs = {}  # Store references to prevent garbage collection
         self._gaffer_manager_dialog = None  # Single Gaffer Manager instance
         self._slate_manager_dialog = None  # Single Slate Manager instance
-        self._light_original_values = {}  # Pre-gaffer snapshot for "no gaffer" restore
+        # Light originals are persisted in CTX_LightOriginals node (no in-memory snapshot needed)
 
         # Initialize display layer management
         self._layer_manager = DisplayLayerManager()
@@ -83,8 +83,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._load_config()
         self._load_existing_shots()
 
-        # Snapshot light values now, before any gaffer is ever applied
-        self._light_original_values = self._capture_all_light_originals()
+        # Light originals are captured at add-time by GafferManager and
+        # persisted in CTX_LightOriginals node -- no in-memory snapshot needed.
 
         # Register context change callback for path resolution
         self._context_manager.register_callback(self._on_context_changed)
@@ -1537,6 +1537,25 @@ class MainWindow(QtWidgets.QMainWindow):
                     import traceback
                     traceback.print_exc()
 
+                # Guard: if Gaffer Manager has active edit mode, force commit or discard
+                # before applying the new shot's gaffer (otherwise edits are silently lost).
+                try:
+                    from ui.gaffer_manager_dialog import GafferManagerDialog
+                    _gm_dlg = GafferManagerDialog._instance
+                    if _gm_dlg is not None and getattr(_gm_dlg, '_edit_mode', None) is not None:
+                        reply = QtWidgets.QMessageBox.question(
+                            self, 'Gaffer Edit Mode Active',
+                            'You have unsaved gaffer edits.\n\n'
+                            'Commit changes before switching shot?',
+                            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+                        )
+                        if reply == QtWidgets.QMessageBox.Yes:
+                            _gm_dlg._on_commit_edit_mode()
+                        else:
+                            _gm_dlg._on_discard_edit_mode()
+                except Exception:
+                    pass
+
                 # Apply gaffer overrides to Maya lights when switching shot.
                 # apply_gaffer_to_all_lights always restores originals first,
                 # then applies the full chain root-first (master -> seq -> shot).
@@ -1650,99 +1669,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Error",
                 "Failed to switch shot: {}".format(e)
             )
-
-    def _capture_all_light_originals(self):
-        """Snapshot current Maya values for every light in the scene.
-
-        Called once before any gaffer is first applied, so we have a baseline
-        to restore when switching to a shot that has no gaffer.
-
-        Returns:
-            dict: {light_shape: captured_values_dict, ...}
-        """
-        originals = {}
-        try:
-            import maya.cmds as cmds
-            from core.gaffer.manager import GafferManager
-            from core.nodes.wrappers.light_originals import CTXLightOriginalsNode
-
-            # Get or create the persistent originals node
-            try:
-                originals_node = CTXLightOriginalsNode.get_or_create()
-            except Exception:
-                originals_node = None
-
-            light_types = [
-                'aiAreaLight', 'aiSkyDomeLight', 'aiMeshLight', 'aiPhotometricLight',
-                'RedshiftPhysicalLight', 'RedshiftDomeLight', 'RedshiftIESLight',
-                'spotLight', 'pointLight', 'directionalLight', 'areaLight',
-            ]
-            for lt in light_types:
-                for shape in cmds.ls(type=lt) or []:
-                    try:
-                        values = GafferManager.capture_light_values(shape)
-                        originals[shape] = values
-                        # Persist into scene node so shot-switch restore works
-                        # Only store if not already captured (don't overwrite mid-session)
-                        if originals_node and not originals_node.has_light(shape):
-                            originals_node.store_light(shape, values)
-                    except Exception as e:
-                        logger.debug("Could not capture originals for {}: {}".format(shape, e))
-        except Exception as e:
-            logger.warning("Failed to capture original light values: {}".format(e))
-        logger.info("Captured originals for {} lights".format(len(originals)))
-        return originals
-
-    def _restore_light_originals(self, originals):
-        """Restore Maya lights to their pre-gaffer original values.
-
-        Args:
-            originals (dict): {light_shape: captured_values_dict, ...}
-        """
-        try:
-            import maya.cmds as cmds
-
-            for light_shape, values in originals.items():
-                if not cmds.objExists(light_shape):
-                    continue
-
-                transform = (cmds.listRelatives(light_shape, parent=True, fullPath=True) or [None])[0]
-
-                if 'intensity' in values:
-                    if cmds.attributeQuery('intensity', node=light_shape, exists=True):
-                        cmds.setAttr('{}.intensity'.format(light_shape), values['intensity'])
-
-                if 'exposure' in values:
-                    if cmds.attributeQuery('exposure', node=light_shape, exists=True):
-                        cmds.setAttr('{}.exposure'.format(light_shape), values['exposure'])
-
-                if 'colorR' in values:
-                    if cmds.attributeQuery('color', node=light_shape, exists=True):
-                        cmds.setAttr('{}.color'.format(light_shape),
-                                     values['colorR'], values['colorG'], values['colorB'],
-                                     type='double3')
-
-                if 'temperature' in values:
-                    if cmds.attributeQuery('temperature', node=light_shape, exists=True):
-                        cmds.setAttr('{}.temperature'.format(light_shape), values['temperature'])
-
-                if transform:
-                    if 'translateX' in values:
-                        cmds.setAttr('{}.translate'.format(transform),
-                                     values['translateX'], values['translateY'], values['translateZ'],
-                                     type='double3')
-                    if 'rotateX' in values:
-                        cmds.setAttr('{}.rotate'.format(transform),
-                                     values['rotateX'], values['rotateY'], values['rotateZ'],
-                                     type='double3')
-                    if 'scaleX' in values:
-                        cmds.setAttr('{}.scale'.format(transform),
-                                     values['scaleX'], values['scaleY'], values['scaleZ'],
-                                     type='double3')
-
-            logger.info("Restored original values for {} lights".format(len(originals)))
-        except Exception as e:
-            logger.warning("Failed to restore original light values: {}".format(e))
 
     def _update_current_shot_display(self):
         """Update the current shot label."""

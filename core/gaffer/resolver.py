@@ -5,13 +5,7 @@ Provides attribute resolution by walking the gaffer chain to find
 the first enabled value for each attribute.
 """
 
-try:
-    import maya.cmds as cmds
-except ImportError:
-    cmds = None
-
 from ..nodes.wrappers.gaffer import CTXLightGafferNode
-from ..nodes.wrappers.light_context import CTXLightContextNode
 from ..logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -104,20 +98,7 @@ class AttributeResolver(object):
                     enabled_flag = "{}Enabled".format(attribute)
 
                     if light_ctx.get_attribute(enabled_flag):
-                        # Get the stored value (may be a delta for additive mode)
                         value = AttributeResolver._get_attribute_value(light_ctx, attribute)
-
-                        # For additive mode, compute resolved = original + delta
-                        # so the UI shows the expected final value, not the raw delta.
-                        mode = light_ctx.get_override_mode(attribute)
-                        if mode == 'additive':
-                            target_shape = light_ctx.get_target_light()
-                            if target_shape:
-                                original = AttributeResolver._get_original_value(
-                                    target_shape, attribute
-                                )
-                                if original is not None:
-                                    value = AttributeResolver._add_values(original, value)
 
                         return {
                             'value': value,
@@ -167,59 +148,6 @@ class AttributeResolver(object):
         else:
             return light_ctx.get_attribute(attribute)
     
-    @staticmethod
-    def _get_original_value(light_shape, attribute):
-        """Get the stored original (pre-gaffer) value for a light attribute.
-
-        Used to resolve additive-mode overrides into their final display value.
-
-        Args:
-            light_shape (str): Maya light shape node name
-            attribute (str): Attribute name (e.g. 'intensity', 'color')
-
-        Returns:
-            Value (float, tuple, or bool), or None if not available
-        """
-        try:
-            from ..nodes.wrappers.light_originals import CTXLightOriginalsNode
-            originals_node = CTXLightOriginalsNode.get_or_create()
-            orig = originals_node.get_light_values(light_shape)
-            if orig is None:
-                return None
-            if attribute == 'color':
-                if 'colorR' in orig:
-                    return (orig['colorR'], orig['colorG'], orig['colorB'])
-            elif attribute in ('translate', 'rotate', 'scale'):
-                xk = '{}X'.format(attribute)
-                if xk in orig:
-                    return (
-                        orig[xk],
-                        orig['{}Y'.format(attribute)],
-                        orig['{}Z'.format(attribute)],
-                    )
-            else:
-                return orig.get(attribute)
-        except Exception:
-            return None
-
-    @staticmethod
-    def _add_values(original, delta):
-        """Add delta to original for additive override computation.
-
-        Args:
-            original: Original value (float or tuple)
-            delta: Delta value (float or tuple, same shape as original)
-
-        Returns:
-            Resolved value (float or tuple)
-        """
-        if isinstance(original, tuple) and isinstance(delta, tuple):
-            return tuple(o + d for o, d in zip(original, delta))
-        try:
-            return original + delta
-        except (TypeError, ValueError):
-            return delta
-
     @staticmethod
     def resolve_all_attributes(gaffer, light_name, config=None):
         """Resolve all attributes for a light.

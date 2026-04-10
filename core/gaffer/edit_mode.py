@@ -5,13 +5,15 @@ Workflow:
   1. enter()  - snapshot current Maya values for all lights in the gaffer
   2. User edits lights freely in the viewport / attribute editor
   3. commit() - diff current values vs snapshot; store changed attrs as
-                gaffer overrides (enabled=True); skip unchanged attrs
+                gaffer overrides (absolute replace, enabled=True); skip
+                unchanged attrs
      OR
      cancel() - restore snapshot values back to Maya lights without storing
                 any overrides
 
 Design:
 - Gaffer-wide: all lights in the selected gaffer (direct + inherited)
+- All overrides use absolute replace mode (no additive deltas)
 - No real-time callbacks; pure snapshot diff on exit
 - Float comparison uses FLOAT_THRESHOLD to ignore floating-point noise
 """
@@ -166,8 +168,6 @@ class EditMode(object):
 
             light_changes = {}
 
-            is_direct = self._is_direct_in_gaffer(light_name)
-
             # Check compound groups first
             for group, sub_attrs in COMPOUND_GROUPS.items():
                 group_changed = False
@@ -184,13 +184,7 @@ class EditMode(object):
                     old_tuple = tuple(snapshot.get(s, 0.0) for s in sub_attrs)
                     new_tuple = tuple(current.get(s, 0.0) for s in sub_attrs)
                     light_changes[group] = (old_tuple, new_tuple)
-                    # Color is always replace — additive RGB delta is not meaningful
-                    if group == 'color' or is_direct:
-                        self._store_compound_override(light_name, group, sub_attrs, current, mode='replace')
-                    else:
-                        # Inherited transform: store delta as additive
-                        deltas = {s: current.get(s, 0.0) - snapshot.get(s, 0.0) for s in sub_attrs}
-                        self._store_compound_override(light_name, group, sub_attrs, deltas, mode='additive')
+                    self._store_compound_override(light_name, group, sub_attrs, current, mode='replace')
 
             # Check simple scalar attributes
             for attr in SIMPLE_ATTRS:
@@ -209,16 +203,7 @@ class EditMode(object):
 
                 if attr_changed:
                     light_changes[attr] = (old_val, new_val)
-                    if is_direct or isinstance(new_val, bool):
-                        # Direct lights and bool flags always replace
-                        self._store_simple_override(light_name, attr, new_val, mode='replace')
-                    else:
-                        # Inherited: store delta as additive
-                        try:
-                            delta = float(new_val) - float(old_val)
-                        except (TypeError, ValueError):
-                            delta = new_val
-                        self._store_simple_override(light_name, attr, delta, mode='additive')
+                    self._store_simple_override(light_name, attr, new_val, mode='replace')
 
             if light_changes:
                 changed_report[light_name] = light_changes
@@ -267,20 +252,6 @@ class EditMode(object):
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
-
-    def _is_direct_in_gaffer(self, light_name):
-        """Check if a light has a direct context in this gaffer (not just inherited).
-
-        Args:
-            light_name (str): Light name
-
-        Returns:
-            bool: True if the light has a direct context in this gaffer
-        """
-        for ctx in self._gaffer.get_lights():
-            if ctx.get_light_name() == light_name:
-                return True
-        return False
 
     def _store_simple_override(self, light_name, attr_name, value, mode='replace'):
         """Store a simple attribute override in this gaffer's light context.
@@ -385,18 +356,23 @@ class EditMode(object):
                 type='double3'
             )
 
-        # Restore muted (via visibility on shape's transform)
-        if 'muted' in snapshot and transform:
-            # muted=True means hidden
-            pass  # Muted state is complex; skip restore to avoid side effects
+        # Restore muted -- renderer-specific shape attr + transform visibility
+        if 'muted' in snapshot:
+            muted_attr = get_maya_attr(light_shape, 'muted')
+            if muted_attr and cmds.attributeQuery(muted_attr, node=light_shape, exists=True):
+                cmds.setAttr('{}.{}'.format(light_shape, muted_attr),
+                             0 if snapshot['muted'] else 1)
+            if transform and cmds.attributeQuery('visibility', node=transform, exists=True):
+                cmds.setAttr('{}.visibility'.format(transform), not snapshot['muted'])
 
-        # Restore spread
-        if 'spread' in snapshot:
-            spread_attr = get_maya_attr(light_shape, 'spread')
-            if spread_attr and cmds.attributeQuery(spread_attr, node=light_shape, exists=True):
-                cmds.setAttr('{}.{}'.format(light_shape, spread_attr), snapshot['spread'])
+        # Restore spread attrs
+        for gaffer_attr in ('spread', 'areaSpread'):
+            if gaffer_attr in snapshot:
+                maya_attr = get_maya_attr(light_shape, gaffer_attr)
+                if maya_attr and cmds.attributeQuery(maya_attr, node=light_shape, exists=True):
+                    cmds.setAttr('{}.{}'.format(light_shape, maya_attr), snapshot[gaffer_attr])
 
-        # Restore contribution flags
+        # Restore bool contribution flags
         for gaffer_attr in ('affectDiffuse', 'affectSpecular', 'affectGI', 'shadowEnable'):
             if gaffer_attr in snapshot:
                 maya_attr = get_maya_attr(light_shape, gaffer_attr)
@@ -405,6 +381,15 @@ class EditMode(object):
                     attr_type = cmds.getAttr('{}.{}'.format(light_shape, maya_attr), type=True)
                     write_val = (1.0 if raw else 0.0) if attr_type in ('double', 'float') else bool(raw)
                     cmds.setAttr('{}.{}'.format(light_shape, maya_attr), write_val)
+
+        # Restore float contribution scales
+        for gaffer_attr in ('diffuseContrib', 'reflectionContrib', 'transmissionContrib',
+                            'singleScatterContrib', 'multiScatterContrib', 'volumeContrib',
+                            'indirectContrib', 'toonDiffuseContrib', 'toonReflectionContrib'):
+            if gaffer_attr in snapshot:
+                maya_attr = get_maya_attr(light_shape, gaffer_attr)
+                if maya_attr and cmds.attributeQuery(maya_attr, node=light_shape, exists=True):
+                    cmds.setAttr('{}.{}'.format(light_shape, maya_attr), snapshot[gaffer_attr])
 
         # Restore transform
         if transform:

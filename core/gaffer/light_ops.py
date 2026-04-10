@@ -4,9 +4,7 @@ Light Operations for applying and syncing gaffer values.
 Apply order (shot switch):
   1. Restore originals from CTX_LightOriginals (persistent baseline)
   2. Walk chain root-first (master -> seq -> shot)
-  3. For each gaffer, apply enabled overrides:
-     - mode='replace': set absolute value
-     - mode='additive': read current Maya value, add delta
+  3. For each gaffer, apply enabled overrides (absolute replace)
 """
 
 try:
@@ -230,9 +228,9 @@ class LightOperations(object):
     def _apply_light_ctx_to_maya(light_ctx, light_shape):
         """Apply all enabled attributes from a light context to a Maya light.
 
-        Reads the override mode per attribute group:
-          - 'replace'  : set the absolute stored value
-          - 'additive' : read current Maya value and add the stored delta
+        All overrides use replace mode (absolute values). The gaffer chain is
+        applied root-first after restoring originals, so each level simply
+        overwrites the previous one for any attribute it has enabled.
 
         Args:
             light_ctx (CTXLightContextNode): Light context with override values
@@ -248,33 +246,27 @@ class LightOperations(object):
             transform = transforms[0] if transforms else None
             shape = light_shape
 
-        def _apply_scalar(attr_val, maya_attr_name, mode):
+        def _apply_scalar(attr_val, maya_attr_name):
             if not cmds.attributeQuery(maya_attr_name, node=shape, exists=True):
                 return
-            if mode == 'additive':
-                current = cmds.getAttr('{}.{}'.format(shape, maya_attr_name))
-                attr_val = current + attr_val
             cmds.setAttr('{}.{}'.format(shape, maya_attr_name), attr_val)
 
         # Intensity
         if light_ctx.get_attribute('intensityEnabled'):
-            mode = light_ctx.get_override_mode('intensity')
             maya_attr = get_maya_attr(shape, 'intensity') or 'intensity'
-            _apply_scalar(light_ctx.get_attribute('intensity'), maya_attr, mode)
+            _apply_scalar(light_ctx.get_attribute('intensity'), maya_attr)
 
         # Exposure
         if light_ctx.get_attribute('exposureEnabled'):
-            mode = light_ctx.get_override_mode('exposure')
             maya_attr = get_maya_attr(shape, 'exposure') or 'exposure'
-            _apply_scalar(light_ctx.get_attribute('exposure'), maya_attr, mode)
+            _apply_scalar(light_ctx.get_attribute('exposure'), maya_attr)
 
         # Temperature
         if light_ctx.get_attribute('temperatureEnabled'):
-            mode = light_ctx.get_override_mode('temperature')
             maya_attr = get_maya_attr(shape, 'temperature') or 'temperature'
-            _apply_scalar(light_ctx.get_attribute('temperature'), maya_attr, mode)
+            _apply_scalar(light_ctx.get_attribute('temperature'), maya_attr)
 
-        # Color (replace only — additive RGB is not meaningful)
+        # Color
         if light_ctx.get_attribute('colorEnabled'):
             r = light_ctx.get_attribute('colorR')
             g = light_ctx.get_attribute('colorG')
@@ -283,7 +275,7 @@ class LightOperations(object):
             if cmds.attributeQuery(color_attr, node=shape, exists=True):
                 cmds.setAttr('{}.{}'.format(shape, color_attr), r, g, b, type='double3')
 
-        # Muted — set renderer-specific attr (RS: .on) AND transform visibility
+        # Muted -- set renderer-specific attr (RS: .on) AND transform visibility
         if light_ctx.get_attribute('mutedEnabled'):
             muted = light_ctx.get_attribute('muted')
             muted_attr = get_maya_attr(shape, 'muted')
@@ -295,15 +287,11 @@ class LightOperations(object):
         # Spread attrs (renderer-specific float scalars)
         for gaffer_attr in ('spread', 'areaSpread'):
             if light_ctx.get_attribute('{}Enabled'.format(gaffer_attr)):
-                mode = light_ctx.get_override_mode(gaffer_attr)
                 maya_attr = get_maya_attr(shape, gaffer_attr)
                 if maya_attr and cmds.attributeQuery(maya_attr, node=shape, exists=True):
-                    val = light_ctx.get_attribute(gaffer_attr)
-                    if mode == 'additive':
-                        val = cmds.getAttr('{}.{}'.format(shape, maya_attr)) + val
-                    cmds.setAttr('{}.{}'.format(shape, maya_attr), val)
+                    _apply_scalar(light_ctx.get_attribute(gaffer_attr), maya_attr)
 
-        # Bool contribution flags (always replace)
+        # Bool contribution flags
         for flag in ('affectDiffuse', 'affectSpecular', 'affectGI', 'shadowEnable'):
             if light_ctx.get_attribute('{}Enabled'.format(flag)):
                 maya_attr = get_maya_attr(shape, flag)
@@ -313,49 +301,33 @@ class LightOperations(object):
                     write_val = (1.0 if val else 0.0) if attr_type in ('double', 'float') else bool(val)
                     cmds.setAttr('{}.{}'.format(shape, maya_attr), write_val)
 
-        # Float contribution scales (replace or additive)
+        # Float contribution scales
         for gaffer_attr in ('diffuseContrib', 'reflectionContrib', 'transmissionContrib',
                             'singleScatterContrib', 'multiScatterContrib', 'volumeContrib',
                             'indirectContrib', 'toonDiffuseContrib', 'toonReflectionContrib'):
             if light_ctx.get_attribute('{}Enabled'.format(gaffer_attr)):
-                mode = light_ctx.get_override_mode(gaffer_attr)
                 maya_attr = get_maya_attr(shape, gaffer_attr)
                 if maya_attr and cmds.attributeQuery(maya_attr, node=shape, exists=True):
-                    val = light_ctx.get_attribute(gaffer_attr)
-                    if mode == 'additive':
-                        val = cmds.getAttr('{}.{}'.format(shape, maya_attr)) + val
-                    cmds.setAttr('{}.{}'.format(shape, maya_attr), val)
+                    _apply_scalar(light_ctx.get_attribute(gaffer_attr), maya_attr)
 
         # Transforms
         if transform:
             if light_ctx.get_attribute('translateEnabled'):
-                mode = light_ctx.get_override_mode('translate')
                 tx = light_ctx.get_attribute('translateX')
                 ty = light_ctx.get_attribute('translateY')
                 tz = light_ctx.get_attribute('translateZ')
-                if mode == 'additive':
-                    curr = cmds.getAttr('{}.translate'.format(transform))[0]
-                    tx, ty, tz = curr[0] + tx, curr[1] + ty, curr[2] + tz
                 cmds.setAttr('{}.translate'.format(transform), tx, ty, tz, type='double3')
 
             if light_ctx.get_attribute('rotateEnabled'):
-                mode = light_ctx.get_override_mode('rotate')
                 rx = light_ctx.get_attribute('rotateX')
                 ry = light_ctx.get_attribute('rotateY')
                 rz = light_ctx.get_attribute('rotateZ')
-                if mode == 'additive':
-                    curr = cmds.getAttr('{}.rotate'.format(transform))[0]
-                    rx, ry, rz = curr[0] + rx, curr[1] + ry, curr[2] + rz
                 cmds.setAttr('{}.rotate'.format(transform), rx, ry, rz, type='double3')
 
             if light_ctx.get_attribute('scaleEnabled'):
-                mode = light_ctx.get_override_mode('scale')
                 sx = light_ctx.get_attribute('scaleX')
                 sy = light_ctx.get_attribute('scaleY')
                 sz = light_ctx.get_attribute('scaleZ')
-                if mode == 'additive':
-                    curr = cmds.getAttr('{}.scale'.format(transform))[0]
-                    sx, sy, sz = curr[0] + sx, curr[1] + sy, curr[2] + sz
                 cmds.setAttr('{}.scale'.format(transform), sx, sy, sz, type='double3')
 
     @staticmethod
