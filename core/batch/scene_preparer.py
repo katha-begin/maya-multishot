@@ -4,6 +4,8 @@ Applies shot context to a Maya scene and saves a render-ready temp copy.
 Runs inside Maya (interactive or standalone). Not a subprocess itself.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import os
 
 from core.logging_config import get_logger

@@ -10,6 +10,8 @@ Primary Method: Message attributes (bidirectional, auto-cleanup)
 Fallback Method: String attributes (for locked reference nodes)
 """
 
+from __future__ import absolute_import, division, print_function
+
 import logging
 
 try:

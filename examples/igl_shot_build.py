@@ -7,7 +7,7 @@
 #             new/added weights set to 1.0 for immediate effect
 # =============================================================================
 
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 import json, ast, os, re
 import maya.cmds as cmds
 

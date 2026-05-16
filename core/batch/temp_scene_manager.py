@@ -5,6 +5,8 @@ and the count would exceed max_count, the oldest file is deleted first.
 Manifest stored as JSON alongside the temp files.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import json
 import os
 import time

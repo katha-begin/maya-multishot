@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 """Update CTX_lightGaffer_spec.md to reference CTX_gaffer_UI.md"""
 
+from __future__ import absolute_import, division, print_function
+
 import re
 
 # Read the file

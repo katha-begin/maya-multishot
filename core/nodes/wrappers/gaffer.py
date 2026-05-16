@@ -8,6 +8,8 @@ Provides high-level API for gaffer operations including:
 - Querying lights
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:

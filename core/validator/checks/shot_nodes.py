@@ -7,7 +7,7 @@ Validates that the shot exists in scene and its connections are intact:
 - Gaffer connection (if present) resolves to a valid CTX_LightGaffer node
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck

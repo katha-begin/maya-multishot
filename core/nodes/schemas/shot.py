@@ -5,6 +5,8 @@ The shot node stores shot-specific context (ep, seq, shot codes) and manages
 assets for that shot.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 from .lock_mixin import LockSchemaMixin
 

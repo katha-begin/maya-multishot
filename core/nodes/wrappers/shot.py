@@ -4,6 +4,8 @@ Wrapper for CTX_Shot node.
 Provides high-level API for shot node operations including manual wiring.
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -47,7 +49,7 @@ class CTXShotNode(NodeWrapper):
         shot_code = kwargs.get('shot_code', '')
 
         # Create node using parent class (gets auto-prefixed name)
-        instance = super().create(**kwargs)
+        instance = super(CTXShotNode, cls).create(**kwargs)
 
         # Rename to specific pattern if all codes are provided
         if ep_code and seq_code and shot_code:

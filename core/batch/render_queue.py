@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Render queue: manages a list of RenderJob objects and dispatches them across GPUs."""
 
+from __future__ import absolute_import, division, print_function
+
 import threading
 
 from core.logging_config import get_logger

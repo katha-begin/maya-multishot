@@ -7,6 +7,8 @@ gaffer attribute names, accounting for renderer-specific naming differences.
 Supported renderers: Redshift, Arnold, Maya default lights
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:

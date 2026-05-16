@@ -5,6 +5,8 @@ This module contains user-facing tools including shot manager, asset manager,
 and Maya menu integration.
 """
 
+from __future__ import absolute_import, division, print_function
+
 __version__ = "0.1.0"
 
 from . import maya_menu

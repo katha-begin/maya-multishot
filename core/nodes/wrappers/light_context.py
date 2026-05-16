@@ -8,7 +8,7 @@ Provides high-level API for light context operations including:
 - Connecting to target lights
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 import re
 
@@ -43,7 +43,7 @@ class CTXLightContextNode(NodeWrapper):
         Returns:
             CTXLightContextNode: New instance
         """
-        instance = super().create(**kwargs)
+        instance = super(CTXLightContextNode, cls).create(**kwargs)
 
         light_name = kwargs.get('lightName', '')
         if gaffer_name and light_name:

@@ -5,6 +5,8 @@ Launched from the Context Manager menu or from the Multishot Manager
 right-click Quick Render action.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import threading
 
 from core.logging_config import get_logger

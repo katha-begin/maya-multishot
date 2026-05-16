@@ -3,6 +3,8 @@
 Analog of core/gaffer/manager.py.
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
     MAYA_AVAILABLE = True

@@ -11,6 +11,8 @@ Notes:
   as bool and the application layer coerces: True -> 1.0, False -> 0.0.
 """
 
+from __future__ import absolute_import, division, print_function
+
 # Arnold light node types
 LIGHT_TYPES = [
     'aiAreaLight',

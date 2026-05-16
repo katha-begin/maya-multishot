@@ -7,6 +7,8 @@ Provides operations for:
 - Getting chain statistics and information
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:

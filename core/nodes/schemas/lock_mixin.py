@@ -4,6 +4,8 @@ Adds is_locked, locked_by, and locked_at attributes to any schema
 that inherits this mixin. Mixed in before NodeSchema in MRO.
 """
 
+from __future__ import absolute_import, division, print_function
+
 
 class LockSchemaMixin(object):
     """Mixin that adds lock state attributes to a CTX node schema.

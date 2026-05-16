@@ -5,6 +5,8 @@ The sequence node is a container for organizing shots within a sequence.
 It owns a sequence-level light gaffer for sequence-wide lighting adjustments.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 from .lock_mixin import LockSchemaMixin
 

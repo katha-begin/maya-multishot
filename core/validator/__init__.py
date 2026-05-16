@@ -18,7 +18,7 @@ Usage::
         print(report.to_text())
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 

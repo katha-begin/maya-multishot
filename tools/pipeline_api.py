@@ -14,8 +14,7 @@ Usage::
         print(a['type'], a['name'], a['file_path'])
 """
 
-from __future__ import absolute_import
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import os
 

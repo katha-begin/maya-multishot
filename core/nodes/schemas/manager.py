@@ -6,6 +6,8 @@ all shots and sequences in the scene. Only one CTX_Manager should exist
 per scene (singleton pattern).
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 
 

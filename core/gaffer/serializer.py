@@ -6,8 +6,7 @@ Operates on CTX nodes already present in the current Maya scene.
 Does NOT open or save scene files.
 """
 
-from __future__ import absolute_import
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import json
 import os

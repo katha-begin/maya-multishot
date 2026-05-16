@@ -4,6 +4,8 @@ All tests run without Maya using manual mock injection and unittest.mock,
 matching the pattern used in test_slate_nodes.py.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import sys
 import os
 import unittest

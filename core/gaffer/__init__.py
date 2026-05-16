@@ -8,6 +8,8 @@ This module provides the core gaffer functionality:
 - ChainOperations: Build and validate gaffer chains
 """
 
+from __future__ import absolute_import, division, print_function
+
 from .manager import GafferManager
 from .resolver import AttributeResolver
 from .light_ops import LightOperations

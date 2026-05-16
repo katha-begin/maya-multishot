@@ -5,6 +5,8 @@ Provides high-level API for manager node operations including manual wiring.
 The manager is a singleton - only one should exist per scene.
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -50,7 +52,7 @@ class CTXManagerNode(NodeWrapper):
             )
         
         # Create using parent class method
-        return super().create(**kwargs)
+        return super(CTXManagerNode, cls).create(**kwargs)
     
     # Manual wiring methods
     

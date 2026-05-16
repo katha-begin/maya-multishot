@@ -4,6 +4,8 @@ Tracks render status for shots in the current Maya session.
 Not persisted to disk -- cleared on scene open/new.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)

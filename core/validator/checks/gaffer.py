@@ -7,7 +7,7 @@ Validates:
 - No CTX_LightContext nodes are orphaned (exist but belong to no gaffer)
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck

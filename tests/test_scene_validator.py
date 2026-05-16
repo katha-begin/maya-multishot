@@ -5,7 +5,7 @@ All tests run without Maya (headless).  Maya-dependent checks are expected to
 return passed=True with severity='info' when MAYA_AVAILABLE is False.
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 import json
 import os

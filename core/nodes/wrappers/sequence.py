@@ -8,6 +8,8 @@ Provides high-level API for sequence operations including:
 - Connecting to gaffer
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -58,7 +60,7 @@ class CTXSequenceNode(NodeWrapper):
 
         seq_code = kwargs.get('sequenceCode', '')
 
-        instance = super().create(**kwargs)
+        instance = super(CTXSequenceNode, cls).create(**kwargs)
 
         if seq_code:
             desired_name = 'CTX_Sequence_{}'.format(seq_code)

@@ -5,6 +5,8 @@ The gaffer node manages a collection of lights with inheritance-based overrides.
 Gaffers can be chained (Master -> Sequence -> Shot) for hierarchical light management.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 from .lock_mixin import LockSchemaMixin
 

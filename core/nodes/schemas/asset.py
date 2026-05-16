@@ -5,6 +5,8 @@ The asset node stores asset-specific metadata and file paths for a particular
 asset instance in a shot.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 from .lock_mixin import LockSchemaMixin
 

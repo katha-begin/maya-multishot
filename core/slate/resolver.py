@@ -12,6 +12,8 @@ Resolution algorithm (mirrors gaffer chain walk):
   3. apply_to_scene() calls Maya Render Setup API to set renderable flags.
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
     MAYA_AVAILABLE = True

@@ -7,7 +7,7 @@ incompatible with it (e.g. .rs proxy with Arnold active).
 Skipped headlessly or when renderer detection is unavailable.
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck

@@ -6,6 +6,8 @@ captured before any gaffer is applied. This is the ground-truth baseline
 used when restoring lights on shot switch.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 
 

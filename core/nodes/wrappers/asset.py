@@ -4,6 +4,8 @@ Wrapper for CTX_Asset node.
 Provides high-level API for asset node operations including manual wiring.
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -50,7 +52,7 @@ class CTXAssetNode(NodeWrapper):
         asset_name = kwargs.get('asset_name', '')
         shot_code = kwargs.pop('shot_code', '')  # consumed here, not a schema attribute
 
-        instance = super().create(**kwargs)
+        instance = super(CTXAssetNode, cls).create(**kwargs)
 
         if asset_type and asset_name and shot_code:
             desired_name = 'CTX_Asset_{}_{}_{}'.format(asset_type, asset_name, shot_code)

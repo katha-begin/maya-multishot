@@ -7,8 +7,7 @@ inside the Maya scene. Values survive save/reload without re-capture.
 Capture happens when a light is first added to any gaffer via GafferManager.
 """
 
-from __future__ import absolute_import
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import json
 

@@ -7,7 +7,7 @@ For every CTX_Asset linked to the shot:
 - file_path must exist on disk
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 import os
 

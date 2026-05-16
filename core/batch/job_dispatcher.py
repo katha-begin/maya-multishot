@@ -4,6 +4,8 @@ One threading.Semaphore per GPU ensures at most one render process per GPU.
 Each RenderJob may produce multiple subprocess calls (one per render layer).
 """
 
+from __future__ import absolute_import, division, print_function
+
 import os
 import subprocess
 import threading
