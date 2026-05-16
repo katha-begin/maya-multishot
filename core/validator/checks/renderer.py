@@ -50,7 +50,7 @@ class RendererMatchCheck(BaseCheck):
                 details={},
             )
 
-        # Attempt renderer detection — Stream E implements this properly.
+        # Attempt renderer detection -- Stream E implements this properly.
         # Fall back gracefully if not yet available.
         try:
             from core.renderers import get_active_renderer, get_preferred_extensions

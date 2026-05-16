@@ -25,7 +25,7 @@ CTX_LOGGER_ROOT = 'ctx_tools'
 DEFAULT_FORMAT = '%(name)s [%(levelname)s] %(message)s'
 VERBOSE_FORMAT = '%(asctime)s %(name)s [%(levelname)s] %(message)s'
 
-# Internal flag — set to True after setup_logging() is called once
+# Internal flag -- set to True after setup_logging() is called once
 _logging_configured = False
 
 
@@ -99,7 +99,7 @@ def setup_logging(level='INFO', log_file=None, maya_mode=True, verbose=False):
 
     maya_handler_installed = False
 
-    # Maya output handler — only when maya_mode is requested
+    # Maya output handler -- only when maya_mode is requested
     if maya_mode:
         maya_handler = _MayaOutputHandler()
         if maya_handler._available:

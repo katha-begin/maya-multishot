@@ -117,7 +117,7 @@ def get_maya_attr(light_shape, gaffer_attr):
     if node_type in AI_LIGHT_TYPES:
         return AI_ATTR_MAP.get(gaffer_attr)
 
-    # Maya default lights — try common names only
+    # Maya default lights -- try common names only
     MAYA_DEFAULT_ATTR_MAP = {
         'intensity': 'intensity',
         'color': 'color',

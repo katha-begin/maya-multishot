@@ -31,7 +31,7 @@ ATTR_MAP = {
     # Color
     'color':                  'color',
 
-    # Mute — RS uses .on (1=enabled, 0=disabled)
+    # Mute -- RS uses .on (1=enabled, 0=disabled)
     'muted':                  'on',
 
     # Spread / cone

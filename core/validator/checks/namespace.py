@@ -19,7 +19,7 @@ class NamespaceConflictCheck(BaseCheck):
     Duplicate namespaces cause reference load failures or silent data
     corruption when the pipeline tries to apply per-shot settings.
 
-    Severity: error — duplicate namespaces will cause reference issues.
+    Severity: error -- duplicate namespaces will cause reference issues.
     Works headless (no Maya dependency).
     """
 

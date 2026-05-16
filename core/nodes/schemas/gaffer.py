@@ -2,7 +2,7 @@
 Schema definition for CTX_LightGaffer node.
 
 The gaffer node manages a collection of lights with inheritance-based overrides.
-Gaffers can be chained (Master → Sequence → Shot) for hierarchical light management.
+Gaffers can be chained (Master -> Sequence -> Shot) for hierarchical light management.
 """
 
 from ..base import NodeSchema
@@ -14,7 +14,7 @@ class CTXLightGafferSchema(LockSchemaMixin, NodeSchema):
     
     A gaffer is a container for light contexts that provides:
     - Light collection management
-    - Hierarchical inheritance (parent → child)
+    - Hierarchical inheritance (parent -> child)
     - Per-attribute override system
     - Flexible chain-based architecture (not hardcoded by type)
     """
@@ -67,7 +67,7 @@ class CTXLightGafferSchema(LockSchemaMixin, NodeSchema):
     
     CONNECTIONS = {
         # Inheritance chain connection (INPUT - receives from parent gaffer)
-        # Unidirectional: ChildGaffer.message → ParentGaffer.parentGaffer
+        # Unidirectional: ChildGaffer.message -> ParentGaffer.parentGaffer
         'parentGaffer': {
             'type': 'message',
             'multi': False,

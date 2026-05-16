@@ -37,7 +37,7 @@ class AttributeResolver(object):
     enabled value for each attribute.
     """
 
-    # Supported attributes — kept as fallback for callers that do not pass config
+    # Supported attributes -- kept as fallback for callers that do not pass config
     SUPPORTED_ATTRIBUTES = [
         'intensity',
         'exposure',

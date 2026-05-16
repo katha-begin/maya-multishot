@@ -87,7 +87,7 @@ class CTXLightContextNode(NodeWrapper):
     def get_parent_gaffer(self):
         """Get owning gaffer using unidirectional pattern.
 
-        Queries: LightContext.message → Gaffer.lights[i]
+        Queries: LightContext.message -> Gaffer.lights[i]
         Uses destination=True to traverse from child to parent.
 
         Returns:
@@ -119,7 +119,7 @@ class CTXLightContextNode(NodeWrapper):
     def set_parent_gaffer(self, gaffer):
         """Set owning gaffer using unidirectional pattern.
 
-        Creates ONE connection: LightContext.message → Gaffer.lights[i]
+        Creates ONE connection: LightContext.message -> Gaffer.lights[i]
 
         Args:
             gaffer (CTXLightGafferNode or str): Gaffer wrapper or node name
@@ -132,7 +132,7 @@ class CTXLightContextNode(NodeWrapper):
         if not cmds.objExists(gaffer_node):
             raise RuntimeError("Gaffer node does not exist: '{}'".format(gaffer_node))
 
-        # Unidirectional connection: light_context.message → gaffer.lights[i]
+        # Unidirectional connection: light_context.message -> gaffer.lights[i]
         # Parent (gaffer) owns children (light contexts)
         cmds.connectAttr(
             "{}.message".format(self.node_name),
@@ -143,7 +143,7 @@ class CTXLightContextNode(NodeWrapper):
     def get_target_light(self):
         """Get Maya light shape node.
 
-        The connection is: light_shape.message → light_ctx.targetLight
+        The connection is: light_shape.message -> light_ctx.targetLight
         So targetLight is the DESTINATION/input; query source=True to find
         what feeds into it (the light shape).
 

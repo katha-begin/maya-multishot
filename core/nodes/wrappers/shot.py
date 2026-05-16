@@ -65,7 +65,7 @@ class CTXShotNode(NodeWrapper):
     def set_parent_sequence(self, sequence):
         """Wire this shot to a parent sequence using unidirectional pattern.
 
-        Creates ONE connection: Shot.message → Sequence.shots[i]
+        Creates ONE connection: Shot.message -> Sequence.shots[i]
 
         Args:
             sequence: CTXSequenceNode instance or node name string
@@ -85,7 +85,7 @@ class CTXShotNode(NodeWrapper):
         if not cmds.objExists(sequence_node):
             raise ValueError("Sequence node does not exist: {}".format(sequence_node))
 
-        # Unidirectional connection: shot.message → sequence.shots[i]
+        # Unidirectional connection: shot.message -> sequence.shots[i]
         # Parent (sequence) owns children (shots)
         cmds.connectAttr(
             "{}.message".format(self.node_name),
@@ -96,7 +96,7 @@ class CTXShotNode(NodeWrapper):
     def set_manager(self, manager):
         """Wire this shot to a manager using unidirectional pattern (for backward compatibility).
 
-        Creates ONE connection: Shot.message → Manager.shots[i]
+        Creates ONE connection: Shot.message -> Manager.shots[i]
 
         Args:
             manager: CTXManagerNode instance or node name string
@@ -116,7 +116,7 @@ class CTXShotNode(NodeWrapper):
         if not cmds.objExists(manager_node):
             raise ValueError("Manager node does not exist: {}".format(manager_node))
 
-        # Unidirectional connection: shot.message → manager.shots[i]
+        # Unidirectional connection: shot.message -> manager.shots[i]
         # Parent (manager) owns children (shots)
         cmds.connectAttr(
             "{}.message".format(self.node_name),
@@ -127,7 +127,7 @@ class CTXShotNode(NodeWrapper):
     def add_asset(self, asset):
         """Wire an asset to this shot using unidirectional pattern.
 
-        Creates ONE connection: Asset.message → Shot.assets[i]
+        Creates ONE connection: Asset.message -> Shot.assets[i]
 
         Args:
             asset: CTXAssetNode instance or node name string
@@ -147,7 +147,7 @@ class CTXShotNode(NodeWrapper):
         if not cmds.objExists(asset_node):
             raise ValueError("Asset node does not exist: {}".format(asset_node))
 
-        # Unidirectional connection: asset.message → shot.assets[i]
+        # Unidirectional connection: asset.message -> shot.assets[i]
         # Parent (shot) owns children (assets)
         cmds.connectAttr(
             "{}.message".format(asset_node),
@@ -158,7 +158,7 @@ class CTXShotNode(NodeWrapper):
     def set_gaffer(self, gaffer):
         """Wire this shot to a shot-level gaffer using unidirectional pattern (direct ownership).
 
-        Creates ONE connection: Gaffer.message → Shot.gaffer
+        Creates ONE connection: Gaffer.message -> Shot.gaffer
 
         Args:
             gaffer: CTXLightGafferNode instance or node name string
@@ -169,7 +169,7 @@ class CTXShotNode(NodeWrapper):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        # Get gaffer node name — use str check to avoid isinstance failure after reload
+        # Get gaffer node name -- use str check to avoid isinstance failure after reload
         gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
 
         # Verify nodes exist
@@ -178,7 +178,7 @@ class CTXShotNode(NodeWrapper):
         if not cmds.objExists(gaffer_node):
             raise ValueError("Gaffer node does not exist: {}".format(gaffer_node))
 
-        # Unidirectional connection: gaffer.message → shot.gaffer
+        # Unidirectional connection: gaffer.message -> shot.gaffer
         # Shot owns gaffer (direct ownership)
         cmds.connectAttr(
             "{}.message".format(gaffer_node),
@@ -191,7 +191,7 @@ class CTXShotNode(NodeWrapper):
     def get_parent_sequence(self):
         """Get parent sequence node using unidirectional pattern.
 
-        Queries: Shot.message → Sequence.shots[i]
+        Queries: Shot.message -> Sequence.shots[i]
         Uses destination=True to traverse from child to parent.
 
         Returns:
@@ -224,7 +224,7 @@ class CTXShotNode(NodeWrapper):
     def get_manager(self):
         """Get manager node using unidirectional pattern (for backward compatibility).
 
-        Queries: Shot.message → Manager.shots[i]
+        Queries: Shot.message -> Manager.shots[i]
         Uses destination=True to traverse from child to parent.
 
         Returns:

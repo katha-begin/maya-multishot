@@ -111,23 +111,23 @@ class CTXShotSchema(LockSchemaMixin, NodeSchema):
         },
 
         # Gaffer connection (INPUT - receives from LightGaffer, direct ownership)
-        # Unidirectional: Gaffer.message → Shot.gaffer
+        # Unidirectional: Gaffer.message -> Shot.gaffer
         'gaffer': {
             'type': 'message',
             'multi': False,
             'direction': 'input',
             'accepts': ['CTX_LightGaffer'],
-            'description': 'Input connection from CTX_LightGaffer (Gaffer.message → Shot.gaffer) - Direct ownership of shot-level gaffer'
+            'description': 'Input connection from CTX_LightGaffer (Gaffer.message -> Shot.gaffer) - Direct ownership of shot-level gaffer'
         },
 
         # Asset connections (INPUT MULTI - receives from multiple Assets)
-        # Unidirectional: Asset.message → Shot.assets[i]
+        # Unidirectional: Asset.message -> Shot.assets[i]
         'assets': {
             'type': 'message',
             'multi': True,
             'direction': 'input',
             'accepts': ['CTX_Asset'],
-            'description': 'Input connections from CTX_Asset nodes (Asset.message → Shot.assets[i])'
+            'description': 'Input connections from CTX_Asset nodes (Asset.message -> Shot.assets[i])'
         },
 
         # Display layer connection (OUTPUT - sends to display layer)

@@ -557,7 +557,7 @@ class NodeManager(object):
             ns = asset.get_namespace()
             if ns in seen_namespaces:
                 logger.debug(
-                    "Skipping %s — namespace '%s' already updated by higher-priority dept",
+                    "Skipping %s -- namespace '%s' already updated by higher-priority dept",
                     asset.node_name, ns
                 )
                 continue

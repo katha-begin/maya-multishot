@@ -64,7 +64,7 @@ class GafferSerializer(object):
     def export_shot(self, shot_node, config=None):
         """Export all gaffers attached to a shot as a JSON-serializable dict.
 
-        Requires Maya — raises RuntimeError if Maya is not available.
+        Requires Maya -- raises RuntimeError if Maya is not available.
 
         Args:
             shot_node: CTXShotNode instance or node name string.
@@ -125,7 +125,7 @@ class GafferSerializer(object):
     def import_shot(self, shot_node, data, config=None):
         """Apply gaffer data dict to a shot in the current scene.
 
-        Requires Maya — raises RuntimeError if Maya is not available.
+        Requires Maya -- raises RuntimeError if Maya is not available.
 
         Args:
             shot_node: CTXShotNode instance or node name string.
@@ -150,7 +150,7 @@ class GafferSerializer(object):
         version = data.get('version', 1)
         if version != self.FORMAT_VERSION:
             logger.warning(
-                "Gaffer JSON version %s does not match expected %s — attempting import anyway",
+                "Gaffer JSON version %s does not match expected %s -- attempting import anyway",
                 version, self.FORMAT_VERSION
             )
 
@@ -490,7 +490,7 @@ class GafferSerializer(object):
                 )
         elif target_shape:
             logger.warning(
-                "Target light shape '%s' not found in scene — skipping connection",
+                "Target light shape '%s' not found in scene -- skipping connection",
                 target_shape
             )
 
@@ -521,7 +521,7 @@ class GafferSerializer(object):
                     break
 
             if group_def is None:
-                logger.debug("Unknown attribute group '%s' — skipping", group_name)
+                logger.debug("Unknown attribute group '%s' -- skipping", group_name)
                 continue
 
             _, value_attrs, has_mode = group_def
@@ -558,7 +558,7 @@ class GafferSerializer(object):
                 # Compound (list of values)
                 if not isinstance(value, (list, tuple)):
                     logger.warning(
-                        "Expected list for compound attr '%s', got %s — skipping",
+                        "Expected list for compound attr '%s', got %s -- skipping",
                         group_name, type(value).__name__
                     )
                     continue

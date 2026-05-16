@@ -64,7 +64,7 @@ try:
     import maya.cmds as cmds
     from maya import OpenMayaUI as omui
 except ImportError:
-    print("✗ ERROR: This script must be run inside Maya!")
+    print("[FAIL] ERROR: This script must be run inside Maya!")
     raise
 
 # Import Qt
@@ -78,9 +78,9 @@ except ImportError:
 # Verify imports work
 try:
     from ui.dockable_window import DockableMainWindow
-    print("✓ DockableMainWindow imported successfully")
+    print("[OK] DockableMainWindow imported successfully")
 except ImportError as e:
-    print("✗ Import error: {}".format(e))
+    print("[FAIL] Import error: {}".format(e))
     raise
 
 
@@ -141,7 +141,7 @@ def launch_dockable():
                 floating=True,
                 width=recommended_width
             )
-            print("\n✓ Multishot Manager launched with dockControl!")
+            print("\n[OK] Multishot Manager launched with dockControl!")
             print("  - Drag to left or right edge to dock")
         except Exception as e:
             # If dockControl fails, just show as regular window
@@ -151,7 +151,7 @@ def launch_dockable():
     else:
         # Fallback: show as regular window
         main_window.show()
-        print("\n✓ Multishot Manager launched as floating window!")
+        print("\n[OK] Multishot Manager launched as floating window!")
 
     return main_window
 
@@ -160,7 +160,7 @@ def launch_dockable():
 try:
     window = launch_dockable()
 except Exception as e:
-    print("✗ Failed to launch dockable window: {}".format(e))
+    print("[FAIL] Failed to launch dockable window: {}".format(e))
     import traceback
     traceback.print_exc()
     raise

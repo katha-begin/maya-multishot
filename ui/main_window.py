@@ -175,7 +175,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ["#", "Lck", "Shot", "Frame Range", "Set", "Ver", "Gaf", "Slt", "Rnd"]
         )
 
-        # Set column widths — Shot column stretches like Light column in Gaffer Manager
+        # Set column widths -- Shot column stretches like Light column in Gaffer Manager
         header = self.shot_table.horizontalHeader()
         header.setStretchLastSection(False)
 
@@ -222,7 +222,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Compact row height to match Gaffer Manager (22px)
         self.shot_table.verticalHeader().setDefaultSectionSize(22)
-        # Hide vertical header — the # column already shows row numbers
+        # Hide vertical header -- the # column already shows row numbers
         self.shot_table.verticalHeader().setVisible(False)
 
         # Enable context menu
@@ -334,7 +334,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         tools_menu.addSeparator()
 
-        # Reload action — closes and reopens both windows with fresh modules
+        # Reload action -- closes and reopens both windows with fresh modules
         reload_action = QtWidgets.QAction("Reload All Tools", self)
         reload_action.setStatusTip("Reload all modules and reopen Multishot Manager")
         reload_action.setShortcut("Ctrl+Shift+R")
@@ -384,7 +384,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 except Exception:
                     pass
 
-            # Close this window — the launch below will create a fresh one
+            # Close this window -- the launch below will create a fresh one
             self.close()
 
             # Relaunch via the same entry point used by the launch script
@@ -468,7 +468,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             wired = True
 
                     if not wired:
-                        # No sequence gaffer — wire directly to master gaffer
+                        # No sequence gaffer -- wire directly to master gaffer
                         from core.gaffer.chain_ops import ChainOperations
                         all_gaffers = ChainOperations.list_all_gaffers()
                         master_gaffers = [g['wrapper'] for g in all_gaffers
@@ -1587,9 +1587,9 @@ class MainWindow(QtWidgets.QMainWindow):
                         logger.info("Shot switch: applied gaffer chain from {}".format(
                             apply_gaffer.node_name))
                     else:
-                        # No gaffer — restore persisted originals
+                        # No gaffer -- restore persisted originals
                         restored = LightOperations.restore_originals()
-                        logger.info("Shot switch: no gaffer — restored {} original light values".format(
+                        logger.info("Shot switch: no gaffer -- restored {} original light values".format(
                             restored))
 
                 except Exception as e:

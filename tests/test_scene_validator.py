@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests for core.validator — SceneValidator, ValidatorReport, CheckResult.
+"""Tests for core.validator -- SceneValidator, ValidatorReport, CheckResult.
 
 All tests run without Maya (headless).  Maya-dependent checks are expected to
 return passed=True with severity='info' when MAYA_AVAILABLE is False.
@@ -20,7 +20,7 @@ from core.validator.base_check import BaseCheck
 
 
 # ---------------------------------------------------------------------------
-# Minimal mock objects — no Maya required
+# Minimal mock objects -- no Maya required
 # ---------------------------------------------------------------------------
 
 class _MockAsset(object):
@@ -180,7 +180,7 @@ class TestValidatorReport(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# AssetPathExistsCheck (headless — works without Maya)
+# AssetPathExistsCheck (headless -- works without Maya)
 # ---------------------------------------------------------------------------
 
 class TestAssetPathCheck(unittest.TestCase):
@@ -288,7 +288,7 @@ class TestNamespaceCheck(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# GafferChainCheck (headless — no Maya)
+# GafferChainCheck (headless -- no Maya)
 # ---------------------------------------------------------------------------
 
 class TestGafferCheck(unittest.TestCase):
@@ -313,7 +313,7 @@ class TestGafferCheck(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Maya-dependent checks — must skip gracefully when headless
+# Maya-dependent checks -- must skip gracefully when headless
 # ---------------------------------------------------------------------------
 
 class TestHeadlessSkips(unittest.TestCase):
@@ -324,7 +324,7 @@ class TestHeadlessSkips(unittest.TestCase):
     def test_frame_range_check_skipped_headless(self):
         from core.validator.checks.frame_range import FrameRangeCheck, MAYA_AVAILABLE
         if MAYA_AVAILABLE:
-            self.skipTest('Maya is available — headless skip not applicable')
+            self.skipTest('Maya is available -- headless skip not applicable')
         check = FrameRangeCheck()
         result = check.run(self._shot(), _MockConfig())
         self.assertTrue(result.passed)
@@ -334,7 +334,7 @@ class TestHeadlessSkips(unittest.TestCase):
     def test_renderer_check_skipped_headless(self):
         from core.validator.checks.renderer import RendererMatchCheck, MAYA_AVAILABLE
         if MAYA_AVAILABLE:
-            self.skipTest('Maya is available — headless skip not applicable')
+            self.skipTest('Maya is available -- headless skip not applicable')
         check = RendererMatchCheck()
         result = check.run(self._shot(), _MockConfig())
         self.assertTrue(result.passed)
@@ -343,7 +343,7 @@ class TestHeadlessSkips(unittest.TestCase):
     def test_hierarchy_check_skipped_headless(self):
         from core.validator.checks.shot_nodes import CTXNodeHierarchyCheck, MAYA_AVAILABLE
         if MAYA_AVAILABLE:
-            self.skipTest('Maya is available — headless skip not applicable')
+            self.skipTest('Maya is available -- headless skip not applicable')
         check = CTXNodeHierarchyCheck()
         result = check.run(self._shot(), _MockConfig())
         self.assertTrue(result.passed)

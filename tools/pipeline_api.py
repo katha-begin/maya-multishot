@@ -139,7 +139,7 @@ class PipelineAPI(object):
         return node
 
     # ------------------------------------------------------------------
-    # Public methods — no Maya required
+    # Public methods -- no Maya required
     # ------------------------------------------------------------------
 
     def scan_assets(self, ep, seq, shot, departments=None):
@@ -204,7 +204,7 @@ class PipelineAPI(object):
         return results
 
     # ------------------------------------------------------------------
-    # Public methods — Maya required
+    # Public methods -- Maya required
     # ------------------------------------------------------------------
 
     def validate_scene(self, scene_file, ep, seq, shot):
@@ -359,7 +359,7 @@ class PipelineAPI(object):
                     shot_node, self._get_config(), self._get_platform_config()
                 )
 
-            # Apply gaffer chain (shot gaffer → sequence gaffer → restore originals)
+            # Apply gaffer chain (shot gaffer -> sequence gaffer -> restore originals)
             gaffer_applied = False
             if apply_gaffer:
                 try:

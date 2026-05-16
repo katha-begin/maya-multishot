@@ -534,7 +534,7 @@ def open_asset_manager():
             title="Asset Manager",
             message="Asset Manager must be opened from the Context Manager.\n\n"
                     "Steps:\n"
-                    "1. Open Context Manager (CTX Tools → Context Manager)\n"
+                    "1. Open Context Manager (CTX Tools -> Context Manager)\n"
                     "2. Select a shot in the table\n"
                     "3. Click 'Manage Assets' button\n\n"
                     "The Asset Manager will open for the selected shot.",
@@ -694,7 +694,7 @@ def list_all_sequences():
             cmds.confirmDialog(
                 title="No Sequences Found",
                 message="No CTX_Sequence nodes found in the scene.\n\n"
-                        "Create one using: CTX Tools → Nodes → Create CTX_Sequence",
+                        "Create one using: CTX Tools -> Nodes -> Create CTX_Sequence",
                 button=["OK"],
                 defaultButton="OK"
             )
@@ -709,7 +709,7 @@ def list_all_sequences():
             frame_range = seq.get_frame_range()
             gaffer = seq.get_gaffer()
 
-            message += "• {} ({})\n".format(code, name)
+            message += "* {} ({})\n".format(code, name)
             message += "  Node: {}\n".format(seq.node_name)
             message += "  Frames: {}-{}\n".format(frame_range[0], frame_range[1])
             message += "  Gaffer: {}\n\n".format(gaffer or "(none)")
@@ -750,7 +750,7 @@ def list_all_gaffers():
             cmds.confirmDialog(
                 title="No Gaffers Found",
                 message="No CTX_LightGaffer nodes found in the scene.\n\n"
-                        "Create one using: CTX Tools → Nodes → Create CTX_LightGaffer",
+                        "Create one using: CTX Tools -> Nodes -> Create CTX_LightGaffer",
                 button=["OK"],
                 defaultButton="OK"
             )
@@ -766,7 +766,7 @@ def list_all_gaffers():
             parent = gaffer.get_parent_gaffer()
             lights = gaffer.get_lights()
 
-            message += "• {} ({})\n".format(name, gaffer_type)
+            message += "* {} ({})\n".format(name, gaffer_type)
             message += "  Node: {}\n".format(gaffer.node_name)
             message += "  Enabled: {}\n".format(enabled)
             message += "  Parent: {}\n".format(parent.node_name if parent else "(none)")
@@ -808,7 +808,7 @@ def list_all_light_contexts():
             cmds.confirmDialog(
                 title="No Light Contexts Found",
                 message="No CTX_LightContext nodes found in the scene.\n\n"
-                        "Create one using: CTX Tools → Nodes → Create CTX_LightContext",
+                        "Create one using: CTX Tools -> Nodes -> Create CTX_LightContext",
                 button=["OK"],
                 defaultButton="OK"
             )
@@ -821,7 +821,7 @@ def list_all_light_contexts():
             light_name = light_ctx.get_light_name()
             target_light = light_ctx.get_target_light()
 
-            message += "• {}\n".format(light_name)
+            message += "* {}\n".format(light_name)
             message += "  Node: {}\n".format(light_ctx.node_name)
             message += "  Target: {}\n\n".format(target_light or "(none)")
 
@@ -964,7 +964,7 @@ def list_all_shots():
             cmds.confirmDialog(
                 title="No Shots Found",
                 message="No CTX_Shot nodes found in the scene.\n\n"
-                        "Create one using: CTX Tools → Nodes → Create CTX_Shot",
+                        "Create one using: CTX Tools -> Nodes -> Create CTX_Shot",
                 button=["OK"],
                 defaultButton="OK"
             )
@@ -978,7 +978,7 @@ def list_all_shots():
             frame_range = shot.get_attribute('start_frame'), shot.get_attribute('end_frame')
             is_active = shot.get_attribute('is_active')
 
-            message += "• {}\n".format(shot_id)
+            message += "* {}\n".format(shot_id)
             message += "  Node: {}\n".format(shot.node_name)
             message += "  Frames: {}-{}\n".format(frame_range[0], frame_range[1])
             message += "  Active: {}\n\n".format("Yes" if is_active else "No")
@@ -1019,7 +1019,7 @@ def list_all_assets():
             cmds.confirmDialog(
                 title="No Assets Found",
                 message="No CTX_Asset nodes found in the scene.\n\n"
-                        "Create one using: CTX Tools → Nodes → Create CTX_Asset",
+                        "Create one using: CTX Tools -> Nodes -> Create CTX_Asset",
                 button=["OK"],
                 defaultButton="OK"
             )
@@ -1034,7 +1034,7 @@ def list_all_assets():
             version = asset.get_attribute('version')
             is_loaded = asset.get_attribute('is_loaded')
 
-            message += "• {}\n".format(asset_id)
+            message += "* {}\n".format(asset_id)
             message += "  Node: {}\n".format(asset.node_name)
             message += "  Version: {}\n".format(version or "(none)")
             message += "  Loaded: {}\n\n".format("Yes" if is_loaded else "No")

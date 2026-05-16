@@ -31,5 +31,5 @@ content = re.sub(section9_pattern, new_section9, content, flags=re.DOTALL)
 with open('spec/CTX_lightGaffer_spec.md', 'w', encoding='utf-8') as f:
     f.write(content)
 
-print("✅ Updated CTX_lightGaffer_spec.md - Section 9 now references CTX_gaffer_UI.md")
+print("[DONE] Updated CTX_lightGaffer_spec.md - Section 9 now references CTX_gaffer_UI.md")
 

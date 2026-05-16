@@ -45,26 +45,26 @@ logging.basicConfig(
 # Verify imports work
 try:
     from config.project_config import ProjectConfig
-    print("✓ ProjectConfig imported successfully")
+    print("[OK] ProjectConfig imported successfully")
     
     # Verify method exists
     config = ProjectConfig()
     if hasattr(config, 'get_token_values'):
-        print("✓ ProjectConfig.get_token_values() method exists")
+        print("[OK] ProjectConfig.get_token_values() method exists")
     else:
-        print("✗ WARNING: ProjectConfig.get_token_values() method NOT found!")
+        print("[FAIL] WARNING: ProjectConfig.get_token_values() method NOT found!")
     
     from core.context import ContextManager
-    print("✓ ContextManager imported successfully")
+    print("[OK] ContextManager imported successfully")
     
     from core.asset_scanner import AssetScanner
-    print("✓ AssetScanner imported successfully")
+    print("[OK] AssetScanner imported successfully")
     
     from ui.main_window import MainWindow
-    print("✓ MainWindow imported successfully")
+    print("[OK] MainWindow imported successfully")
     
 except ImportError as e:
-    print("✗ Import error: {}".format(e))
+    print("[FAIL] Import error: {}".format(e))
     raise
 
 # Launch window
@@ -89,7 +89,7 @@ try:
     # It will automatically close any existing instance
     window = MainWindow()
     window.show()
-    print("\n✓ Multishot Manager launched successfully!")
+    print("\n[OK] Multishot Manager launched successfully!")
     print("  - Only one window instance allowed at a time")
     print("  - Window stays on top of Maya")
     print("\nTo dock the window:")
@@ -98,7 +98,7 @@ try:
     print("  3. Window will resize automatically based on table content")
 
 except Exception as e:
-    print("✗ Failed to launch window: {}".format(e))
+    print("[FAIL] Failed to launch window: {}".format(e))
     import traceback
     traceback.print_exc()
     raise

@@ -180,10 +180,10 @@ class AssetWidget(QtWidgets.QWidget):
         
         # Create colored circle label
         if file_exists:
-            status_label = QtWidgets.QLabel("● Valid")
+            status_label = QtWidgets.QLabel("Valid")
             status_label.setStyleSheet("color: #00AA00;")  # Green
         else:
-            status_label = QtWidgets.QLabel("● Missing")
+            status_label = QtWidgets.QLabel("Missing")
             status_label.setStyleSheet("color: #AA0000;")  # Red
         
         layout.addWidget(status_label)

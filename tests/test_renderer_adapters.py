@@ -53,7 +53,7 @@ class TestGetActiveRenderer(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# get_preferred_extensions — no config
+# get_preferred_extensions -- no config
 # ---------------------------------------------------------------------------
 
 class TestGetPreferredExtensionsNoConfig(unittest.TestCase):
@@ -86,7 +86,7 @@ class TestGetPreferredExtensionsNoConfig(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# get_preferred_extensions — with config
+# get_preferred_extensions -- with config
 # ---------------------------------------------------------------------------
 
 class TestGetPreferredExtensionsWithConfig(unittest.TestCase):
@@ -187,7 +187,7 @@ class TestProjectConfigRendererMethods(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# NodeManager._apply_path_to_maya_node — config-driven lookup
+# NodeManager._apply_path_to_maya_node -- config-driven lookup
 # ---------------------------------------------------------------------------
 
 class TestApplyPathNodeAttrMap(unittest.TestCase):

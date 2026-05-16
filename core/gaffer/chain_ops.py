@@ -2,7 +2,7 @@
 Gaffer Chain Operations.
 
 Provides operations for:
-- Building gaffer chains (Master → Sequence → Shot)
+- Building gaffer chains (Master -> Sequence -> Shot)
 - Validating chain integrity
 - Getting chain statistics and information
 """
@@ -23,7 +23,7 @@ class ChainOperations(object):
     
     @staticmethod
     def build_gaffer_chain(master_name='Master', sequence_name=None, shot_name=None):
-        """Build a gaffer chain: Master → Sequence → Shot.
+        """Build a gaffer chain: Master -> Sequence -> Shot.
         
         Creates gaffers and connects them in a hierarchy. If gaffers already exist,
         uses existing ones.

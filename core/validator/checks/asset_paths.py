@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class AssetPathExistsCheck(BaseCheck):
     """Verify that all asset file paths are resolved and exist on disk.
 
-    Severity: error — missing files will cause render failures.
+    Severity: error -- missing files will cause render failures.
     Works fully headless (no Maya dependency).
     """
 

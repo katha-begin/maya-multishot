@@ -22,7 +22,7 @@ except ImportError:
 class FrameRangeCheck(BaseCheck):
     """Verify Maya timeline matches shot frame range stored in CTX_Shot.
 
-    Severity: warning — a mismatch is notable but the pipeline can still run.
+    Severity: warning -- a mismatch is notable but the pipeline can still run.
     Only runs when Maya is available.
     """
 
@@ -58,7 +58,7 @@ class FrameRangeCheck(BaseCheck):
                 check_name=self.name,
                 passed=True,
                 severity='info',
-                message='No frame range set on shot node — skipping check',
+                message='No frame range set on shot node -- skipping check',
                 details={},
             )
 
@@ -97,7 +97,7 @@ class FrameRangeCheck(BaseCheck):
             check_name=self.name,
             passed=False,
             severity=self.severity,
-            message='Frame range mismatch — shot: %g-%g, Maya: %g-%g' % (
+            message='Frame range mismatch -- shot: %g-%g, Maya: %g-%g' % (
                 shot_start, shot_end, maya_start, maya_end,
             ),
             details={

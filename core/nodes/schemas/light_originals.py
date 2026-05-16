@@ -12,7 +12,7 @@ from ..base import NodeSchema
 class CTXLightOriginalsSchema(NodeSchema):
     """Schema for CTX_LightOriginals node.
 
-    Singleton — at most one per scene. Stores original light values as
+    Singleton -- at most one per scene. Stores original light values as
     JSON so they survive scene save/reload without re-capture.
     """
 

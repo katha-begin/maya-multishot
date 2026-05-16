@@ -632,7 +632,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
         Args:
             ctx_node (str): CTX_Asset node name (used to read namespace attribute)
-            maya_node (str): Maya reference node name (unused — reference is found via namespace)
+            maya_node (str): Maya reference node name (unused -- reference is found via namespace)
         """
         from core.ctx_converter import CTXConverter
         from maya import cmds as _cmds
@@ -814,10 +814,10 @@ class AssetManagerDialog(QtWidgets.QDialog):
             file_exists = os.path.exists(file_path) if file_path else False
 
             if file_exists:
-                file_status_widget = QtWidgets.QLabel(u"✓ Exists")
+                file_status_widget = QtWidgets.QLabel("Exists")
                 file_status_widget.setStyleSheet("color: green; font-weight: bold;")
             else:
-                file_status_widget = QtWidgets.QLabel(u"✗ Missing")
+                file_status_widget = QtWidgets.QLabel("Missing")
                 file_status_widget.setStyleSheet("color: red; font-weight: bold;")
 
             file_status_widget.setAlignment(QtCore.Qt.AlignCenter)
@@ -833,7 +833,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 status_widget = QtWidgets.QLabel("Unlinked")
                 status_widget.setStyleSheet("color: #E0E020; font-weight: bold;")
             else:
-                # 'managed' — asset is in scene with CTX link
+                # 'managed' -- asset is in scene with CTX link
                 status = asset_data['status']
                 if status == 'valid':
                     status_widget = QtWidgets.QLabel("Up-to-date")
@@ -2409,7 +2409,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
             logger.info("Using existing CTX_Asset: {}".format(ctx_asset_name))
 
         # Link ALL CTX_Asset nodes sharing this namespace to the Maya reference.
-        # Uses namespace attribute-based lookup — handles multiple shots sharing
+        # Uses namespace attribute-based lookup -- handles multiple shots sharing
         # the same physical reference automatically.
         logger.info("Linking all CTX_Asset nodes for namespace '{}'".format(namespace))
         linked_count = self._converter.link_all_by_namespace(namespace)
@@ -2417,7 +2417,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
             logger.info("Linked {} CTX_Asset node(s) for namespace '{}'".format(
                 linked_count, namespace))
         else:
-            logger.warning("No reference found for namespace '{}' — link skipped".format(namespace))
+            logger.warning("No reference found for namespace '{}' -- link skipped".format(namespace))
 
         # Assign new CTX_Asset to display layer (CTX_Active for current shot)
         if self._layer_manager and ctx_asset_name:
