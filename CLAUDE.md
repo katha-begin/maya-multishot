@@ -1,540 +1,222 @@
-# CLAUDE.md — AI Agent Instructions for Maya Multishot Pipeline
+# CLAUDE.md
 
-> **For AI agents working on this project.** Read this before touching any code.
-> Source of truth for architecture: `spec/ARCHITECTURE_SUMMARY.md`
-> Source of truth for project overview: `AGENTS.md`
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
----
-
-## 1. Project in One Paragraph
-
-Maya Multishot Pipeline is a Maya plugin that lets artists work on multiple shots in a single Maya scene. It uses custom Maya network nodes (`CTX_Manager → CTX_Sequence → CTX_Shot → CTX_Asset`) connected via message attributes, a named-template path resolver (templates in `project_configs/ctx_config.json`, tokens like `$ep`, `$seq`, `$shot`, `$assetType`, `$assetName` — all camelCase), and a hierarchical light gaffer system (Master → Sequence → Shot). All development now uses the **schema-based node system** in `core/nodes/wrappers/` — the old `core/custom_nodes.py` is deprecated.
+> **Sources of truth**
+> - Architecture: `spec/ARCHITECTURE_SUMMARY.md`
+> - Project overview / patterns: `AGENTS.md`
+> - Schema node system: `core/nodes/AGENTS.md`
+> - Persistent session state: `.claude/memory.md` (update as you work)
 
 ---
 
-## 2. Current State (2026-03-12)
+## What this is
 
-| Phase | Status | Branch |
-|---|---|---|
-| Phase 0–5, Phase 1-schema | ✅ Complete | `feature/gaffer-system` |
-| Phase 2 — UI & Tools Framework | ✅ Complete | `feature/ui-tools-framework` |
-| Phase 3 — Gaffer System | ✅ Complete (core + UI) | `feature/ui-tools-framework` |
-| Phase 4 — Production & Automation | ✅ Complete (Streams A–E) | `feature/phase4-production-automation` |
-| Phase 5 — Batch Render | ✅ Complete | `feature/batch-render` |
-| **Phase 6 — Lock System & Slate Manager** | **✅ Complete** | `feature/phase6-lock-slate` |
+Maya plugin that lets artists work on multiple shots in a single Maya scene. Three pillars:
 
-### Phase 3 — Complete ✅
-
-All gaffer engine + UI work done. System actively tested in Maya.
-
-Key decisions made in Phase 3 (do not revert):
-- **CTX_Light write rule**: CTX nodes written ONLY via `EditMode.commit()` snapshot-diff. Never from UI widgets directly.
-- **Edit mode flow**: All edits (viewport, table, detail panel) apply to Maya live during edit mode via `cmds.setAttr()`. Commit captures changes uniformly via snapshot diff.
-- **`set_target_light()` normalization**: Always resolves to the light shape node (not transform). If a transform is passed, resolves to first child shape. Fixed in `core/nodes/wrappers/light_context.py` and entry point `GafferManager.add_light_to_gaffer()`.
-- **Window parenting**: Gaffer Manager uses `Qt::Tool` flag + parent to Maya main window (`OpenMayaUI.MQtUtil.mainWindow()` + shiboken). Stays above Maya without global topmost.
-- **Table interaction in edit mode**: Intensity/exposure cells gain `ItemIsEditable` only during edit mode. Mute checkbox and color swatch enabled only during edit mode.
-- **Right-click context menu**: Add Light, Remove Light, Clear Override accessible via right-click on lights table.
-- **Clear Override (multi-select)**: Removes a child gaffer's local CTX override, making the light fall back to the inherited parent gaffer value. Supports multi-row selection.
-
-**Completed components:**
-- `core/gaffer/` — `manager.py`, `resolver.py`, `light_ops.py`, `chain_ops.py`, `edit_mode.py`
-- `ui/gaffer_manager_dialog.py` — full gaffer UI with edit mode, right-click menu, clear override
-- `ui/light_editor_panel.py` — per-light detail editor, all widgets disabled outside edit mode
-- `ui/widgets/slider_field.py` — Maya-style QSlider + QDoubleSpinBox composite
-- Shot switching applies correct gaffer chain; originals snapshot on window open
-
-**Known remaining issues (not blocking Phase 4):**
-- `tests/test_asset_manager.py` — 10 pre-existing failures (Phase 4+ renderer work)
-- `core/ctx_converter.py::convert_to_ctx()` — still uses `core.custom_nodes`, not in active path
-
-### Phase 4 — Production & Automation ✅
-
-Full task docs at: `spec/phase4/` (INDEX.md + STREAM_A through STREAM_E)
-
-**Completed (Streams A–E):**
-- Stream A: `tools/pipeline_api.py` + `tools/cli.py` — headless API + argparse CLI (5 commands)
-- Stream B: `core/validator/` — SceneValidator with 6 named checks, ValidatorReport
-- Stream C: `core/logging_config.py` — structured logging, Maya output handler, replaced all print()
-- Stream D: Config-driven parameters — 7 hardcoded values removed, 8 new ProjectConfig methods
-- Stream E: `get_active_renderer()`, renderer config in JSON, config-driven standin paths
-
-**Remaining gaps (deferred — not blocking):**
-- No production tracker integration — shot creation is manual, frame ranges drift
-- No undo/redo — gaffer operations bypass Maya's undo stack entirely
-- Asset Manager standin creation (Stream F) — deferred
-- VRay renderer adapter — deferred
-- No farm render hook (Deadline/Tractor pre-render)
-
-**P2 gaps still open:**
-- Gaffer attributes hardcoded in Python (cannot be extended via config)
-- No farm render hook (no pre-render shot-apply for Deadline/Tractor)
-- No background threading (long operations block UI)
-- `CTXLightOriginalsNode` is a single point of failure with no recovery path
-
-**P3 gaps (polish):**
-- No VRay renderer adapter
-- No CI pipeline
-- Five orphaned UI files not yet removed
-- No gaffer-sharing visibility in UI
-
-### Phase 5 — Batch Render ✅
-
-Full task docs at: `spec/phase5/` (INDEX.md + STREAM_1A through STREAM_4)
-
-**Completed:**
-
-**Core batch package (`core/batch/`):**
-- `render_job.py` — `RenderJob` + `JobStatus` (QUEUED/PREPARING/RENDERING/DONE/FAILED/CANCELLED)
-- `gpu_inventory.py` — `detect_gpus()` via nvidia-smi, `get_available_gpus()`. `CREATE_NO_WINDOW` flag prevents console flash on Windows.
-- `temp_scene_manager.py` — FIFO ring buffer with JSON manifest, configurable max count
-- `render_setup_manager.py` — Maya Render Setup API wrapper, headless-safe
-- `scene_preparer.py` — opens scene, applies CTX context, resolves layers/camera/frames, saves temp copy
-- `job_dispatcher.py` — `threading.Semaphore(1)` per GPU; renderer and GPU env var resolved at dispatch time (never hardcoded); `MAYA_APP_DIR` unique per GPU
-- `render_queue.py` — orchestrates prepare → dispatch, round-robin GPU assignment
-- `render_state.py` — session singleton `{shot_id: status}` with listener callbacks (thread-safe)
-- `output_checker.py` — filesystem scan at resolved `imgPath`; returns HAS_OUTPUT / NO_OUTPUT / UNKNOWN
-
-**Config additions:**
-- `project_configs/ctx_config.json` — `batchRender` section (reservedGpus, tempSceneMaxCount, per-renderer gpuEnvVar)
-- `config/project_config.py` — 6 new methods: `get_batch_render_config()`, `get_reserved_gpus()`, `get_temp_scene_max_count()`, `get_temp_scene_dir()`, `get_batch_log_dir()`, `get_frame_handles()`
-- `core/renderers/__init__.py` — `get_gpu_env_var(renderer_name, config)` — returns None if not configured (CPU/unknown renderers work fine)
-
-**UI:**
-- `ui/batch_render_dialog.py` — `BatchRenderDialog(QMainWindow)`, dockable, 460×600, 22px compact rows:
-  - Monitor tab: GPU info table + persistent task table, Clear Completed, Cancel buttons
-  - Configure tab: blank shot list (Add via popup), Shot col stretches, Frame Range 80px fixed
-  - Native `menuBar()` with Tools > Settings (no inline gear button)
-  - `AddShotDialog` — lists CTX shots via `CTXShotNode.list_all()`, filter, checkboxes
-  - `get_or_create()` classmethod; `queue_quick_render_jobs()` entry point from MainWindow
-- `launch_batch_render_dockable.py` — `cmds.dockControl('BatchRenderDockControl', area='right', width=460)`
-
-**Multishot Manager additions (`ui/main_window.py`):**
-- "Rnd" column (col 6, 28px): colored `●` badge — gray=no output, orange=queued/rendering, green=done, red=failed
-- `MSceneMessage.kAfterOpen/kAfterNew` callbacks — clears state, reloads shots via `QTimer.singleShot`. Fixes stale shots bug.
-- Render state listener for real-time badge updates
-- Right-click "Quick Render (First & Last Frame)" — 2 explicit single-frame jobs per shot, current active layer only
-- Right-click "Refresh Render Status" — re-scans output_checker for all shots
-
-**Pipeline API / CLI:**
-- `tools/pipeline_api.py` — `PipelineAPI.batch_render()` added
-- `tools/cli.py` — `batch-render` subcommand with `--shots`, `--all-shots`, `--layers`, `--dry-run`, `--reserve-gpus`
-
-**Key design decisions (do not revert):**
-- Renderer is auto-detected via `get_active_renderer()` at dispatch time — no dropdown, no hardcoding
-- GPU env var comes from config only — if renderer not in config, var is simply not set
-- `CTXShotNode` API: always use `get_ep_code()`, `get_seq_code()`, `get_shot_code()` — NOT `.ep`, `.seq`, `.shot`
-- `BatchRenderDialog` must be `QMainWindow` (not `QDialog`) for `cmds.dockControl` compatibility
-- `PipelineAPI.batch_render()` must call `self._get_config()` / `self._get_platform_config()` (lazy loaders) — NOT `self._config` / `self._platform_config` (both `None` until lazy-loaded)
-- `cmds.dockControl` ordering: delete old dockControl FIRST → `processEvents()` → create new window → `processEvents()` → `findWindow()` → `dockControl(content=...)`. Skipping any step causes second-launch docking to fail silently.
-- Batch render task table: use `'-'` as layer placeholder for auto-resolved jobs; fill in actual layer name on first progress callback (row text == `'-'`)
-
-**Remaining gaps (deferred):**
-- Farm render hook (Deadline/Tractor) — not implemented
-- VRay renderer adapter — deferred
-- No undo/redo for batch operations
-
-### Phase 6 — Lock System & Slate Manager ✅
-
-Full task docs at: `spec/phase6/` (INDEX.md + STREAM_6A through STREAM_6G)
-
-**Stream 6-A — Lock Core:**
-- `core/nodes/schemas/lock_mixin.py` — `LockSchemaMixin` with `is_locked`, `locked_by`, `locked_at` attributes
-- `core/lock_manager.py` — `LockManager` static class: `lock_node()`, `unlock_node()`, `is_locked()`, `lock_sequence()` (cascades to all shots), `is_effectively_locked()`
-- Shot, Sequence, Gaffer, Asset schemas inherit `LockSchemaMixin`
-
-**Stream 6-B — Lock UI:**
-- `ui/main_window.py` — `Lck` column (col 1); lock/unlock context menu items
-- `ui/gaffer_manager_dialog.py` — lock enforcement banner; Edit Mode disabled when node is locked
-- `closeEvent`/`showEvent` use explicit `QtWidgets.QMainWindow.closeEvent(self, event)` — avoids stale `super()` after Maya module reload
-
-**Stream 6-C — Slate Nodes:**
-- `core/nodes/schemas/slate.py` — `CTXSlateSchema` (attrs: slateName, slateType, scopeCode, enabled, notes; connections: parentSlate single + layers multi)
-- `core/nodes/schemas/slate_layer.py` — `CTXSlateLayerSchema` (attrs: layerName, renderable, renderableEnabled)
-- `core/nodes/wrappers/slate.py` — `CTXSlateNode` with `_ensure_layers_attr()` + `_ensure_parent_slate_attr()` guards for pre-Phase-6 nodes
-- `core/nodes/wrappers/slate_layer.py` — `CTXSlateLayerNode`
-- Shot/Sequence wrappers gain `get_slate()`, `set_slate()`, `clear_slate()` + `_ensure_slate_attr()` guard
-
-**Stream 6-D — Slate Core:**
-- `core/slate/manager.py` — `SlateManager`: create/get slates, `add_layer_to_slate()`, naming convention `seq_{seq_code}` / `{seq_code}_{shot_code}`
-- `core/slate/resolver.py` — `SlateResolver`: `build_chain()` (circular guard), `resolve_layer_state()`, `apply_to_scene()`, `restore_originals()`, `_get_slate_for_node()`
-- `ui/main_window.py` — 9 columns: `#`, `Lck`, `Shot`, `Frame Range`, `Set`, `Ver`, `Gaf`, `Slt`, `Rnd`. `+Slt` button mirrors `+GAF`.
-
-**Stream 6-E — Slate Batch:**
-- `core/batch/scene_preparer.py` — 3-level layer priority: explicit layers > slate > scene fallback
-- `project_configs/ctx_config.json` — `slateManager` config section
-- `tools/pipeline_api.py` — `get_shot_slate_layers()` helper
-- `tools/cli.py` — `--use-slate-layers` flag on `batch-render` command
-
-**Stream 6-F — Slate UI:**
-- `ui/slate_manager_dialog.py` — `SlateManagerDialog(QMainWindow)`, dockable (545px), layout mirrors GafferManager exactly:
-  - Dropdown header (`_slate_combo`) with `[Master]`/`[seq ...]`/`[shot ...]` labels
-  - 2-column layer table (Layer, Renderable); inherited layers shown as `(inh)` rows in gray
-  - Edit mode: snapshot/diff pattern; auto-creates local layer entry when inherited row is changed in edit mode
-  - `_create_sequence_slate()` / `_create_shot_slate()` dispatch with user-specified name
-- `launch_slate_manager.py` — `cmds.dockControl` launch. Do NOT call `dlg.show()` before dockControl — causes two windows.
-- Shot-switch: Slate Manager auto-selects shot slate; falls back to sequence slate if shot has no slate
-
-**Stream 6-G — Slate Originals:**
-- `core/nodes/schemas/slate_originals.py` — `CTXSlateOriginalsSchema` singleton network node
-- `core/nodes/wrappers/slate_originals.py` — `CTXSlateOriginalsNode`: `get_or_create()`, `store_layer()`, `get_layer_renderable()`, `has_layer()`, `get_all()`, `clear()`
-- `SlateResolver.apply_to_scene()` captures originals before first override; restores originals for non-overridden layers
-- `SlateResolver.restore_originals()` restores all layers when shot has no slate at any level
-
-**Key design decisions (do not revert):**
-- `_ensure_*_attr()` pattern on all slate wrappers — required for pre-Phase-6 Maya nodes that lack the attribute
-- Slate layer `enabled=True` by default — layers participate in chain resolution unless explicitly disabled
-- SlateManager inherits same UI patterns as GafferManager (dropdown not left-panel list, edit mode, snapshot/diff commit)
-- `closeEvent`/`showEvent` in any `QMainWindow` subclass: use `QtWidgets.QMainWindow.closeEvent(self, event)` explicitly — never `super()` — to avoid stale class object after Maya module reload
-- `gpu_inventory.detect_gpus()` logs at DEBUG not INFO — avoids log spam when called frequently
-
-**Remaining gaps (deferred):**
-- Stream 6-G `restore_all()` method name in spec differs from implementation (`clear()`) — cosmetic
-- Live Maya testing for slate originals capture/restore flow (other flows validated in Maya)
+1. **Custom Maya network nodes** in a hierarchy `CTX_Manager → CTX_Sequence → CTX_Shot → CTX_Asset` connected via message attributes. All new code uses the **schema-based** wrappers in `core/nodes/wrappers/`; the older `core/custom_nodes.py` is frozen for backward compatibility (do not modify, do not import in new code).
+2. **Named-template path resolver** — templates live in `project_configs/ctx_config.json`, tokens are camelCase (`$ep`, `$seq`, `$shot`, `$assetType`, `$assetName`, `$variant`, etc.). Resolve via name (`PathResolver.resolve_path('publishPath', ctx)`), never hand-build template strings.
+3. **Hierarchical light gaffer system** — Master → Sequence → Shot, per-attribute enable flags, snapshot/diff edit-mode commit. Plus the **slate manager** (Phase 6) which mirrors gaffer patterns for renderable-layer overrides.
 
 ---
 
-## 3. Non-Negotiable Rules
+## Common commands
 
-### Code Style
-- **NO EMOJI IN `.py` FILES** — no emoji in comments, docstrings, print, logging, or names
-- Markdown files (`.md`) may use emoji
-- Python 3.7+ syntax only (Maya 2022+ constraint)
+```bash
+# Run tests (the project uses MockCmds + MAYA_AVAILABLE so most tests run without Maya)
+pytest tests/ -v
+pytest --cov=core --cov-report=html tests/
+pytest tests/test_gaffer_manager.py -v          # single file
+pytest tests/ -k "slate_resolver"               # single test by keyword
 
-### Node System: Always Use Schema-Based Wrappers
+# CLI (headless — needs mayapy or a Maya-compatible Python on PATH)
+python tools/cli.py --help
+python tools/cli.py batch-render --shots SH0170 --all-layers --dry-run
+```
 
 ```python
-# ✅ CORRECT — always use this
+# Launch the dockable Multishot Manager inside Maya
+exec(open(r'E:/dev/maya-multishot/launch_multishot_dockable.py').read())
+
+# Other launchers
+exec(open(r'.../launch_batch_render_dockable.py').read())   # Batch Render
+exec(open(r'.../launch_slate_manager.py').read())           # Slate Manager
+```
+
+**Known test gaps:** `tests/test_asset_manager.py` has 10 pre-existing failures tied to renderer work (Phase 4+); not blocking.
+
+---
+
+## Non-negotiable rules
+
+### Code style
+
+- **No emoji in `.py` files** (comments, docstrings, prints, logger messages, names). Markdown is fine.
+- Python 3.7+ syntax only (Maya 2022 constraint).
+- Use `core.logging_config.get_logger(__name__)`, not `print()`. Stream C of Phase 4 replaced every `print()` in the active path.
+
+### Node system
+
+```python
+# CORRECT
 from core.nodes.wrappers import (
     CTXManagerNode, CTXSequenceNode, CTXShotNode, CTXAssetNode,
-    CTXLightGafferNode, CTXLightContextNode
+    CTXLightGafferNode, CTXLightContextNode,
+    CTXSlateNode, CTXSlateLayerNode, CTXSlateOriginalsNode,
 )
 
-# ❌ WRONG — deprecated, do not use for new code
-from core.custom_nodes import CTXManagerNode, CTXShotNode
+# WRONG — deprecated, do not import in new code
+from core.custom_nodes import CTXManagerNode
 ```
 
-### Attribute Name: ctx_type (NOT ctx_node_type)
+- Attribute name is **`ctx_type`** (not `ctx_node_type`).
+- Connections are **unidirectional**: `child.message → parent.attribute` only. Never wire both directions.
+- `CTXShotNode` accessors: `get_ep_code()`, `get_seq_code()`, `get_shot_code()` — never `.ep`, `.seq`, `.shot`.
+- Wrapper-or-string pattern: when a method accepts `(wrapper | str)`, do `node if isinstance(node, str) else node.node_name` — never `isinstance(node, CTXFooNode)`, which breaks after Maya module reload due to stale class objects.
+- New node type: add schema in `core/nodes/schemas/`, wrapper in `core/nodes/wrappers/`, export from `core/nodes/wrappers/__init__.py`, write tests.
 
-```python
-# ✅ CORRECT
-cmds.getAttr("{}.ctx_type".format(node))
+### Frozen / off-limits
 
-# ❌ WRONG
-cmds.getAttr("{}.ctx_node_type".format(node))
-```
+- `core/custom_nodes.py` — backward-compat shim, do not modify.
+- `vendor/` — vendored third-party (NodeGraphQt).
+- `core/ctx_converter.py::convert_to_ctx()` — still references `core.custom_nodes` but is not in any active dialog/tool path; leave it.
 
-### Connections: Unidirectional Only
+### Window / dock lifecycle (`cmds.dockControl` is brittle)
 
-```python
-# ✅ CORRECT — child.message → parent.attribute (ONE direction)
-cmds.connectAttr("shot.message", "sequence.shots[0]", nextAvailable=True)
-cmds.connectAttr("gaffer.message", "sequence.gaffer")
+This bit the project repeatedly; follow the ordering exactly:
 
-# ❌ WRONG — do NOT create bidirectional connections
-cmds.connectAttr("sequence.message", "shot.parent_sequence")
-```
+1. Delete old `dockControl` first.
+2. `QtWidgets.QApplication.processEvents()`.
+3. Create the new `QMainWindow`.
+4. `processEvents()` again.
+5. `OpenMayaUI.MQtUtil.findControl(...)`.
+6. `cmds.dockControl(..., content=...)`.
 
-### Do NOT Modify
+Skipping any step causes second-launch docking to fail silently. Don't call `dlg.show()` before `dockControl` — you get two windows.
 
-- `core/custom_nodes.py` — frozen for backward compatibility
-- `vendor/` — vendored third-party code
+`closeEvent` / `showEvent` overrides in any `QMainWindow` subclass: call **`QtWidgets.QMainWindow.closeEvent(self, event)` explicitly** — never `super()`. After a Maya module reload `super()` resolves to a stale class object and crashes.
+
+Launchers clear `__pycache__` on launch to avoid stale bytecode on remote machines.
 
 ---
 
-## 4. Architecture Quick Reference
+## Architecture cheat-sheet
 
-### Node Hierarchy
+### Node hierarchy and connections
 
 ```
 CTX_Manager (singleton)
-    ↑ sequences[i]  (Sequence.message → Manager.sequences[i])
+  ↑ sequences[i]   (Sequence.message → Manager.sequences[i])
 CTX_Sequence
-    ↑ shots[i]      (Shot.message → Sequence.shots[i])
-    ↑ gaffer        (SeqGaffer.message → Sequence.gaffer)
+  ↑ shots[i]       (Shot.message → Sequence.shots[i])
+  ↑ gaffer         (SeqGaffer.message → Sequence.gaffer)
+  ↑ slate          (SeqSlate.message  → Sequence.slate)
 CTX_Shot
-    ↑ assets[i]     (Asset.message → Shot.assets[i])
-    ↑ gaffer        (ShotGaffer.message → Shot.gaffer)
+  ↑ assets[i]      (Asset.message → Shot.assets[i])
+  ↑ gaffer         (ShotGaffer.message → Shot.gaffer)
+  ↑ slate          (ShotSlate.message  → Shot.slate)
 CTX_Asset
+  ↑ targetNode     (ReferenceNode.message → Asset.targetNode)
 
-Gaffer inheritance (for light attribute resolution):
-    Master CTX_LightGaffer → Sequence CTX_LightGaffer → Shot CTX_LightGaffer
-    (walked via parentGaffer connections; enabled flag controls override vs. inherit)
+Inheritance chains (walked by resolvers, enabled flag controls override vs inherit):
+  Master Gaffer → Sequence Gaffer → Shot Gaffer    (CTXLightGaffer.parentGaffer)
+  Master Slate  → Sequence Slate  → Shot Slate     (CTXSlate.parentSlate)
 ```
 
-### Schema-Based Node Pattern
+### Path resolution
 
-```python
-# 1. Schema defines structure (in core/nodes/schemas/)
-class CTXShotSchema(NodeSchema):
-    ATTRIBUTES = {'ep': {'type': 'string', 'default': ''}, ...}
-    CONNECTIONS = {'assets': {'type': 'message', 'multi': True, 'direction': 'input'}, ...}
-
-# 2. Wrapper provides API (in core/nodes/wrappers/)
-class CTXShotNode(NodeWrapper):
-    SCHEMA = CTXShotSchema
-    def add_asset(self, asset): ...
-
-# 3. Creation
-shot = CTXShotNode.create(ep='Ep04', seq='sq0070', shot='SH0170')
-```
-
-### Token Path Resolution
-
-**Config file:** `project_configs/ctx_config.json` — defines all templates, roots, tokens, and static paths.
-
-Templates are **named keys** in config. You call the resolver by name — never by writing template strings by hand.
-
-**All tokens are camelCase:** `$projRoot`, `$assetType`, `$assetName`, `$variant`, `$heroSubdir`, etc.
-Underscore (`_`) is used as a **separator** in paths, NOT part of token names. E.g. `$ep_$seq_$shot` is three tokens.
-
-**How the resolver builds the full context** (from `core/resolver.py: _build_full_context`):
-
-```
-Auto-injected from ctx_config.json (user does NOT provide these):
-  projRoot  → "V:/"                (Windows) | "/mnt/igloo_swa_v/"  (Linux)
-  imgRoot   → "W:/"                (Windows) | "/mnt/igloo_swa_w/"  (Linux)
-  project   → "SWA"                (from config["project"]["code"])
-  sceneBase → "all/scene"          (from config["staticPaths"]["sceneBase"])
-  assetBase → "all/asset"          (from config["staticPaths"]["assetBase"])
-
-User provides in context dict:
-  ep, seq, shot, dept, ver, assetType, assetName, variant, ext, ...
-```
-
-**Real examples using actual template names from config:**
-
-```
-Template name : "publishPath"
-Config value  : "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish"
-User context  : {ep: "Ep04", seq: "sq0070", shot: "SH0170", dept: "lighting"}
-Result (Win)  : "V:\SWA\all\scene\Ep04\sq0070\SH0170\lighting\publish"
-
-Template name : "assetPath"
-Config value  : "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/
-                 $ep_$seq_$shot__$assetType_$assetName_$variant.$ext"
-User context  : {ep: "Ep04", seq: "sq0070", shot: "SH0170", dept: "lighting",
-                 ver: "v003", assetType: "CHAR", assetName: "CatStompie",
-                 variant: "001", ext: "abc"}
-Result (Win)  : "V:\SWA\all\scene\Ep04\sq0070\SH0170\lighting\publish\v003\
-                 Ep04_sq0070_SH0170__CHAR_CatStompie_001.abc"
-
-Template name : "assetHeroPath"
-Config value  : "$projRoot$project/$assetBase/$assetCategory/$assetSubdir/
-                 $assetName/$heroSubdir/$assetName.$ext"
-User context  : {assetCategory: "Character", assetSubdir: "Main",
-                 assetName: "CatStompie", ext: "abc"}
-Result (Win)  : "V:\SWA\all\asset\Character\Main\CatStompie\hero\CatStompie.abc"
-```
-
-**All template names in config:** `shotRoot`, `shotWork`, `publishPath`, `cachePath`,
-`imgPath`, `assetPath`, `assetHeroPath`, `assetShaderPath`, `assetGroomPath`,
-`assetSearchPath`, `fullFilename`, `namespace`, `namespaceShader`, `namespaceGroom`
-
-**Valid token values** (from config `"tokens"` section — enforce these patterns):
-
-| Token | Example | Pattern / Values |
-|---|---|---|
-| `$ep` | `Ep04` | `Ep\d+` |
-| `$seq` | `sq0070` | `sq\d+` |
-| `$shot` | `SH0170` | `SH\d+` |
-| `$dept` | `lighting` | `anim`, `layout`, `fx`, `lighting` |
-| `$ver` | `v003` | `v\d{3}` |
-| `$assetType` | `CHAR` | `CHAR`, `PROP`, `SETS`, `SDRS`, `VEH`, `CAM` |
-| `$assetName` | `CatStompie` | free string |
-| `$variant` | `001` | `\d{3}` |
-| `$assetCategory` | `Character` | mapped from `assetType` via config |
-| `$ext` | `abc` | see config `"extensions"` list |
-
-**Usage:**
+`project_configs/ctx_config.json` defines templates, roots, tokens, static paths. The resolver auto-injects platform-aware roots — callers only provide shot/asset context:
 
 ```python
 from config.project_config import ProjectConfig
 from config.platform_config import PlatformConfig
 from core.resolver import PathResolver
 
-config = ProjectConfig('project_configs/ctx_config.json')
-platform_config = PlatformConfig(config)
-resolver = PathResolver(config, platform_config)
-
-context = {'ep': 'Ep04', 'seq': 'sq0070', 'shot': 'SH0170', 'dept': 'lighting'}
-path = resolver.resolve_path('publishPath', context)
-# Windows: 'V:\\SWA\\all\\scene\\Ep04\\sq0070\\SH0170\\lighting\\publish'
+resolver = PathResolver(ProjectConfig('project_configs/ctx_config.json'),
+                        PlatformConfig(ProjectConfig(...)))
+path = resolver.resolve_path('publishPath',
+                             {'ep': 'Ep04', 'seq': 'sq0070', 'shot': 'SH0170', 'dept': 'lighting'})
 ```
 
-### Gaffer System — Architecture & Rules
+Auto-injected (do not pass): `projRoot`, `imgRoot`, `project`, `sceneBase`, `assetBase`. Template names are listed in `core/resolver.py`; key ones are `publishPath`, `assetPath`, `assetHeroPath`, `imgPath`, `cachePath`, `namespace`.
 
-**Gaffer is optional.** If no gaffer exists, lights use their original Maya values.
+Token patterns to honour: `$ep` = `Ep\d+`, `$seq` = `sq\d+`, `$shot` = `SH\d+`, `$ver` = `v\d{3}`, `$variant` = `\d{3}`, `$assetType` ∈ `{CHAR, PROP, SETS, SDRS, VEH, CAM}`. Underscore is a path separator, not part of token names.
 
-**Gaffer connections (all unidirectional):**
-```
-# Ownership: gaffer owned by sequence or shot
-gaffer.message  →  CTX_Sequence.gaffer
-gaffer.message  →  CTX_Shot.gaffer
+### Gaffer system rules
 
-# Inheritance chain: parent feeds INTO child's parentGaffer
-parent_gaffer.message  →  child_gaffer.parentGaffer
+- **Gaffer is optional.** No gaffer anywhere → lights restore to original Maya values from `MainWindow._light_original_values` (snapshot taken on window open).
+- **Apply order on shot switch:** shot gaffer (if any) → else sequence gaffer (if any) → else restore originals.
+- **Resolver walk order:** `[shot_gaffer, seq_gaffer, master_gaffer]`. First gaffer where `{attr}Enabled == True` wins.
+- **Edit-mode commit pattern:** all edits apply live to Maya via `cmds.setAttr()` during edit mode; commit captures changes via snapshot-diff. CTX_Light values are written **only** via `EditMode.commit()`, never directly from UI widgets.
+- **`set_target_light()` always resolves to the light shape node.** Pass a transform → it resolves to the first child shape.
+- **Attribute enable-flag naming:** simple attrs add `Enabled` (`intensity` → `intensityEnabled`); compound attrs same (`color` → `colorEnabled`, `translate` → `translateEnabled`, `shadowEnable` → `shadowEnableEnabled`).
+- **Additive mode was removed** in the May 2026 refactor — gaffer now operates strictly in override mode. The viewport HUD shows current gaffer / slate state.
 
-# Light membership: context feeds into gaffer's lights array
-light_context.message  →  gaffer.lights[i]  (nextAvailable)
-```
+### Slate system (Phase 6)
 
-**Gaffer inheritance rules:**
-- A gaffer can have 0 or 1 parent gaffers (via `parentGaffer`)
-- Child inherits ALL lights from parent; can override any inherited light's values and/or add new lights
-- Same light cannot be added twice to the same gaffer (ValueError)
-- Same light CAN exist in both parent and child (child stores override values)
-- A gaffer can be shared between shots — those shots get identical values
+Mirrors gaffer patterns: per-shot/sequence/master with `parentSlate` inheritance, snapshot/diff edit mode, originals capture/restore (`CTXSlateOriginalsNode` singleton). Naming convention: `seq_{seq_code}` and `{seq_code}_{shot_code}`. UI (`ui/slate_manager_dialog.py`) is intentionally a near-clone of `gaffer_manager_dialog.py` — keep the parallel structure when changing either.
 
-**Shot-switch apply order (in `_on_set_shot`):**
-```
-1. Shot has gaffer?       → apply it  (chain auto-walks to parent for inheritance)
-2. Shot has no gaffer?    → check if shot's sequence has a gaffer → apply that
-3. No gaffer anywhere?    → restore original light values (snapshot taken on window open)
-```
+Pre-Phase-6 Maya nodes lack the slate attributes — every slate wrapper uses an `_ensure_*_attr()` guard for safe upgrade. Don't remove these guards.
 
-**`AttributeResolver.resolve_attribute` walk order:**
-```
-[shot_gaffer, seq_gaffer, master_gaffer]  (build_chain order)
-First gaffer where {attr}Enabled == True wins → return that value
-If none found → attribute omitted (not applied)
-```
+### Batch render (Phase 5)
 
-**`isinstance` anti-pattern — DO NOT USE for wrapper classes:**
-```python
-# ❌ WRONG — breaks after module reload (stale class object)
-gaffer_node = gaffer.node_name if isinstance(gaffer, CTXLightGafferNode) else gaffer
+Lives in `core/batch/`. Key design constraints — do not regress:
 
-# ✅ CORRECT — safe across reloads
-gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
-```
-Apply this pattern everywhere a method accepts `(wrapper_or_str)`.
+- **Renderer auto-detected at dispatch time** via `core/renderers.get_active_renderer()`. No UI dropdown, no hardcoding.
+- **GPU env var resolved from config only** (`get_gpu_env_var(renderer_name, config)`). If the renderer isn't in `batchRender.gpuEnvVar`, no var is set — CPU / unknown renderers work fine.
+- **`MAYA_APP_DIR` unique per GPU** to avoid prefs collisions across concurrent dispatches.
+- **One semaphore per GPU** (`threading.Semaphore(1)`); round-robin assignment.
+- **`BatchRenderDialog` is a `QMainWindow`** (not `QDialog`) — required for `cmds.dockControl` compatibility.
+- **`PipelineAPI.batch_render()` must call lazy loaders** `self._get_config()` / `self._get_platform_config()`, never the underscore-prefixed attributes (both `None` until loaded).
+- **Layer priority in `scene_preparer`:** explicit layers > slate > scene fallback.
+- **Task table layer placeholder:** use `'-'` for auto-resolved jobs, fill in actual layer on the first progress callback.
 
-**Attribute enabled flags naming:**
-- Simple: `intensity` → `intensityEnabled`, `exposure` → `exposureEnabled`
-- Compound: `color` → `colorEnabled`, `translate` → `translateEnabled`, `rotate` → `rotateEnabled`, `scale` → `scaleEnabled`
-- `spread` → `spreadEnabled`, `shadowEnable` → `shadowEnableEnabled`
+### Lock system (Phase 6)
 
-**Original light snapshot:**
-- `MainWindow._light_original_values` — captured once in `__init__` via `_capture_all_light_originals()`
-- Restored by `_restore_light_originals()` when shot has no gaffer and no sequence gaffer
-- Format: `{light_shape_name: GafferManager.capture_light_values() dict}`
+`LockSchemaMixin` on Shot/Sequence/Gaffer/Asset schemas adds `is_locked`, `locked_by`, `locked_at`. `LockManager` static class is the only API; sequence locks cascade to all shots via `is_effectively_locked()`. UI: `Lck` column in Multishot Manager + an enforcement banner in Gaffer Manager that disables Edit Mode.
+
+### Asset reconciliation
+
+`core/asset_reconciler.py::reconcile_assets_for_shot(shot)` repairs CTX_Asset linkage on shot-switch and Validate-All: scans scene references, parses namespaces (`TYPE_Name[_Sub]_Variant`), auto-creates missing `CTX_Asset` nodes, and wires `ReferenceNode.message → CTX_Asset.targetNode`. Returns `{'created', 'linked', 'skipped'}` stats. Called from shot-switch and from the "Link to Shot" / "Validate All" context menu actions.
+
+Asset namespace linking goes through `CTXConverter.link_all_by_namespace(namespace)` — never per-node `link_ctx_asset_to_scene`. This is the canonical bulk-link method.
+
+CTX_Asset naming: `CTX_Asset_{assetType}_{assetName}_{shotCode}` (e.g. `CTX_Asset_CHAR_CatStompie_SH0170`) — one per shot, all sharing the same Maya reference via `targetNode`. The old namespace-based name caused Maya auto-increment collisions.
+
+### SETS import + decomposeMatrix
+
+SETS asset import (`tools/asset_manager.py`): one Maya reference per locator, merges on re-import, shader-only on existing geo. CHAR asset import wires `decomposeMatrix` from geo transforms to shader `place3dTexture` nodes — unlocks TRS, snaps before connect, existence-checks, auto-renames namespaces. `ShadingAttr_Grp.snow__*` buffer attributes wire through to shader `UserData` nodes (May 2026 feature).
 
 ---
 
-## 5. Key File Locations
+## Key file locations
 
 | What | Where |
 |---|---|
-| **Project config (templates, roots, tokens)** | `project_configs/ctx_config.json` |
-| **Config loader** | `config/project_config.py` → `ProjectConfig` |
-| **Platform path mapping** | `config/platform_config.py` → `PlatformConfig` |
-| **Path resolver** | `core/resolver.py` → `PathResolver` |
-| **Token expander** | `core/tokens.py` → `TokenExpander` |
-| **Schema definitions** | `core/nodes/schemas/` |
-| **Wrapper API (use this)** | `core/nodes/wrappers/` |
-| **Legacy nodes (read-only)** | `core/custom_nodes.py` |
-| **Gaffer system** | `core/gaffer/` |
-| **Main UI** | `ui/main_window.py` |
-| **Tests** | `tests/` |
-| **Launch scripts** | `launch_multishot_dockable.py` |
+| Project config (templates, roots, tokens, batchRender, slateManager) | `project_configs/ctx_config.json` |
+| Config + platform loaders | `config/project_config.py`, `config/platform_config.py` |
+| Path resolver + token expander | `core/resolver.py`, `core/tokens.py` |
+| Node schemas / wrappers (current) | `core/nodes/schemas/`, `core/nodes/wrappers/` |
+| Legacy nodes (frozen, do not modify) | `core/custom_nodes.py` |
+| Gaffer system | `core/gaffer/` |
+| Slate system | `core/slate/` |
+| Batch render | `core/batch/` |
+| Lock system | `core/lock_manager.py`, `core/nodes/schemas/lock_mixin.py` |
+| Asset reconciliation / linking | `core/asset_reconciler.py`, `core/ctx_linker.py`, `core/ctx_converter.py` |
+| Headless API / CLI | `tools/pipeline_api.py`, `tools/cli.py` |
+| Validator | `core/validator/` |
+| Logging | `core/logging_config.py` |
+| Main UI | `ui/main_window.py` |
+| Dock launchers | `launch_*.py` at repo root |
 
 ---
 
-## 6. Quick Start Commands
+## Testing without Maya
 
-```python
-# Launch Context Manager in Maya
-exec(open(r'E:/dev/maya-multishot/launch_multishot_dockable.py').read())
-
-# Create nodes
-from core.nodes.wrappers import CTXManagerNode, CTXSequenceNode, CTXShotNode, CTXLightGafferNode
-
-manager = CTXManagerNode.create(projectName='MyProject')
-seq     = CTXSequenceNode.create(sequenceCode='sq0070', sequenceName='Sequence 70')
-shot    = CTXShotNode.create(ep='Ep04', seq='sq0070', shot='SH0170')
-gaffer  = CTXLightGafferNode.create(gafferName='Master', gafferType='master')
-
-# Wire nodes (unidirectional)
-manager.add_sequence(seq)
-seq.add_shot(shot)
-seq.set_gaffer(gaffer)
-```
-
-```bash
-# Run tests
-pytest tests/ -v
-
-# Run with coverage
-pytest --cov=core --cov-report=html tests/
-
-# Run specific test file
-pytest tests/test_gaffer_manager.py -v
-```
+`tools/base_manager.py` provides `MockCmds` + the `MAYA_AVAILABLE` flag. Tests gate Maya-required logic with `@unittest.skipUnless(MAYA_AVAILABLE, "Requires Maya")`. Always write new tests so they pass in both modes (or skip cleanly without Maya); never assume Maya is present at import time.
 
 ---
 
-## 7. Authoritative Documentation
+## Memory / session continuity
 
-| Document | Use For |
-|---|---|
-| `spec/ARCHITECTURE_SUMMARY.md` | **Repository structure — SINGLE SOURCE OF TRUTH** |
-| `AGENTS.md` | Full project overview, all context, key patterns |
-| `core/nodes/AGENTS.md` | Schema-based node system technical reference |
-| `spec/NODE_ARCHITECTURE.md` | Schema system design |
-| `spec/DEVELOPMENT_PLAN.md` | Roadmap |
-| `spec/GAFFER_IMPLEMENTATION_PLAN.md` | Gaffer task breakdown |
-| `spec/CTX_lightGaffer_spec.md` | Gaffer specification |
-| `spec/PRODUCTION_READINESS.md` | **Phase 4 decision doc — strengths, gaps, recommendations** |
-| `.claude/memory.md` | **Persistent project state — update as you work** |
-
----
-
-## 8. When Writing New Code
-
-### Adding a new node type
-
-1. Create schema in `core/nodes/schemas/my_node.py`
-2. Create wrapper in `core/nodes/wrappers/my_node.py`
-3. Export from `core/nodes/wrappers/__init__.py`
-4. Write tests in `tests/test_my_node.py`
-
-### Adding a new UI dialog
-
-1. Inherit from `ui/base_dialog.py:BaseDialog` (once created in Phase 2)
-2. Implement `_setup_ui()` and `_connect_signals()` pattern
-3. Use `MAYA_AVAILABLE` guard from `tools/base_manager.py`
-
-### Adding a tool manager
-
-1. Inherit from `tools/base_manager.py:BaseManager` (once created in Phase 2)
-2. Use dependency-injected `cmds` so tests work without Maya
-
----
-
-## 9. Testing Without Maya
-
-The project uses `MockCmds` + `MAYA_AVAILABLE` pattern for testing:
-
-```python
-# tools/base_manager.py (Phase 2 target)
-try:
-    import maya.cmds as cmds
-    MAYA_AVAILABLE = True
-except ImportError:
-    from tools.base_manager import MockCmds
-    cmds = MockCmds()
-    MAYA_AVAILABLE = False
-```
-
-Tests run without Maya installed. Always write tests that work in both modes.
-
----
-
-## 10. Memory & Session Continuity
-
-After completing significant work, update `.claude/memory.md` with:
-- What was done
-- What is next
-- Any discovered issues or decisions
-
-This ensures the next AI agent session can resume without re-reading all docs.
+After non-trivial work, append to `.claude/memory.md` (newest first): what was done, what's next, decisions made. The next session resumes from there without re-reading every doc.
