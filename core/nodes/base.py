@@ -44,7 +44,14 @@ class _NodeSchemaMeta(type):
         return cls
 
 
-class NodeSchema(object, metaclass=_NodeSchemaMeta):
+# Py2/3 compatible metaclass declaration. The Py3 `metaclass=` keyword is a
+# SyntaxError on Py2.7 (Maya 2019-2021). Invoking the metaclass directly to
+# build a base class works in both, and the metaclass is inherited by
+# NodeSchema and all its subclasses.
+_NodeSchemaBase = _NodeSchemaMeta(str('_NodeSchemaBase'), (object,), {})
+
+
+class NodeSchema(_NodeSchemaBase):
     """Base class for node schema definitions.
 
     Subclasses should define:
