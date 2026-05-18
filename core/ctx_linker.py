@@ -10,6 +10,8 @@ Primary Method: Message attributes (bidirectional, auto-cleanup)
 Fallback Method: String attributes (for locked reference nodes)
 """
 
+from __future__ import absolute_import, division, print_function
+
 import logging
 
 try:
@@ -52,7 +54,7 @@ def link_to_maya_node(ctx_asset_node, maya_node):
 
     # For nodes INSIDE a reference (mesh, transform, etc.), walk up to the reference node.
     # If maya_node is already a reference node (e.g., CHAR_CatStompie_001RN), skip this
-    # step — referenceQuery(referenceNode=True) expects a member node, not the RN itself,
+    # step -- referenceQuery(referenceNode=True) expects a member node, not the RN itself,
     # and would return None or raise when called on the RN directly.
     if node_type != 'reference':
         try:
@@ -62,7 +64,7 @@ def link_to_maya_node(ctx_asset_node, maya_node):
                 maya_node = ref_node
                 node_type = cmds.nodeType(maya_node)
         except RuntimeError:
-            pass  # Not part of a reference — use maya_node as-is
+            pass  # Not part of a reference -- use maya_node as-is
 
     # Try to create message connection
     try:

@@ -7,6 +7,8 @@ This module provides the foundation for declarative node definitions:
 - NodeWrapper: High-level API for node operations
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:

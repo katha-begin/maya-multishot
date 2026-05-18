@@ -5,6 +5,8 @@ Provides attribute resolution by walking the gaffer chain to find
 the first enabled value for each attribute.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..nodes.wrappers.gaffer import CTXLightGafferNode
 from ..logging_config import get_logger
 
@@ -37,7 +39,7 @@ class AttributeResolver(object):
     enabled value for each attribute.
     """
 
-    # Supported attributes — kept as fallback for callers that do not pass config
+    # Supported attributes -- kept as fallback for callers that do not pass config
     SUPPORTED_ATTRIBUTES = [
         'intensity',
         'exposure',

@@ -5,6 +5,8 @@ The sequence node is a container for organizing shots within a sequence.
 It owns a sequence-level light gaffer for sequence-wide lighting adjustments.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 from .lock_mixin import LockSchemaMixin
 
@@ -68,13 +70,13 @@ class CTXSequenceSchema(LockSchemaMixin, NodeSchema):
     
     CONNECTIONS = {
         # Child connections (INPUT MULTI - receives from multiple Shots)
-        # Unidirectional: Shot.message → Sequence.shots[i]
+        # Unidirectional: Shot.message -> Sequence.shots[i]
         'shots': {
             'type': 'message',
             'multi': True,
             'direction': 'input',
             'accepts': ['CTX_Shot'],
-            'description': 'Input connections from CTX_Shot nodes (Shot.message → Sequence.shots[i])'
+            'description': 'Input connections from CTX_Shot nodes (Shot.message -> Sequence.shots[i])'
         },
 
         # Slate connection (INPUT - receives from CTXSlateNode)
@@ -88,13 +90,13 @@ class CTXSequenceSchema(LockSchemaMixin, NodeSchema):
         },
 
         # Gaffer connection (INPUT - receives from Gaffer)
-        # Unidirectional: Gaffer.message → Sequence.gaffer
+        # Unidirectional: Gaffer.message -> Sequence.gaffer
         'gaffer': {
             'type': 'message',
             'multi': False,
             'direction': 'input',
             'accepts': ['CTX_LightGaffer'],
-            'description': 'Input connection from CTX_LightGaffer (Gaffer.message → Sequence.gaffer)'
+            'description': 'Input connection from CTX_LightGaffer (Gaffer.message -> Sequence.gaffer)'
         },
 
         # NOTE: parentManager removed - redundant with unidirectional pattern

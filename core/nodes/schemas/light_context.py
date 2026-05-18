@@ -5,6 +5,8 @@ The light context node stores per-gaffer overrides for a specific light.
 Each attribute has a corresponding "enabled" flag to control inheritance.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 
 

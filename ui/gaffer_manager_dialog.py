@@ -2,8 +2,8 @@
 """Gaffer Manager Dialog - Manage light gaffers and overrides.
 
 Two-panel layout (Katana-style):
-  Left  — gaffer selector + search box + lights table + action buttons
-  Right — embedded LightEditorPanel (updates when a light row is selected)
+  Left  -- gaffer selector + search box + lights table + action buttons
+  Right -- embedded LightEditorPanel (updates when a light row is selected)
 """
 
 from __future__ import absolute_import
@@ -139,7 +139,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
         self._lock_banner.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(self._lock_banner)
 
-        # ── Compact header bar (gaffer + edit mode on 2 tight rows) ───
+        # -- Compact header bar (gaffer + edit mode on 2 tight rows) ---
         header_widget = QtWidgets.QWidget()
         header_widget.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
@@ -243,7 +243,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
 
         main_layout.addWidget(header_widget)
 
-        # ── Main splitter (fills all remaining space) ──────────────────
+        # -- Main splitter (fills all remaining space) ------------------
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(4)
@@ -322,7 +322,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
         btn_row.addWidget(self._apply_button)
         left_layout.addLayout(btn_row)
 
-        # Right panel — detail panel container (fills height)
+        # Right panel -- detail panel container (fills height)
         right_widget = QtWidgets.QWidget()
         right_widget.setMinimumWidth(350)
         right_widget.setSizePolicy(
@@ -497,7 +497,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
             row = self._lights_table.rowCount()
             self._lights_table.insertRow(row)
 
-            # Col 0: Light name — show "parent|lightname" with full-path tooltip
+            # Col 0: Light name -- show "parent|lightname" with full-path tooltip
             display_name, full_path = self._resolve_display_name(
                 light_name, target_shape, is_direct
             )
@@ -507,7 +507,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
                 name_item.setForeground(QtGui.QColor("#888"))
             self._lights_table.setItem(row, 0, name_item)
 
-            # Col 1: Mute — interactive checkbox
+            # Col 1: Mute -- interactive checkbox
             muted = bool(_val('muted', False))
             mute_cb = QtWidgets.QCheckBox()
             mute_cb.setChecked(muted)
@@ -522,21 +522,21 @@ class GafferManagerDialog(QtWidgets.QDialog):
             )
             self._lights_table.setCellWidget(row, 1, mute_container)
 
-            # Col 2: Intensity — read-only until edit mode
+            # Col 2: Intensity -- read-only until edit mode
             intensity = _val('intensity', 1.0)
             item = QtWidgets.QTableWidgetItem("{:.2f}".format(intensity))
             item.setTextAlignment(QtCore.Qt.AlignCenter)
             item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
             self._lights_table.setItem(row, 2, item)
 
-            # Col 3: Exposure — read-only until edit mode
+            # Col 3: Exposure -- read-only until edit mode
             exposure = _val('exposure', 0.0)
             item = QtWidgets.QTableWidgetItem("{:.2f}".format(exposure))
             item.setTextAlignment(QtCore.Qt.AlignCenter)
             item.setFlags(QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled)
             self._lights_table.setItem(row, 3, item)
 
-            # Col 4: Color swatch button — disabled until edit mode
+            # Col 4: Color swatch button -- disabled until edit mode
             color_val = _val('color', (1.0, 1.0, 1.0))
             if isinstance(color_val, (list, tuple)) and len(color_val) == 3:
                 cr, cg, cb_val = color_val
@@ -641,13 +641,13 @@ class GafferManagerDialog(QtWidgets.QDialog):
             self._detail_panel.set_editing_enabled(enabled)
 
     # ------------------------------------------------------------------
-    # Table item changed (edit mode only — applies to Maya, no CTX write)
+    # Table item changed (edit mode only -- applies to Maya, no CTX write)
     # ------------------------------------------------------------------
 
     def _on_table_item_changed(self, item):
         """Apply intensity/exposure cell edits to Maya live.
 
-        Only active during edit mode. No CTX node writes — the snapshot/diff
+        Only active during edit mode. No CTX node writes -- the snapshot/diff
         commit captures all Maya-side changes.
         """
         if self._edit_mode is None:
@@ -687,7 +687,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
     # ------------------------------------------------------------------
 
     def _on_mute_toggled(self, row, checked):
-        """Toggle mute on a Maya light directly (live preview — does NOT write to CTX nodes).
+        """Toggle mute on a Maya light directly (live preview -- does NOT write to CTX nodes).
 
         The change is temporary: switching shot will restore the gaffer-stored value.
         To persist a mute override, use Edit Mode and Commit.
@@ -746,7 +746,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
         nr, ng, nb = color.redF(), color.greenF(), color.blueF()
 
         try:
-            # Update the swatch button in the table (UI only — does NOT write to CTX nodes)
+            # Update the swatch button in the table (UI only -- does NOT write to CTX nodes)
             swatch = self._lights_table.cellWidget(row, 4)
             if swatch:
                 swatch.setStyleSheet(
@@ -758,7 +758,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
                     "R:{:.3f}  G:{:.3f}  B:{:.3f}\nClick to change color".format(nr, ng, nb)
                 )
 
-            # Apply to Maya live (temporary — switching shot restores gaffer value)
+            # Apply to Maya live (temporary -- switching shot restores gaffer value)
             target_shape = data['target_shape']
             if cmds and target_shape and cmds.objExists(target_shape):
                 shape = target_shape
@@ -1052,7 +1052,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
     # ------------------------------------------------------------------
 
     def _on_create_gaffer(self):
-        """Unified gaffer creation — asks Sequence or Shot."""
+        """Unified gaffer creation -- asks Sequence or Shot."""
         if not cmds:
             QtWidgets.QMessageBox.warning(self, "Maya Not Available",
                                           "Maya is not available.")
@@ -1203,7 +1203,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
         if not all_gaffers:
             return None
 
-        choices = ["(none — standalone)"] + [g['name'] for g in all_gaffers]
+        choices = ["(none -- standalone)"] + [g['name'] for g in all_gaffers]
         chosen, ok = QtWidgets.QInputDialog.getItem(
             self, "Parent Gaffer",
             "Inherit from (optional):", choices, 0, False
@@ -1211,7 +1211,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
         if not ok:
             return False
 
-        if chosen == "(none — standalone)":
+        if chosen == "(none -- standalone)":
             return None
 
         for g in all_gaffers:
@@ -1372,9 +1372,9 @@ class GafferManagerDialog(QtWidgets.QDialog):
         """Remove this gaffer's local CTX overrides for all selected lights.
 
         Per light:
-          - Direct + has parent value  → deletes local CTX; light becomes (inh)
-          - Direct + no parent value   → warns and removes from gaffer entirely
-          - Inherited (no local CTX)   → skipped (already fully inherited)
+          - Direct + has parent value  -> deletes local CTX; light becomes (inh)
+          - Direct + no parent value   -> warns and removes from gaffer entirely
+          - Inherited (no local CTX)   -> skipped (already fully inherited)
         """
         if not self._current_gaffer:
             QtWidgets.QMessageBox.warning(self, "No Gaffer Selected",
@@ -1420,7 +1420,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
             names = ', '.join(already_inherited) or 'selected lights'
             QtWidgets.QMessageBox.information(
                 self, "Already Inherited",
-                "{} already inherit all values from the parent gaffer — "
+                "{} already inherit all values from the parent gaffer -- "
                 "nothing to clear.".format(names)
             )
             return
@@ -1504,7 +1504,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
             node_type = cmds.nodeType(target_shape)
             if node_type == 'transform':
                 # target_shape IS the light transform (or a group).
-                # If it has direct shape children it's the light transform — select it.
+                # If it has direct shape children it's the light transform -- select it.
                 # If not (group), find the first light shape descendant and select its parent.
                 child_shapes = cmds.listRelatives(
                     target_shape, shapes=True, fullPath=True) or []
@@ -1521,7 +1521,7 @@ class GafferManagerDialog(QtWidgets.QDialog):
                     else:
                         select_node = target_shape
             else:
-                # target_shape is a shape node — select its parent transform
+                # target_shape is a shape node -- select its parent transform
                 parents = cmds.listRelatives(
                     target_shape, parent=True, fullPath=True) or []
                 select_node = parents[0] if parents else target_shape

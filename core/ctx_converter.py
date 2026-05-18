@@ -347,7 +347,7 @@ class CTXConverter(object):
 
         This is the canonical bulk-linking method. It:
         1. Finds the reference node whose Maya namespace equals the given namespace string
-           (uses cmds.referenceQuery(ref, namespace=True) — attribute-based, not name-based)
+           (uses cmds.referenceQuery(ref, namespace=True) -- attribute-based, not name-based)
         2. Finds every CTX_Asset node whose 'namespace' attribute equals that string
         3. Connects reference.message -> CTX_Asset.targetNode for all of them
 

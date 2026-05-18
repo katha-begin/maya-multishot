@@ -502,13 +502,13 @@ class DisplayLayerManager(object):
         for node in namespaced_nodes:
             parents = cmds.listRelatives(node, parent=True, fullPath=True)
 
-            # No parent → world root → top node
+            # No parent -> world root -> top node
             if not parents:
                 logger.info("Top node (world root): {}".format(node))
                 top_nodes.append(node)
                 continue
 
-            # Parent exists but not in namespace → top node
+            # Parent exists but not in namespace -> top node
             # Check if parent's full path starts with "|namespace:"
             parent_path = parents[0]
             if not parent_path.startswith("|" + ns_prefix):

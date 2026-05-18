@@ -69,7 +69,7 @@ class CreateReferenceDialog(QtWidgets.QDialog):
         geo_file = self._asset_data.get('geometry_file', '')
         geo_exists = os.path.exists(geo_file) if geo_file else False
         
-        geo_status = u"✓ " if geo_exists else u"✗ "
+        geo_status = "OK " if geo_exists else "-- "
         geo_label = QtWidgets.QLabel(geo_status + geo_file)
         geo_label.setWordWrap(True)
         if geo_exists:
@@ -90,12 +90,12 @@ class CreateReferenceDialog(QtWidgets.QDialog):
         
         if shader_exists:
             self.shader_checkbox.setChecked(True)
-            shader_status = u"✓ "
+            shader_status = "OK "
             shader_label = QtWidgets.QLabel(shader_status + shader_file)
             shader_label.setStyleSheet("color: #00AA00;")
         else:
             self.shader_checkbox.setEnabled(False)
-            shader_status = u"✗ "
+            shader_status = "-- "
             shader_label = QtWidgets.QLabel(shader_status + "Shader file not found")
             shader_label.setStyleSheet("color: #888888;")
         
@@ -115,12 +115,12 @@ class CreateReferenceDialog(QtWidgets.QDialog):
         
         if groom_exists:
             self.groom_checkbox.setChecked(True)
-            groom_status = u"✓ "
+            groom_status = "OK "
             groom_label = QtWidgets.QLabel(groom_status + groom_file)
             groom_label.setStyleSheet("color: #00AA00;")
         else:
             self.groom_checkbox.setEnabled(False)
-            groom_status = u"✗ "
+            groom_status = "-- "
             groom_label = QtWidgets.QLabel(groom_status + "Groom file not found")
             groom_label.setStyleSheet("color: #888888;")
         

@@ -7,6 +7,8 @@ Apply order (shot switch):
   3. For each gaffer, apply enabled overrides (absolute replace)
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -388,7 +390,7 @@ class LightOperations(object):
                              values['colorR'], values['colorG'], values['colorB'],
                              type='double3')
 
-            # Muted — shape attribute (RS: .on)
+            # Muted -- shape attribute (RS: .on)
             if 'muted' in values:
                 muted_attr = get_maya_attr(shape, 'muted')
                 if muted_attr and cmds.attributeQuery(muted_attr, node=shape, exists=True):
@@ -421,7 +423,7 @@ class LightOperations(object):
                         cmds.setAttr('{}.{}'.format(shape, maya_attr), values[gaffer_attr])
 
         if transform:
-            # Muted — transform visibility (both RS and non-RS lights)
+            # Muted -- transform visibility (both RS and non-RS lights)
             if 'muted' in values and cmds.attributeQuery('visibility', node=transform, exists=True):
                 cmds.setAttr('{}.visibility'.format(transform), not values['muted'])
 

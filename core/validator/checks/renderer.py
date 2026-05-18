@@ -7,7 +7,7 @@ incompatible with it (e.g. .rs proxy with Arnold active).
 Skipped headlessly or when renderer detection is unavailable.
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck
@@ -50,7 +50,7 @@ class RendererMatchCheck(BaseCheck):
                 details={},
             )
 
-        # Attempt renderer detection — Stream E implements this properly.
+        # Attempt renderer detection -- Stream E implements this properly.
         # Fall back gracefully if not yet available.
         try:
             from core.renderers import get_active_renderer, get_preferred_extensions

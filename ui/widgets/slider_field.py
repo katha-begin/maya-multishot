@@ -18,7 +18,7 @@ except ImportError:
     from PySide2.QtCore import Signal
 
 
-# Slider integer resolution — higher = smoother drag
+# Slider integer resolution -- higher = smoother drag
 _SLIDER_STEPS = 10000
 
 # Per-attribute configuration:

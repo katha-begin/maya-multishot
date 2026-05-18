@@ -4,6 +4,8 @@ Works without any extra Python packages. nvidia-smi ships with the
 NVIDIA driver and is available on AWS EC2 G4dn instances.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import subprocess
 import os
 

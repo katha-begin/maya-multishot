@@ -8,6 +8,8 @@ Provides high-level API for sequence operations including:
 - Connecting to gaffer
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -58,7 +60,7 @@ class CTXSequenceNode(NodeWrapper):
 
         seq_code = kwargs.get('sequenceCode', '')
 
-        instance = super().create(**kwargs)
+        instance = super(CTXSequenceNode, cls).create(**kwargs)
 
         if seq_code:
             desired_name = 'CTX_Sequence_{}'.format(seq_code)
@@ -99,7 +101,7 @@ class CTXSequenceNode(NodeWrapper):
     def set_parent_manager(self, manager):
         """Connect to parent manager using unidirectional pattern.
 
-        Creates ONE connection: Sequence.message → Manager.sequences[i]
+        Creates ONE connection: Sequence.message -> Manager.sequences[i]
 
         Args:
             manager (CTXManagerNode or str): Manager wrapper or node name
@@ -113,7 +115,7 @@ class CTXSequenceNode(NodeWrapper):
         else:
             manager_node = str(manager)
 
-        # Unidirectional connection: sequence.message → manager.sequences[i]
+        # Unidirectional connection: sequence.message -> manager.sequences[i]
         # Parent (manager) owns children (sequences)
         cmds.connectAttr(
             "{}.message".format(self.node_name),
@@ -124,7 +126,7 @@ class CTXSequenceNode(NodeWrapper):
     def get_parent_manager(self):
         """Get parent manager using unidirectional pattern.
 
-        Queries: Sequence.message → Manager.sequences[i]
+        Queries: Sequence.message -> Manager.sequences[i]
         Uses destination=True to traverse from child to parent.
 
         Returns:
@@ -154,7 +156,7 @@ class CTXSequenceNode(NodeWrapper):
     def set_gaffer(self, gaffer):
         """Connect to sequence gaffer using unidirectional pattern.
 
-        Creates ONE connection: Gaffer.message → Sequence.gaffer
+        Creates ONE connection: Gaffer.message -> Sequence.gaffer
 
         Args:
             gaffer (CTXLightGafferNode or str): Gaffer wrapper or node name
@@ -162,10 +164,10 @@ class CTXSequenceNode(NodeWrapper):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        # Get gaffer node name — use str check to avoid isinstance failure after reload
+        # Get gaffer node name -- use str check to avoid isinstance failure after reload
         gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
 
-        # Unidirectional connection: gaffer.message → sequence.gaffer
+        # Unidirectional connection: gaffer.message -> sequence.gaffer
         # Sequence owns gaffer (direct ownership)
         cmds.connectAttr(
             "{}.message".format(gaffer_node),
@@ -259,7 +261,7 @@ class CTXSequenceNode(NodeWrapper):
         else:
             shot_node = str(shot)
 
-        # Connect: shot.message → sequence.shots (multi)
+        # Connect: shot.message -> sequence.shots (multi)
         cmds.connectAttr(
             "{}.message".format(shot_node),
             "{}.shots".format(self.node_name),

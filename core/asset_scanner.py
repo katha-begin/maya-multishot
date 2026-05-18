@@ -115,7 +115,7 @@ class AssetScanner(object):
         for asset_key, asset_data in master_assets.items():
             asset_type, asset_name, variant = asset_key
 
-            # Check by identity only (no dept) — any previously created node blocks duplicates
+            # Check by identity only (no dept) -- any previously created node blocks duplicates
             already_linked = any(
                 a.get_asset_type() == asset_type and
                 a.get_asset_name() == asset_name and
@@ -151,7 +151,7 @@ class AssetScanner(object):
     def _discover_assets_in_dept(self, ep, seq, shot, dept):
         """Scan a department publish directory and return discovered assets.
 
-        Pure filesystem discovery — does NOT create CTX nodes.
+        Pure filesystem discovery -- does NOT create CTX nodes.
 
         Args:
             ep (str): Episode code

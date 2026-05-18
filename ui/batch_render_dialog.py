@@ -5,6 +5,8 @@ Launched from the Context Manager menu or from the Multishot Manager
 right-click Quick Render action.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import threading
 
 from core.logging_config import get_logger
@@ -985,7 +987,7 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
             if layer and row_layer:
                 row_layer_text = row_layer.text()
                 if row_layer_text == '-':
-                    # Placeholder row — fill in the actual resolved layer name
+                    # Placeholder row -- fill in the actual resolved layer name
                     row_layer.setText(layer)
                 elif row_layer_text not in (layer, '(all renderable)'):
                     continue

@@ -5,7 +5,7 @@ This script tests different methods to control display layer visibility.
 Run this in Maya Script Editor to test.
 """
 
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 import maya.cmds as cmds
 
 def test_display_layer_visibility():

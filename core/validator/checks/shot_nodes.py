@@ -7,7 +7,7 @@ Validates that the shot exists in scene and its connections are intact:
 - Gaffer connection (if present) resolves to a valid CTX_LightGaffer node
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck
@@ -24,7 +24,7 @@ except ImportError:
 class CTXNodeHierarchyCheck(BaseCheck):
     """Verify that shot node hierarchy connections are intact.
 
-    Severity: error — a broken hierarchy means scene data is unreliable.
+    Severity: error -- a broken hierarchy means scene data is unreliable.
     """
 
     name = 'ctx_node_hierarchy'
@@ -108,7 +108,7 @@ class CTXNodeHierarchyCheck(BaseCheck):
                 parts.append('missing connections: %s' % ', '.join(missing_connections))
             if dangling_assets:
                 parts.append('dangling assets: %s' % ', '.join(dangling_assets))
-            msg = 'Hierarchy issues found — ' + '; '.join(parts)
+            msg = 'Hierarchy issues found -- ' + '; '.join(parts)
 
         return CheckResult(
             check_name=self.name,

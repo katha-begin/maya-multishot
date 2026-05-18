@@ -4,6 +4,8 @@ Wrapper for CTX_Asset node.
 Provides high-level API for asset node operations including manual wiring.
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -50,7 +52,7 @@ class CTXAssetNode(NodeWrapper):
         asset_name = kwargs.get('asset_name', '')
         shot_code = kwargs.pop('shot_code', '')  # consumed here, not a schema attribute
 
-        instance = super().create(**kwargs)
+        instance = super(CTXAssetNode, cls).create(**kwargs)
 
         if asset_type and asset_name and shot_code:
             desired_name = 'CTX_Asset_{}_{}_{}'.format(asset_type, asset_name, shot_code)
@@ -67,7 +69,7 @@ class CTXAssetNode(NodeWrapper):
     def set_parent_shot(self, shot):
         """Wire this asset to a parent shot using unidirectional pattern.
 
-        Creates ONE connection: Asset.message → Shot.assets[i]
+        Creates ONE connection: Asset.message -> Shot.assets[i]
 
         Args:
             shot: CTXShotNode instance or node name string
@@ -87,7 +89,7 @@ class CTXAssetNode(NodeWrapper):
         if not cmds.objExists(shot_node):
             raise ValueError("Shot node does not exist: {}".format(shot_node))
 
-        # Unidirectional connection: asset.message → shot.assets[i]
+        # Unidirectional connection: asset.message -> shot.assets[i]
         # Parent (shot) owns children (assets)
         cmds.connectAttr(
             "{}.message".format(self.node_name),
@@ -100,7 +102,7 @@ class CTXAssetNode(NodeWrapper):
     def get_parent_shot(self):
         """Get parent shot node using unidirectional pattern.
 
-        Queries: Asset.message → Shot.assets[i]
+        Queries: Asset.message -> Shot.assets[i]
         Uses destination=True to traverse from child to parent.
 
         Returns:

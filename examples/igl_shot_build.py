@@ -7,7 +7,7 @@
 #             new/added weights set to 1.0 for immediate effect
 # =============================================================================
 
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 import json, ast, os, re
 import maya.cmds as cmds
 
@@ -2519,9 +2519,9 @@ class ShotBuildTab(QtWidgets.QWidget):
                 # Process each shader namespace (usually just one, but handle multiple)
                 for shader_ns in shader_namespaces:
                     if shader_ns != expected_shader_ns:
-                        self._log("[PLACE3D] Processing: {} (geo) ↔ {} (shader - AUTO-RENAMED)".format(geo_ns, shader_ns))
+                        self._log("[PLACE3D] Processing: {} (geo) <-> {} (shader - AUTO-RENAMED)".format(geo_ns, shader_ns))
                     else:
-                        self._log("[PLACE3D] Processing: {} (geo) ↔ {} (shader)".format(geo_ns, shader_ns))
+                        self._log("[PLACE3D] Processing: {} (geo) <-> {} (shader)".format(geo_ns, shader_ns))
 
                     # Use same logic as working Place3D tab
                     geo_suffix = "_Grp"
@@ -2595,7 +2595,7 @@ class ShotBuildTab(QtWidgets.QWidget):
                     self._log("[INFO] No groom namespace for BlendShape: {}".format(groom_ns))
                     continue
 
-                self._log("[BLENDSHAPE] Processing: {} (anim) ↔ {} (groom)".format(anim_ns, groom_ns))
+                self._log("[BLENDSHAPE] Processing: {} (anim) <-> {} (groom)".format(anim_ns, groom_ns))
 
                 # Use EXACT same logic as working groom.py
                 anim_suffix = "_Geo"
@@ -3685,7 +3685,7 @@ class ShotBuildTab(QtWidgets.QWidget):
 
             # Strategy 3: If still no bindings, try more aggressive approach
             if bound_count == 0 and rs_mesh_sets and top_level_transforms:
-                self._log("🚨 AGGRESSIVE: Trying to bind any transform to any rsMeshParameters set")
+                self._log("AGGRESSIVE: Trying to bind any transform to any rsMeshParameters set")
                 # Just try to add the first transform to the first set as a test
                 first_transform = top_level_transforms[0]
                 first_set = rs_mesh_sets[0]
@@ -4904,8 +4904,8 @@ def _matrix_transfer_transform(src_xform, dst_node, force=False, dry_run=False):
 
     Method:
     1. Create decomposeMatrix node
-    2. Connect src_xform.worldMatrix[0] → decomposeMatrix.inputMatrix
-    3. Connect decomposeMatrix outputs → dst_node (translate, rotate, scale, shear)
+    2. Connect src_xform.worldMatrix[0] -> decomposeMatrix.inputMatrix
+    3. Connect decomposeMatrix outputs -> dst_node (translate, rotate, scale, shear)
 
     Args:
         src_xform (str): Source transform node (e.g., "CHAR_Kit_001:Body_Grp")
@@ -5312,7 +5312,7 @@ class MatrixPlace3DTab(QtWidgets.QWidget):
 
         # Actions
         row_btns = QtWidgets.QHBoxLayout()
-        self.btn_scan = QtWidgets.QPushButton("Scan (Place3D → Geo)")
+        self.btn_scan = QtWidgets.QPushButton("Scan (Place3D -> Geo)")
         self.btn_apply = QtWidgets.QPushButton("Apply Matrix Transfer")
         self.btn_apply.setStyleSheet("font-weight: bold; background-color: #2196F3; color: white;")
         row_btns.addStretch(1)

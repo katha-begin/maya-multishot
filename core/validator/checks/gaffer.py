@@ -7,7 +7,7 @@ Validates:
 - No CTX_LightContext nodes are orphaned (exist but belong to no gaffer)
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck
@@ -26,7 +26,7 @@ _MAX_CHAIN_HOPS = 10
 class GafferChainCheck(BaseCheck):
     """Validate the gaffer chain attached to this shot.
 
-    Severity: warning — a broken gaffer chain causes incorrect lighting but
+    Severity: warning -- a broken gaffer chain causes incorrect lighting but
     does not necessarily prevent a render from starting.
     """
 
@@ -36,7 +36,7 @@ class GafferChainCheck(BaseCheck):
     def run(self, shot_node, config, platform_config=None, **kwargs):
         from core.validator import CheckResult
 
-        # Get shot gaffer — returns node name string or None
+        # Get shot gaffer -- returns node name string or None
         try:
             gaffer = shot_node.get_gaffer()
         except Exception as exc:
@@ -88,7 +88,7 @@ class GafferChainCheck(BaseCheck):
 
         if hops > _MAX_CHAIN_HOPS:
             cycles_found = True
-            logger.warning('Gaffer chain exceeded %d hops — likely a cycle', _MAX_CHAIN_HOPS)
+            logger.warning('Gaffer chain exceeded %d hops -- likely a cycle', _MAX_CHAIN_HOPS)
 
         # Validate all light contexts in each gaffer in chain
         for chain_gaffer in chain_nodes:

@@ -4,6 +4,8 @@ Provides a stable interface for enumerating and switching render layers.
 Headless-safe: all methods return safe defaults when Maya is unavailable.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)

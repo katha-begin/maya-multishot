@@ -5,6 +5,8 @@ Provides high-level API for manager node operations including manual wiring.
 The manager is a singleton - only one should exist per scene.
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -50,14 +52,14 @@ class CTXManagerNode(NodeWrapper):
             )
         
         # Create using parent class method
-        return super().create(**kwargs)
+        return super(CTXManagerNode, cls).create(**kwargs)
     
     # Manual wiring methods
     
     def add_sequence(self, sequence):
         """Wire a sequence to this manager using unidirectional pattern.
 
-        Creates ONE connection: Sequence.message → Manager.sequences[i]
+        Creates ONE connection: Sequence.message -> Manager.sequences[i]
 
         Args:
             sequence: CTXSequenceNode instance or node name string
@@ -77,7 +79,7 @@ class CTXManagerNode(NodeWrapper):
         if not cmds.objExists(sequence_node):
             raise ValueError("Sequence node does not exist: {}".format(sequence_node))
 
-        # Unidirectional connection: sequence.message → manager.sequences[i]
+        # Unidirectional connection: sequence.message -> manager.sequences[i]
         # Parent (manager) owns children (sequences)
         cmds.connectAttr(
             "{}.message".format(sequence_node),
@@ -88,7 +90,7 @@ class CTXManagerNode(NodeWrapper):
     def add_shot(self, shot):
         """Wire a shot to this manager using unidirectional pattern (for backward compatibility).
 
-        Creates ONE connection: Shot.message → Manager.shots[i]
+        Creates ONE connection: Shot.message -> Manager.shots[i]
 
         Args:
             shot: CTXShotNode instance or node name string
@@ -108,7 +110,7 @@ class CTXManagerNode(NodeWrapper):
         if not cmds.objExists(shot_node):
             raise ValueError("Shot node does not exist: {}".format(shot_node))
 
-        # Unidirectional connection: shot.message → manager.shots[i]
+        # Unidirectional connection: shot.message -> manager.shots[i]
         # Parent (manager) owns children (shots)
         cmds.connectAttr(
             "{}.message".format(shot_node),

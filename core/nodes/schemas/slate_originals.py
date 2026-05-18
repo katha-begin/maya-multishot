@@ -4,6 +4,8 @@ Singleton node per scene. Stores the renderable state of all render layers
 before any slate override is applied.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 
 

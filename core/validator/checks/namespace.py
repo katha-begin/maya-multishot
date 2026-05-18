@@ -5,7 +5,7 @@ No two CTX_Asset nodes on the same shot may share the same namespace string.
 Works fully headless.
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck
@@ -19,7 +19,7 @@ class NamespaceConflictCheck(BaseCheck):
     Duplicate namespaces cause reference load failures or silent data
     corruption when the pipeline tries to apply per-shot settings.
 
-    Severity: error — duplicate namespaces will cause reference issues.
+    Severity: error -- duplicate namespaces will cause reference issues.
     Works headless (no Maya dependency).
     """
 

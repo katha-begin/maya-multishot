@@ -4,6 +4,8 @@
 All tests run without Maya installed by patching the cmds import.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import sys
 import os
 import unittest

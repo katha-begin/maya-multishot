@@ -8,6 +8,8 @@ IMPORTANT: This module also re-exports NodeManager from the legacy core.nodes mo
 to maintain backward compatibility with existing code (ui/main_window.py).
 """
 
+from __future__ import absolute_import, division, print_function
+
 from .base import NodeSchema, NodeFactory, NodeWrapper
 
 # Import NodeManager from the parent core module (core/nodes.py file)

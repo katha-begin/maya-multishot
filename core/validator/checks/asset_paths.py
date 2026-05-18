@@ -7,7 +7,7 @@ For every CTX_Asset linked to the shot:
 - file_path must exist on disk
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 import os
 
@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 class AssetPathExistsCheck(BaseCheck):
     """Verify that all asset file paths are resolved and exist on disk.
 
-    Severity: error — missing files will cause render failures.
+    Severity: error -- missing files will cause render failures.
     Works fully headless (no Maya dependency).
     """
 

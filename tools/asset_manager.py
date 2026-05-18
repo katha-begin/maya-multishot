@@ -596,7 +596,7 @@ def _connect_decomp_matrix(src_xform, dst_node, force=False):
         force (bool): If True, replace existing decomposeMatrix connection
 
     Returns:
-        str: Status — 'matrix-linked', 'already-connected', 'skipped', or 'error: ...'
+        str: Status -- 'matrix-linked', 'already-connected', 'skipped', or 'error: ...'
     """
     if not MAYA_AVAILABLE:
         return 'skipped'
@@ -622,7 +622,7 @@ def _connect_decomp_matrix(src_xform, dst_node, force=False):
             expected = '{}.worldMatrix[0]'.format(src_xform)
             if expected in input_conns:
                 return 'already-connected'
-            # Wrong source but force not set — leave it alone
+            # Wrong source but force not set -- leave it alone
             return 'skipped'
 
         if existing_decomp and force:
@@ -714,8 +714,8 @@ def _connect_place3d_for_char(geo_namespace, shader_namespace):
     its matching geo transform via decomposeMatrix.
 
     Full flow per pair (mirrors igl_shot_build._auto_place3d_linker):
-      1. _snap_trs_world  — position Place3dTexture at geo's world TRS
-      2. _connect_decomp_matrix — live connection via decomposeMatrix
+      1. _snap_trs_world  -- position Place3dTexture at geo's world TRS
+      2. _connect_decomp_matrix -- live connection via decomposeMatrix
 
     Handles Maya auto-renamed shader namespaces (_Shade1, _Shade2, etc.).
 
@@ -729,7 +729,7 @@ def _connect_place3d_for_char(geo_namespace, shader_namespace):
     if not MAYA_AVAILABLE:
         return 0
 
-    # Collect shader namespaces — include auto-renamed variants (_Shade1, _Shade2)
+    # Collect shader namespaces -- include auto-renamed variants (_Shade1, _Shade2)
     shader_namespaces = []
     if cmds.namespace(exists=shader_namespace):
         shader_namespaces.append(shader_namespace)
@@ -922,7 +922,7 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
     set_exists = cmds.namespace(exists=set_namespace)
 
     if set_exists:
-        # Already imported — merge the alembic to reposition locators
+        # Already imported -- merge the alembic to reposition locators
         main_grp = '{}:Main_Grp'.format(set_namespace)
         if cmds.objExists(main_grp):
             try:
@@ -954,7 +954,7 @@ def import_sets_asset(shot_info, sets_abc_path, config, platform_config):
 
     for locator in locators:
         loc_short = locator.split(':')[-1]  # e.g. KBDIntCelling_001_Loc
-        # Asset names are camelCase — strip _Loc, split once on last _ for id
+        # Asset names are camelCase -- strip _Loc, split once on last _ for id
         loc_base = loc_short[:-4] if loc_short.endswith('_Loc') else loc_short
         loc_tokens = loc_base.rsplit('_', 1)
         if len(loc_tokens) != 2:

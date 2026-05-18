@@ -8,6 +8,8 @@ Provides high-level API for gaffer operations including:
 - Querying lights
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -50,7 +52,7 @@ class CTXLightGafferNode(NodeWrapper):
     def set_parent_gaffer(self, parent_gaffer):
         """Set parent gaffer in inheritance chain using unidirectional pattern.
 
-        Creates ONE connection: ChildGaffer.message → ParentGaffer.parentGaffer
+        Creates ONE connection: ChildGaffer.message -> ParentGaffer.parentGaffer
 
         Note: This creates the inheritance chain connection, NOT the ownership connection.
         Ownership is handled separately via Sequence.gaffer or Shot.gaffer.
@@ -63,7 +65,7 @@ class CTXLightGafferNode(NodeWrapper):
 
         parent_node = parent_gaffer if isinstance(parent_gaffer, str) else parent_gaffer.node_name
 
-        # Unidirectional connection: parent_gaffer.message → child_gaffer.parentGaffer
+        # Unidirectional connection: parent_gaffer.message -> child_gaffer.parentGaffer
         # This creates the inheritance chain for attribute resolution
         cmds.connectAttr(
             "{}.message".format(parent_node),
@@ -74,7 +76,7 @@ class CTXLightGafferNode(NodeWrapper):
     def get_child_gaffers(self):
         """Get child gaffers that inherit from this gaffer using unidirectional pattern.
 
-        Queries: ParentGaffer.message → ChildGaffer.parentGaffer
+        Queries: ParentGaffer.message -> ChildGaffer.parentGaffer
         Uses destination=True to find children that reference this gaffer as parent.
 
         Returns:

@@ -6,6 +6,8 @@ Key:   gaffer attribute name (as stored in CTXLightContextSchema)
 Value: Maya attribute name on the light shape node
 """
 
+from __future__ import absolute_import, division, print_function
+
 # Redshift light node types
 LIGHT_TYPES = [
     'RedshiftPhysicalLight',
@@ -31,7 +33,7 @@ ATTR_MAP = {
     # Color
     'color':                  'color',
 
-    # Mute — RS uses .on (1=enabled, 0=disabled)
+    # Mute -- RS uses .on (1=enabled, 0=disabled)
     'muted':                  'on',
 
     # Spread / cone

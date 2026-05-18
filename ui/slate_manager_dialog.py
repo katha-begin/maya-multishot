@@ -127,7 +127,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         self._lock_banner.setAlignment(QtCore.Qt.AlignCenter)
         main_layout.addWidget(self._lock_banner)
 
-        # ── Compact header (mirrors gaffer header exactly) ──────────────
+        # -- Compact header (mirrors gaffer header exactly) --------------
         header_widget = QtWidgets.QWidget()
         header_widget.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
@@ -227,7 +227,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
 
         main_layout.addWidget(header_widget)
 
-        # ── Body: search box + layer table ─────────────────────────────
+        # -- Body: search box + layer table -----------------------------
         body_widget = QtWidgets.QWidget()
         body_widget.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding

@@ -196,9 +196,14 @@ Full task docs at: `spec/phase6/` (INDEX.md + STREAM_6A through STREAM_6G)
 ## 3. Non-Negotiable Rules
 
 ### Code Style
-- **NO EMOJI IN `.py` FILES** — no emoji in comments, docstrings, print, logging, or names
-- Markdown files (`.md`) may use emoji
-- Python 3.7+ syntax only (Maya 2022+ constraint)
+- **NO EMOJI / NO NON-ASCII IN `.py` FILES** — applies to comments, docstrings, print, logging,
+  variable names, and UI string literals. Plain ASCII only. Markdown files (`.md`) may use emoji.
+  Use `[OK]` / `[FAIL]` / `[DONE]` for status prefixes, `->` / `<->` for arrows, `--` for em dashes.
+- **Python 2.7–3.x compatible** — supports Maya 2019+ (Maya 2019–2021 = Python 2.7, Maya 2022+ = Python 3.7+).
+  - Every `.py` file must start with: `from __future__ import absolute_import, division, print_function`
+  - No bare `super()` — always `super(ClassName, self)` or `super(ClassName, cls)`
+  - No f-strings, no type hints, no `yield from`, no `async/await`, no `pathlib`, no `raise X from Y`
+  - Use `.format()` for string interpolation
 
 ### Node System: Always Use Schema-Based Wrappers
 

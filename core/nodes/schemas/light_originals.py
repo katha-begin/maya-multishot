@@ -6,13 +6,15 @@ captured before any gaffer is applied. This is the ground-truth baseline
 used when restoring lights on shot switch.
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 
 
 class CTXLightOriginalsSchema(NodeSchema):
     """Schema for CTX_LightOriginals node.
 
-    Singleton — at most one per scene. Stores original light values as
+    Singleton -- at most one per scene. Stores original light values as
     JSON so they survive scene save/reload without re-capture.
     """
 

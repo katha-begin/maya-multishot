@@ -126,7 +126,7 @@ class ImportAssetDialog(QtWidgets.QDialog):
         preview_layout.addWidget(self.path_preview)
         
         # Validation status
-        self.validation_label = QtWidgets.QLabel("✓ File exists")
+        self.validation_label = QtWidgets.QLabel("File exists")
         self.validation_label.setStyleSheet("color: #00AA00;")
         preview_layout.addWidget(self.validation_label)
         

@@ -4,6 +4,8 @@ Node wrapper classes for CTX pipeline.
 This module contains high-level API wrappers for CTX nodes.
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as _cmds
     MAYA_AVAILABLE = True

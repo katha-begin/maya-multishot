@@ -7,8 +7,7 @@ Provides shared infrastructure used by all tool managers:
 - BaseManager base class with dependency-injected cmds
 """
 
-from __future__ import absolute_import
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 

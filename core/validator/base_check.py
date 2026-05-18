@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Base class for all scene validator checks."""
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 

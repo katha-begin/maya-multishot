@@ -4,6 +4,8 @@ Scans the resolved imgPath directory to determine if render output
 exists for a given shot at its current version. No Maya required.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import os
 
 from core.logging_config import get_logger

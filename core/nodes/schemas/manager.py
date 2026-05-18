@@ -6,6 +6,8 @@ all shots and sequences in the scene. Only one CTX_Manager should exist
 per scene (singleton pattern).
 """
 
+from __future__ import absolute_import, division, print_function
+
 from ..base import NodeSchema
 
 
@@ -60,7 +62,7 @@ class CTXManagerSchema(NodeSchema):
             'multi': True,
             'direction': 'input',
             'accepts': ['CTX_Sequence'],
-            'description': 'Input connections from CTX_Sequence nodes (Sequence.message → Manager.sequences[i])'
+            'description': 'Input connections from CTX_Sequence nodes (Sequence.message -> Manager.sequences[i])'
         },
         
         # Shot connections (INPUT MULTI - receives from multiple Shots, for backward compatibility)
@@ -69,7 +71,7 @@ class CTXManagerSchema(NodeSchema):
             'multi': True,
             'direction': 'input',
             'accepts': ['CTX_Shot'],
-            'description': 'Input connections from CTX_Shot nodes (Shot.message → Manager.shots[i]) - for backward compatibility'
+            'description': 'Input connections from CTX_Shot nodes (Shot.message -> Manager.shots[i]) - for backward compatibility'
         },
     }
 

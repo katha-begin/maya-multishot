@@ -8,6 +8,8 @@ Provides high-level operations for:
 - Capturing light values from Maya scene
 """
 
+from __future__ import absolute_import, division, print_function
+
 try:
     import maya.cmds as cmds
 except ImportError:
@@ -346,19 +348,19 @@ class GafferManager(object):
             transform = transforms[0] if transforms else None
 
         if light_shape is None:
-            return values  # transform with no shape — nothing to capture
+            return values  # transform with no shape -- nothing to capture
 
-        # Capture intensity — use renderer-specific attribute name (e.g. RS dome: 'multiplier')
+        # Capture intensity -- use renderer-specific attribute name (e.g. RS dome: 'multiplier')
         intensity_attr = get_maya_attr(light_shape, 'intensity') or 'intensity'
         if cmds.attributeQuery(intensity_attr, node=light_shape, exists=True):
             values['intensity'] = cmds.getAttr('{}.{}'.format(light_shape, intensity_attr))
 
-        # Capture exposure — use renderer-specific attribute name
+        # Capture exposure -- use renderer-specific attribute name
         exposure_attr = get_maya_attr(light_shape, 'exposure') or 'exposure'
         if cmds.attributeQuery(exposure_attr, node=light_shape, exists=True):
             values['exposure'] = cmds.getAttr('{}.{}'.format(light_shape, exposure_attr))
 
-        # Capture color — use renderer-specific attribute name
+        # Capture color -- use renderer-specific attribute name
         color_attr = get_maya_attr(light_shape, 'color') or 'color'
         if cmds.attributeQuery(color_attr, node=light_shape, exists=True):
             color = cmds.getAttr('{}.{}'.format(light_shape, color_attr))[0]

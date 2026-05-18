@@ -12,6 +12,8 @@ Lock cascade:
   on both the sequence row and every shot row under it.
 """
 
+from __future__ import absolute_import, division, print_function
+
 import os
 
 try:

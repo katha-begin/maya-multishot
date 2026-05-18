@@ -47,7 +47,7 @@ class LightEditorPanel(QtWidgets.QWidget):
 
     Embeds directly into the GafferManagerDialog splitter.
     In view mode: read-only display of resolved gaffer values.
-    In edit mode: all widgets are live — changes apply to Maya immediately
+    In edit mode: all widgets are live -- changes apply to Maya immediately
                   but do NOT write to CTX nodes (the host's commit does that).
     """
 
@@ -177,7 +177,7 @@ class LightEditorPanel(QtWidgets.QWidget):
         form = QtWidgets.QFormLayout(group)
         form.setLabelAlignment(QtCore.Qt.AlignRight)
 
-        # Color swatch — disabled until edit mode
+        # Color swatch -- disabled until edit mode
         self._color_btn = QtWidgets.QPushButton()
         self._color_btn.setFixedHeight(22)
         self._color_btn.setEnabled(False)
@@ -284,7 +284,7 @@ class LightEditorPanel(QtWidgets.QWidget):
         self._color_btn.setText("{:.2f}  {:.2f}  {:.2f}".format(r, g, b))
 
     # ------------------------------------------------------------------
-    # Signal wiring — connected once, guarded inside handlers
+    # Signal wiring -- connected once, guarded inside handlers
     # ------------------------------------------------------------------
 
     def _connect_live_signals(self):
@@ -323,7 +323,7 @@ class LightEditorPanel(QtWidgets.QWidget):
         """Apply all current widget values to the Maya light shape.
 
         Called on any widget change. Does nothing outside edit mode or during
-        _load_values. Never writes to CTX nodes — the snapshot/diff commit
+        _load_values. Never writes to CTX nodes -- the snapshot/diff commit
         handles persistence.
         """
         if not self._editing or self._loading:
