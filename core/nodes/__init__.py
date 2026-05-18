@@ -23,12 +23,18 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import from core.nodes module (the file, not this package)
-# We need to import it as a module to avoid circular imports
-import importlib.util
+# We need to import it as a module to avoid circular imports.
+# importlib.util only exists on Py3.4+, so fall back to imp on Py2.7
+# (Maya 2019-2021).
 nodes_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'nodes.py')
-spec = importlib.util.spec_from_file_location("core.nodes_legacy", nodes_file)
-nodes_legacy = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(nodes_legacy)
+try:
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("core.nodes_legacy", nodes_file)
+    nodes_legacy = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(nodes_legacy)
+except ImportError:
+    import imp
+    nodes_legacy = imp.load_source("core.nodes_legacy", nodes_file)
 
 NodeManager = nodes_legacy.NodeManager
 NODE_TYPE_AI_STANDIN = nodes_legacy.NODE_TYPE_AI_STANDIN
