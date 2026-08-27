@@ -21,7 +21,13 @@
   },
   "deptPriority": {
     "description": "Department resolution priority — index 0 wins when the same asset exists in multiple departments. Higher index = lower priority.",
-    "order": ["lighting", "fx", "cfx", "anim", "layout"]
+    "order": [
+      "lighting",
+      "fx",
+      "cfx",
+      "anim",
+      "layout"
+    ]
   },
   "templates": {
     "shotRoot": "$projRoot$project/$sceneBase/$ep/$seq/$shot",
@@ -37,7 +43,9 @@
     "fullFilename": "$ep_$seq_$shot__$assetType_$assetName_$variant.$ext",
     "namespace": "$assetType_$assetName_$variant",
     "namespaceShader": "$assetType_$assetName_$variant_Shade",
-    "namespaceGroom": "$assetType_$assetName_$variant_Groom"
+    "namespaceGroom": "$assetType_$assetName_$variant_Groom",
+    "assetSeqDir": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/$ep_$seq_$shot__$assetType_$assetName$variant_$ext",
+    "assetSeqPath": "$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/$ep_$seq_$shot__$assetType_$assetName$variant_$ext/$ep_$seq_$shot__$assetType_$assetName$variant.####.$ext"
   },
   "assetDiscovery": {
     "heroSubdir": "hero",
@@ -48,32 +56,66 @@
     "categoryMappings": {
       "CHAR": {
         "directory": "Character",
-        "subdirs": ["Main", "Extra"]
+        "subdirs": [
+          "Main",
+          "Extra"
+        ]
       },
       "PROP": {
         "directory": "Props",
-        "subdirs": ["object"]
+        "subdirs": [
+          "object"
+        ]
       },
       "SETS": {
         "directory": "Sets",
-        "subdirs": ["exterior", "interior"]
+        "subdirs": [
+          "exterior",
+          "interior"
+        ]
       },
       "SDRS": {
         "directory": "Setdress",
-        "subdirs": ["interior", "exterior", "Set"]
+        "subdirs": [
+          "interior",
+          "exterior",
+          "Set"
+        ]
       }
     }
   },
   "gafferAttributes": {
     "simple": [
-      "intensity", "exposure", "spread", "muted",
-      "affectDiffuse", "affectSpecular", "affectGI", "shadowEnable"
+      "intensity",
+      "exposure",
+      "spread",
+      "muted",
+      "affectDiffuse",
+      "affectSpecular",
+      "affectGI",
+      "shadowEnable"
     ],
     "compound": {
-      "color":     ["colorR",    "colorG",    "colorB"],
-      "translate": ["translateX","translateY","translateZ"],
-      "rotate":    ["rotateX",   "rotateY",   "rotateZ"],
-      "scale":     ["scaleX",    "scaleY",    "scaleZ"]
+      "color": [
+        "colorR",
+        "colorG",
+        "colorB"
+      ],
+      "translate": [
+        "translateX",
+        "translateY",
+        "translateZ"
+      ],
+      "rotate": [
+        "rotateX",
+        "rotateY",
+        "rotateZ"
+      ],
+      "scale": [
+        "scaleX",
+        "scaleY",
+        "scaleZ"
+      ]
     }
   },
   "patterns": {
@@ -109,7 +151,13 @@
     "dept": {
       "description": "Department",
       "example": "anim",
-      "values": ["layout", "anim", "cfx", "fx", "lighting"]
+      "values": [
+        "layout",
+        "anim",
+        "cfx",
+        "fx",
+        "lighting"
+      ]
     },
     "ver": {
       "description": "Version",
@@ -119,24 +167,47 @@
     "assetType": {
       "description": "Asset type code",
       "example": "CHAR",
-      "values": ["CHAR", "PROP", "SETS", "SDRS", "VEH", "CAM"]
+      "values": [
+        "CHAR",
+        "PROP",
+        "SETS",
+        "SDRS",
+        "VEH",
+        "CAM",
+        "CFX"
+      ]
     },
     "assetCategory": {
       "description": "Asset category directory name",
       "example": "Character",
-      "values": ["Character", "Props", "Sets", "Setdress", "Vehicle"],
+      "values": [
+        "Character",
+        "Props",
+        "Sets",
+        "Setdress",
+        "Vehicle",
+        "CFX"
+      ],
       "mapping": {
         "CHAR": "Character",
         "PROP": "Props",
         "SETS": "Sets",
         "SDRS": "Setdress",
-        "VEH": "Vehicle"
+        "VEH": "Vehicle",
+        "CFX": "CFX"
       }
     },
     "assetSubdir": {
       "description": "Asset subdirectory (Main, object, Exterior, etc.)",
       "example": "Main",
-      "values": ["Main", "object", "Exterior", "Interior", "interior", "exterior"]
+      "values": [
+        "Main",
+        "object",
+        "Exterior",
+        "Interior",
+        "interior",
+        "exterior"
+      ]
     },
     "assetName": {
       "description": "Asset name",
@@ -168,19 +239,33 @@
       "standinExtension": "rs",
       "standinNodeType": "RedshiftProxyMesh",
       "standinFileAttr": "fileName",
-      "preferredExtensions": ["rs", "abc", "ma", "mb"]
+      "preferredExtensions": [
+        "rs",
+        "abc",
+        "ma",
+        "mb"
+      ]
     },
     "arnold": {
       "standinExtension": "ass",
       "standinNodeType": "aiStandIn",
       "standinFileAttr": "dso",
-      "preferredExtensions": ["ass", "abc", "ma", "mb"]
+      "preferredExtensions": [
+        "ass",
+        "abc",
+        "ma",
+        "mb"
+      ]
     },
     "maya": {
       "standinExtension": null,
       "standinNodeType": null,
       "standinFileAttr": null,
-      "preferredExtensions": ["ma", "mb", "abc"]
+      "preferredExtensions": [
+        "ma",
+        "mb",
+        "abc"
+      ]
     }
   },
   "renderSettings": {
@@ -248,6 +333,31 @@
         "default": 25.0
       }
     }
+  },
+  "assetTypePolicies": {
+    "CAM": {
+      "parse": "camera",
+      "publishShape": "file",
+      "namespace": "nameOnly"
+    },
+    "CFX": {
+      "parse": "noSeparatorVariant",
+      "publishShape": "sequenceDir",
+      "namespace": "basename",
+      "variantPattern": "(\\d{3})$"
+    }
+  },
+  "cfx": {
+    "groupName": "Cfx_Grp",
+    "standinSuffix": "_aiStandIn",
+    "frameToken": "####",
+    "frameDriver": "time",
+    "extension": "ass",
+    "attributes": {
+      "path": "dso",
+      "useFrameExtension": "useFrameExtension",
+      "frameNumber": "frameNumber",
+      "frameOffset": "frameOffset"
+    }
   }
 }
-

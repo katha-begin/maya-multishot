@@ -565,6 +565,70 @@ class ProjectConfig(object):
         """
         return self.get_slate_manager_config().get('defaultFrameRangeMode', 'startEnd')
 
+    def get_asset_type_policies(self):
+        """Return per-asset-type naming and discovery policy overrides.
+
+        Consumed by core/asset_types.py.  An empty dict means the built-in
+        defaults apply.
+
+        Returns:
+            dict: {assetType: {parse, publishShape, namespace, ...}}
+        """
+        return self.data.get('assetTypePolicies', {})
+
+    def get_cfx_config(self):
+        """Return full cfx config dict."""
+        return self.data.get('cfx', {})
+
+    def get_cfx_group_name(self):
+        """Return the scene group all CFX standins are parented under."""
+        return self.get_cfx_config().get('groupName', 'Cfx_Grp')
+
+    def get_cfx_standin_suffix(self):
+        """Return the standin transform suffix (shape appends 'Shape')."""
+        return self.get_cfx_config().get('standinSuffix', '_aiStandIn')
+
+    def get_cfx_frame_token(self):
+        """Return the literal frame token left in the standin path.
+
+        Arnold substitutes this itself when useFrameExtension is enabled, so
+        it must survive token expansion unexpanded.
+        """
+        return self.get_cfx_config().get('frameToken', '####')
+
+    def get_cfx_frame_driver(self):
+        """Return how the standin frameNumber attribute is driven.
+
+        'time' connects time1.outTime; 'none' leaves it untouched.
+        """
+        return self.get_cfx_config().get('frameDriver', 'time')
+
+    def get_cfx_extension(self):
+        """Return the CFX publish file extension (without dot)."""
+        return self.get_cfx_config().get('extension', 'ass')
+
+    def get_cfx_attribute(self, key):
+        """Map a logical standin attribute name to its Maya attribute name.
+
+        MtoA attribute names have drifted across versions, so they are
+        config-driven rather than hardcoded.
+
+        Args:
+            key (str): One of 'path', 'useFrameExtension', 'frameNumber',
+                'frameOffset'.
+
+        Returns:
+            str: Maya attribute name.
+        """
+        defaults = {
+            'path': 'dso',
+            'useFrameExtension': 'useFrameExtension',
+            'frameNumber': 'frameNumber',
+            'frameOffset': 'frameOffset',
+        }
+        attrs = self.get_cfx_config().get('attributes', {})
+        return attrs.get(key, defaults.get(key, key))
+
     def __repr__(self):
         """String representation of ProjectConfig."""
         return "ProjectConfig(config_path='{}', version='{}')".format(

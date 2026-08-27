@@ -16,6 +16,7 @@ from __future__ import print_function
 import os
 import re
 
+from core import asset_types
 from core.logging_config import get_logger
 from core.renderers import get_active_renderer, get_preferred_extensions
 
@@ -213,27 +214,54 @@ class AssetScanner(object):
             except ValueError:
                 return len(_preferred)
 
+        frame_token = '####'
+        if self.config and hasattr(self.config, 'get_cfx_frame_token'):
+            frame_token = self.config.get_cfx_frame_token()
+
         unique_assets = {}
         for version, version_path in version_dirs:
-            filenames = sorted(os.listdir(version_path), key=_ext_rank)
-            for filename in filenames:
-                if not filename.endswith(extensions):
+            entries = sorted(os.listdir(version_path), key=_ext_rank)
+            for entry in entries:
+                entry_path = os.path.join(version_path, entry)
+                is_dir = os.path.isdir(entry_path)
+
+                # Files must carry a known extension; sequence directories are
+                # matched by their '_<ext>' suffix instead.
+                if not is_dir and not entry.endswith(extensions):
                     continue
-                asset_info = self._parse_filename(filename)
+
+                asset_info = asset_types.parse_publish_name(
+                    entry, is_dir=is_dir, config=self.config)
                 if not asset_info:
                     continue
+
                 asset_key = (asset_info['type'], asset_info['name'], asset_info['variant'])
-                if asset_key not in unique_assets:
-                    file_path = os.path.join(version_path, filename).replace('\\\\', '/')
-                    unique_assets[asset_key] = {
-                        'version': version,
-                        'file_path': file_path,
-                        'info': asset_info,
-                    }
-                    logger.debug(
-                        "Found asset: %s %s %s in version %s",
-                        asset_info['type'], asset_info['name'], asset_info['variant'], version
+                if asset_key in unique_assets:
+                    continue
+
+                if is_dir:
+                    # Sequence publish: point at the frame pattern inside the
+                    # directory.  Never listdir() it -- it holds one file per
+                    # frame, potentially thousands.
+                    basename = entry[:-(len(asset_info['ext']) + 1)]
+                    file_path = os.path.join(
+                        entry_path,
+                        asset_types.build_frame_file_name(
+                            basename, asset_info['ext'], frame_token)
                     )
+                else:
+                    file_path = entry_path
+
+                unique_assets[asset_key] = {
+                    'version': version,
+                    'file_path': file_path.replace('\\', '/'),
+                    'info': asset_info,
+                }
+                logger.debug(
+                    "Found asset: %s %s %s in version %s (%s)",
+                    asset_info['type'], asset_info['name'], asset_info['variant'],
+                    version, 'sequenceDir' if is_dir else 'file'
+                )
 
         logger.info("Found %d unique assets in department %s", len(unique_assets), dept)
         return unique_assets
@@ -346,7 +374,7 @@ class AssetScanner(object):
         logger.info("Created asset node: %s for file: %s", asset_node.node_name, file_path)
         return asset_node
 
-    def _parse_filename(self, filename):
+    def _parse_filename(self, filename, is_dir=False):
         """Parse asset filename to extract metadata.
 
         Expected formats:
@@ -356,47 +384,30 @@ class AssetScanner(object):
         2. Camera: Ep04_sq0070_SH0170__SWA_Ep04_SH0170_camera.abc
            Pattern: {ep}_{seq}_{shot}__{project}_{ep}_{shot}_camera.{ext}
 
+        3. CFX sequence: Ep02_sq0210_SH1180__CFX_botgroomevelyn001_ass
+           A directory, not a file -- pass is_dir=True.
+
+        Per-type parsing rules live in core/asset_types.py so that discovery,
+        import, adopt and validation cannot drift apart.
+
         Args:
-            filename (str): Asset filename
+            filename (str): Asset filename, or sequence directory name.
+            is_dir (bool): True when filename names a directory.
 
         Returns:
             dict: Asset info with keys: type, name, variant, ext
                   Returns None if parsing fails
         """
-        # Remove extension
-        name_part, ext = os.path.splitext(filename)
+        info = asset_types.parse_publish_name(
+            filename, is_dir=is_dir, config=self.config)
 
-        # Split by double underscore to separate shot from asset
-        parts = name_part.split('__')
-        if len(parts) != 2:
-            logger.debug("Filename does not match pattern (missing __): %s", filename)
+        if not info:
+            logger.debug("Entry does not match any asset pattern: %s", filename)
             return None
-
-        shot_part, asset_part = parts
-
-        # Check if this is a camera asset (ends with camera suffix)
-        cam_suffix = self.config.get_camera_file_suffix() if self.config else '_camera'
-        if asset_part.endswith(cam_suffix):
-            return {
-                'type': 'CAM',
-                'name': asset_part,   # Full name: SWA_Ep04_SH0170_camera
-                'variant': '001',     # Default variant for cameras
-                'ext': ext.lstrip('.')
-            }
-
-        # Parse standard asset part: CHAR_CatStompie_001
-        asset_parts = asset_part.split('_')
-        if len(asset_parts) < 3:
-            logger.debug("Asset part does not have enough components: %s", asset_part)
-            return None
-
-        asset_type = asset_parts[0]
-        variant = asset_parts[-1]
-        asset_name = '_'.join(asset_parts[1:-1])
 
         return {
-            'type': asset_type,
-            'name': asset_name,
-            'variant': variant,
-            'ext': ext.lstrip('.')
+            'type': info['type'],
+            'name': info['name'],
+            'variant': info['variant'],
+            'ext': info['ext'],
         }
