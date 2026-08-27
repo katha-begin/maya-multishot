@@ -299,3 +299,66 @@ shot = CTXShotNode.create(ep='Ep04', seq='sq0070', shot='SH0170')
 manager.add_sequence(seq)
 seq.add_shot(shot)
 ```
+
+## CFX Asset Type (2026-08-27) -- branch `feature/cfx-asset-type`
+
+New asset type: Arnold `.ass` **frame sequence**, published as a DIRECTORY.
+Design doc: `docs/superpowers/specs/2026-08-27-cfx-asset-type-design.md`
+
+Path shape (project EGA, root `X:/`):
+```
+{proj}/all/scene/{ep}/{seq}/{shot}/cfx/publish/{ver}/
+  {ep}_{seq}_{shot}__CFX_{name}{variant}_ass/          <- directory
+    {ep}_{seq}_{shot}__CFX_{name}{variant}.####.ass    <- frame files
+```
+
+### Key decisions (do not revert)
+- **`core/asset_types.py` is the single source of truth** for per-type naming:
+  `parse_asset_part`, `publish_shape`, `namespace_for`. CAM was folded into it,
+  removing the old scattered `if asset_type == 'CAM'` branches. Register any new
+  type HERE, not in scanner/dialog/reconciler.
+- CFX variant has **no underscore separator**: `CFX_botgroomSamS001` ->
+  name=`botgroomSamS`, variant=`001`. Pattern is config-driven (`\d{3}$`).
+  Known risk: a name ending in digits mis-splits (`bot2000` -> `bot2`+`000`).
+- **CFX namespace = full publish basename** (carries the shot code). Must be
+  shot-unique because `switch_shot_layers` keys on namespace as a GLOBAL
+  identity across all shots.
+- **CFX is static-path**: `.dso` set once at import; shot switch only moves
+  display layers. All shots' CFX coexist under one global `Cfx_Grp`.
+- Node structure is THREE levels:
+  `{basename}` / `{basename}_aiStandIn` / `{basename}_aiStandInShape`.
+  `CTX_Asset.targetNode` -> the SHAPE; display layers use the TOP transform.
+- Templates `assetSeqDir` / `assetSeqPath` use ONLY tokens Pipeline B injects
+  (`core/nodes.py:329-334`). An unknown token is only WARNED about, producing a
+  silently broken path -- never add a token Pipeline B does not supply.
+- Adopt is non-destructive: never renames, never re-namespaces, never touches
+  dso/frameNumber. Migration is opt-in only (no undo exists in this repo).
+
+### Bugs fixed along the way
+- `core/nodes/__init__.py` shadows `core/nodes.py` and did NOT re-export the
+  creation helpers -> Asset Manager "Create StandIn"/"Create Proxy" raised
+  ImportError at click time. Anything reachable via `from core.nodes import X`
+  MUST be re-exported there.
+- `_create_ctx_asset_node` + `_check_asset_in_scene` each rebuilt the namespace
+  as `TYPE_Name_Var` (drift). Now both call `self._asset_namespace()`.
+- Asset Manager has its OWN version scan separate from `AssetScanner`; it also
+  skipped directories.
+- `AssetPathExistsCheck` used `os.path.exists()` on a `####` path (never exists).
+- Scanner's `.replace('\\','/')` matched a literal double backslash; fixed.
+
+### Gotchas discovered
+- **`.gitignore` ignores `tests/` wholesale** but 31 test files are tracked.
+  New tests MUST be added with `git add -f` or they vanish silently.
+- `tests/test_qt_compatibility.py` CRASHES python (0xC0000409) headless --
+  exclude it alongside the other three known exclusions.
+- Test baseline: **51 failures on main** are pre-existing (asset_manager,
+  display_layers, nodes, logging_config, shot_switching, pipeline_api).
+  Branch: 792 passed / 51 failed, failure set IDENTICAL to main.
+
+### Open / next
+- `frameNumber` driver unconfirmed (AE shows it driven). Implemented as
+  `time1.outTime -> frameNumber` behind config `cfx.frameDriver`.
+- Standin suffix casing `_aiStandIn` vs `_aiStandin` -- config `cfx.standinSuffix`.
+- No live Maya testing yet for import / adopt / shot switch.
+- EGA project config not created (templates live in the SWA config; they are
+  project-agnostic).

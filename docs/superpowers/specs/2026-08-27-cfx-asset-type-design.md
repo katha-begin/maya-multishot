@@ -288,7 +288,54 @@ recoverable.
 - Wiring the unused `assetHeroPath` family of templates.
 - Undo/redo support.
 
-## 11. Constraints
+## 11. Implementation status
+
+Implemented on `feature/cfx-asset-type`.  Full suite: 792 passed, 51 failed,
+with a failure set **identical to main** -- all 51 pre-existing.  94 new tests.
+
+| Piece | Where |
+|---|---|
+| Type policy | `core/asset_types.py` |
+| Config | `project_configs/ctx_config.json`, `config/project_config.py` |
+| Discovery | `core/asset_scanner.py` |
+| Node builder | `core/nodes.py: create_standin_sequence()` |
+| Adopt | `core/cfx_adopter.py` |
+| Validation | `core/validator/checks/cfx_namespace.py`, `checks/asset_paths.py` |
+| Display layers | `core/display_layers.py: _resolve_top_node()` |
+| UI | `ui/asset_manager_dialog.py: _on_create_asset_cfx()` |
+
+### Bugs found and fixed along the way
+
+1. **`core/nodes/__init__.py` shadowed `core/nodes.py`** without re-exporting
+   the creation helpers, so the Asset Manager's *Create StandIn* and *Create
+   Proxy* menu items raised `ImportError` at click time.  Same class as the
+   earlier `NODE_TYPE_*` bug.
+2. **Namespace drift.** `_create_ctx_asset_node` and `_check_asset_in_scene`
+   each rebuilt the namespace as `TYPE_Name_Var`, which for CFX would have
+   produced `CFX_botgroomSamS_001` rather than the basename namespace the
+   importer creates.  All sites now route through `core/asset_types.py`.
+3. **Second discovery path.** The Asset Manager's version scan skipped
+   directories independently of `AssetScanner`, so CFX stayed invisible to
+   the version dropdown even after the scanner fix.
+4. **`AssetPathExistsCheck`** used `os.path.exists()` on a `####` path, which
+   never exists, so every CFX asset would have been reported missing.
+5. **`.replace('\\\\', '/')`** in the scanner replaced a literal double
+   backslash and so never fired on real paths; corrected to `'\\'`.
+
+### Open items
+
+- **`frameNumber` driver unconfirmed.** The Attribute Editor shows the Frame
+  field driven (yellow).  Implemented as `time1.outTime -> frameNumber` behind
+  `cfx.frameDriver` (default `"time"`), and an existing connection is never
+  clobbered.  Confirm against a live node and adjust the config if it differs.
+- **Standin suffix casing** (`_aiStandIn` vs `_aiStandin`) taken from the
+  Attribute Editor; config-driven via `cfx.standinSuffix`.
+- **Live Maya testing** not yet performed for import, adopt, or shot switch.
+- **EGA project config** not created -- templates were added to the existing
+  config, which is project-agnostic.
+- `core/asset_scanner.py:165-166` still hardcodes `'V:/'` / `'SWA'` fallbacks.
+
+## 12. Constraints
 
 - Python 2.7-3.x compatible: `from __future__ import absolute_import,
   division, print_function`; no f-strings, no type hints, no `pathlib`;
