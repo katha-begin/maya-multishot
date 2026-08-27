@@ -318,5 +318,65 @@ class TestCFXNamespaceCheck(AdopterTestCase):
         self.assertIn('Maya unavailable', result.message)
 
 
+class _StubAsset(object):
+    def __init__(self, asset_type, file_path):
+        self._type = asset_type
+        self._path = file_path
+
+    def get_asset_type(self):
+        return self._type
+
+    def get_file_path(self):
+        return self._path
+
+    def get_asset_id(self):
+        return '%s_stub' % self._type
+
+
+class TestSequenceAwarePathCheck(unittest.TestCase):
+    """A CFX path carries a frame token and never exists as a file."""
+
+    def setUp(self):
+        import tempfile
+        from core.validator.checks import asset_paths
+        self.asset_paths = asset_paths
+        self.tmp = tempfile.mkdtemp()
+        self.seq_dir = os.path.join(self.tmp, BASENAME + '_ass')
+        os.makedirs(self.seq_dir)
+
+        import shutil
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def test_cfx_present_when_sequence_dir_exists(self):
+        frame_path = os.path.join(self.seq_dir, BASENAME + '.####.ass')
+        asset = _StubAsset('CFX', frame_path)
+        self.assertTrue(self.asset_paths._publish_present(asset, frame_path))
+
+    def test_cfx_absent_when_sequence_dir_missing(self):
+        frame_path = os.path.join(
+            self.tmp, 'nope_ass', BASENAME + '.####.ass')
+        asset = _StubAsset('CFX', frame_path)
+        self.assertFalse(self.asset_paths._publish_present(asset, frame_path))
+
+    def test_plain_file_type_still_uses_exists(self):
+        real = os.path.join(self.tmp, 'a.abc')
+        with open(real, 'w') as fh:
+            fh.write('x')
+        asset = _StubAsset('CHAR', real)
+        self.assertTrue(self.asset_paths._publish_present(asset, real))
+
+    def test_plain_file_type_missing_is_absent(self):
+        missing = os.path.join(self.tmp, 'missing.abc')
+        asset = _StubAsset('CHAR', missing)
+        self.assertFalse(self.asset_paths._publish_present(asset, missing))
+
+    def test_frame_path_would_fail_a_naive_exists_check(self):
+        """Guards the reason this branch exists."""
+        frame_path = os.path.join(self.seq_dir, BASENAME + '.####.ass')
+        self.assertFalse(os.path.exists(frame_path))
+        self.assertTrue(self.asset_paths._publish_present(
+            _StubAsset('CFX', frame_path), frame_path))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -17,6 +17,40 @@ from core.validator.base_check import BaseCheck
 logger = get_logger(__name__)
 
 
+def _publish_present(asset, file_path, config=None):
+    """Return True if an asset's publish is present on disk.
+
+    Most types publish a single file, so plain existence is the right test.
+    Sequence types such as CFX publish a directory of per-frame files and
+    their stored path carries a literal frame token, so that path never
+    exists as a file -- check the containing directory instead.
+
+    The directory is not enumerated: a CFX publish holds one file per frame,
+    potentially thousands, and this runs once per asset per validation.
+
+    Args:
+        asset: CTXAssetNode wrapper.
+        file_path (str): Stored file path.
+        config: Optional ProjectConfig instance.
+
+    Returns:
+        bool: True if the publish is present.
+    """
+    from core import asset_types
+
+    try:
+        asset_type = asset.get_asset_type()
+    except Exception as exc:
+        logger.debug('get_asset_type raised: %s', exc)
+        asset_type = ''
+
+    shape = asset_types.get_publish_shape(asset_type, config)
+    if shape == asset_types.PUBLISH_SHAPE_SEQUENCE_DIR:
+        return os.path.isdir(os.path.dirname(file_path))
+
+    return os.path.exists(file_path)
+
+
 class AssetPathExistsCheck(BaseCheck):
     """Verify that all asset file paths are resolved and exist on disk.
 
@@ -62,9 +96,9 @@ class AssetPathExistsCheck(BaseCheck):
                 logger.debug('Unresolved token in path for %s: %s', asset_id, file_path)
                 continue
 
-            if not os.path.exists(file_path):
+            if not _publish_present(asset, file_path, config):
                 missing_files.append('%s (%s)' % (asset_id, file_path))
-                logger.debug('File does not exist for %s: %s', asset_id, file_path)
+                logger.debug('Publish not found for %s: %s', asset_id, file_path)
 
         passed = (not missing_files) and (not unresolved_tokens)
 

@@ -335,10 +335,15 @@ class AssetManagerDialog(QtWidgets.QDialog):
             dept: Department name (anim, layout, etc.)
         """
         import re
+        from core import asset_types
         from core.asset_scanner import AssetScanner
 
         # Create scanner instance to use its parser
         scanner = AssetScanner(self._config)
+
+        frame_token = '####'
+        if self._config and hasattr(self._config, 'get_cfx_frame_token'):
+            frame_token = self._config.get_cfx_frame_token()
 
         # Track all versions for each asset
         asset_versions = {}  # Key: (type, name, var, dept), Value: list of (version, file_path, filename)
@@ -351,16 +356,31 @@ class AssetManagerDialog(QtWidgets.QDialog):
             if not re.match(r'v\d{3}', version_dir):
                 continue
 
-            # Scan for asset files in version directory
-            for filename in os.listdir(version_path):
-                file_path = os.path.join(version_path, filename)
-                if not os.path.isfile(file_path):
+            # Scan for asset publishes in version directory.  A publish is
+            # normally a file, but sequence types such as CFX publish a
+            # directory of per-frame files instead.
+            for entry in os.listdir(version_path):
+                entry_path = os.path.join(version_path, entry)
+                is_dir = os.path.isdir(entry_path)
+                if not is_dir and not os.path.isfile(entry_path):
                     continue
 
-                # Use asset_scanner's parser (handles both standard assets and cameras)
-                parsed = scanner._parse_filename(filename)
+                # Use asset_scanner's parser (handles standard assets,
+                # cameras, and sequence directories)
+                parsed = scanner._parse_filename(entry, is_dir=is_dir)
                 if not parsed:
                     continue
+
+                if is_dir:
+                    # Point at the frame pattern inside the directory.  Never
+                    # listdir() it -- it holds one file per frame.
+                    basename = entry[:-(len(parsed['ext']) + 1)]
+                    filename = asset_types.build_frame_file_name(
+                        basename, parsed['ext'], frame_token)
+                    file_path = os.path.join(entry_path, filename)
+                else:
+                    filename = entry
+                    file_path = entry_path
 
                 asset_type = parsed['type']
                 asset_name = parsed['name']
