@@ -9,6 +9,7 @@ from .frame_range import FrameRangeCheck
 from .renderer import RendererMatchCheck
 from .gaffer import GafferChainCheck
 from .namespace import NamespaceConflictCheck
+from .cfx_namespace import CFXNamespaceCheck
 
 __all__ = [
     'CTXNodeHierarchyCheck',
@@ -17,4 +18,5 @@ __all__ = [
     'RendererMatchCheck',
     'GafferChainCheck',
     'NamespaceConflictCheck',
+    'CFXNamespaceCheck',
 ]

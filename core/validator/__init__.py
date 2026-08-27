@@ -152,6 +152,7 @@ class SceneValidator(object):
             RendererMatchCheck,
             GafferChainCheck,
             NamespaceConflictCheck,
+            CFXNamespaceCheck,
         )
 
         self._checks = [
@@ -161,6 +162,7 @@ class SceneValidator(object):
             RendererMatchCheck(),
             GafferChainCheck(),
             NamespaceConflictCheck(),
+            CFXNamespaceCheck(),
         ]
 
     def validate_shot(self, shot_node):

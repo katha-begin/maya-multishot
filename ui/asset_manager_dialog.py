@@ -422,17 +422,9 @@ class AssetManagerDialog(QtWidgets.QDialog):
         for asset_data in self._assets:
             matched = False
 
-            # Build namespace from asset identity (same format as CTX_Asset namespace attr)
-            # Special handling for cameras: namespace is just the asset name
-            if asset_data['type'] == 'CAM':
-                asset_namespace = asset_data['name']  # e.g., 'SWA_Ep04_SH0140_camera'
-            else:
-                # Standard assets: TYPE_Name_Variant
-                asset_namespace = "{}_{}_{}".format(
-                    asset_data['type'],
-                    asset_data['name'],
-                    asset_data['var']
-                )
+            # Build namespace from asset identity (same format as CTX_Asset
+            # namespace attr).  Per-type rules live in core/asset_types.py.
+            asset_namespace = self._asset_namespace(asset_data)
 
             logger.info("  Matching asset: {} (namespace: {})".format(
                 asset_data['name'], asset_namespace))
@@ -925,6 +917,9 @@ class AssetManagerDialog(QtWidgets.QDialog):
             if asset_data.get('type') == 'SETS':
                 sets_action = create_menu.addAction("Import Alembic (SET)")
                 sets_action.triggered.connect(lambda: self._on_create_asset_sets(row))
+            if asset_data.get('type') == 'CFX':
+                cfx_action = create_menu.addAction("Import CFX Sequence (.ass)")
+                cfx_action.triggered.connect(lambda: self._on_create_asset_cfx(row))
 
         elif scene_state == 'missing':
             # Asset not in scene at all - show Create Asset submenu
@@ -946,6 +941,11 @@ class AssetManagerDialog(QtWidgets.QDialog):
             if asset_data.get('type') == 'SETS':
                 sets_action = create_menu.addAction("Import Alembic (SET)")
                 sets_action.triggered.connect(lambda: self._on_create_asset_sets(row))
+
+            # CFX sequence import option
+            if asset_data.get('type') == 'CFX':
+                cfx_action = create_menu.addAction("Import CFX Sequence (.ass)")
+                cfx_action.triggered.connect(lambda: self._on_create_asset_cfx(row))
         else:
             # Asset already created - show update/remove options
             menu.addSeparator()
@@ -1953,6 +1953,131 @@ class AssetManagerDialog(QtWidgets.QDialog):
                 "Failed to create StandIn:\n{}".format(str(e))
             )
 
+    def _asset_basename(self, asset_data):
+        """Build the publish basename for an asset row.
+
+        Args:
+            asset_data (dict): Row data with type, name and var.
+
+        Returns:
+            str: Publish basename.
+        """
+        from core import asset_types
+
+        return asset_types.build_basename(
+            self._shot_data.get('ep', ''),
+            self._shot_data.get('seq', ''),
+            self._shot_data.get('shot', ''),
+            asset_data['type'],
+            asset_data['name'],
+            asset_data['var'],
+            self._config,
+        )
+
+    def _asset_namespace(self, asset_data):
+        """Build the Maya namespace for an asset row.
+
+        Single place the dialog decides what an asset is called, so import,
+        scene matching and CTX_Asset creation cannot disagree.  Per-type rules
+        live in core/asset_types.py: standard types get TYPE_Name_Variant,
+        cameras get the bare name, and sequence types such as CFX get the full
+        publish basename so the namespace is unique per shot.
+
+        Args:
+            asset_data (dict): Row data with type, name and var.
+
+        Returns:
+            str: Namespace string.
+        """
+        from core import asset_types
+
+        return asset_types.build_namespace(
+            asset_data['type'],
+            self._asset_basename(asset_data),
+            asset_data['name'],
+            asset_data['var'],
+            self._config,
+        )
+
+    def _on_create_asset_cfx(self, row):
+        """Handle Import CFX Sequence action.
+
+        CFX publishes are a directory of per-frame .ass files rather than a
+        single file, so the standin points at a path carrying a literal frame
+        token and lets Arnold substitute the frame at render time.
+
+        Args:
+            row: Table row index
+        """
+        asset_data = self._assets[row]
+        logger.info("Importing CFX sequence for: {} {} {}".format(
+            asset_data['type'], asset_data['name'], asset_data['var']))
+
+        from core import asset_types, cfx_adopter
+
+        basename = asset_types.build_basename(
+            self._shot_data.get('ep', ''),
+            self._shot_data.get('seq', ''),
+            self._shot_data.get('shot', ''),
+            asset_data['type'],
+            asset_data['name'],
+            asset_data['var'],
+            self._config,
+        )
+        namespace = asset_types.build_namespace(
+            asset_data['type'], basename,
+            asset_data['name'], asset_data['var'], self._config)
+
+        frame_path = asset_data.get('file_path', '')
+        if not frame_path:
+            QtWidgets.QMessageBox.warning(
+                self, "No Publish Found",
+                "No CFX sequence found for {}.".format(basename))
+            return
+
+        # The sequence directory holds the frames; the path itself carries a
+        # frame token and so never exists as a file on disk.
+        sequence_dir = os.path.dirname(frame_path)
+        if not os.path.isdir(sequence_dir):
+            QtWidgets.QMessageBox.warning(
+                self, "Sequence Not Found",
+                "CFX sequence directory does not exist:\n{}".format(sequence_dir))
+            return
+
+        # Pre-flight: never rename an artist's nodes to make room.
+        conflict = cfx_adopter.namespace_conflict(namespace, self._config)
+        if conflict:
+            QtWidgets.QMessageBox.warning(
+                self, "Namespace Conflict",
+                "{}\n\nImport aborted. Resolve the conflict in the scene "
+                "and try again.".format(conflict))
+            return
+
+        try:
+            from core.nodes import create_standin_sequence
+
+            top_node, transform_node, shape_node = create_standin_sequence(
+                namespace, frame_path, config=self._config)
+            logger.info("Created CFX standin: {} (shape: {})".format(
+                top_node, shape_node))
+
+            # targetNode points at the shape -- that is where the path lives
+            # and what the repath step writes to.
+            self._create_ctx_asset_node(row, shape_node, 'cfx')
+
+            QtWidgets.QMessageBox.information(
+                self, "CFX Sequence Imported",
+                "Created: {}\nShape: {}\nSequence: {}".format(
+                    top_node, shape_node, frame_path))
+
+            self._load_assets()
+
+        except Exception as e:
+            logger.error("Failed to import CFX sequence: {}".format(e))
+            QtWidgets.QMessageBox.critical(
+                self, "Error",
+                "Failed to import CFX sequence:\n{}".format(str(e)))
+
     def _on_create_asset_proxy(self, row):
         """Handle Create Asset as Redshift Proxy action.
 
@@ -2268,17 +2393,8 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
         asset_data = self._assets[row]
 
-        # Build namespace with special handling for cameras
-        # CAM: just the name (e.g., 'SWA_Ep04_SH0140_camera')
-        # Others: TYPE_Name_Var (e.g., 'CHAR_CatStompie_002')
-        if asset_data['type'] == 'CAM':
-            namespace = asset_data['name']
-        else:
-            namespace = "{}_{}_{}".format(
-                asset_data['type'],
-                asset_data['name'],
-                asset_data['var']
-            )
+        # Per-type namespace rules live in core/asset_types.py.
+        namespace = self._asset_namespace(asset_data)
 
         # For references, ALWAYS query the actual reference node from namespace
         # This is more reliable than trusting the maya_node parameter (which might be a file path)

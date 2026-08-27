@@ -363,8 +363,19 @@ class TestSceneValidator(unittest.TestCase):
         validator = self._make_validator()
         shot = _MockShotNode()
         report = validator.validate_shot(shot)
-        # Should have exactly 6 default checks
-        self.assertEqual(len(report.results), 6)
+        # Assert on the check names rather than a bare count, so adding a
+        # check is a deliberate edit here instead of an opaque number change.
+        expected = {
+            'ctx_node_hierarchy',
+            'asset_paths',
+            'frame_range',
+            'renderer_match',
+            'gaffer_chain',
+            'namespace_conflict',
+            'cfx_namespace',
+        }
+        actual = set(r.check_name for r in report.results)
+        self.assertEqual(actual, expected)
 
     def test_scene_validator_returns_validator_report(self):
         validator = self._make_validator()
