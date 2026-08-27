@@ -20,6 +20,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Upper bound when climbing a DAG hierarchy, so a cyclic or pathological
+# parenting chain cannot spin forever.
+_MAX_HIERARCHY_DEPTH = 32
+
 try:
     import maya.cmds as cmds
     MAYA_AVAILABLE = True
@@ -398,6 +402,9 @@ class DisplayLayerManager(object):
         logger.info("Step 1: Collecting all assets from all shots...")
         all_assets = set()  # Use set to avoid duplicates
         asset_shot_count = {}  # Track how many shots each asset appears in
+        # Keep one asset per namespace so nodes that carry no real Maya
+        # namespace can still be resolved via their targetNode.
+        asset_by_namespace = {}
 
         for shot_node in all_shot_nodes:
             shot_code = shot_node.get_shot_code()
@@ -408,6 +415,7 @@ class DisplayLayerManager(object):
                 namespace = asset.get_namespace()
                 if namespace:
                     all_assets.add(namespace)
+                    asset_by_namespace.setdefault(namespace, asset)
                     # Track asset usage across shots
                     if namespace not in asset_shot_count:
                         asset_shot_count[namespace] = 0
@@ -442,7 +450,8 @@ class DisplayLayerManager(object):
         # Step 4: Move active assets to CTX_Active
         logger.info("Step 4: Moving active assets to CTX_Active...")
         for namespace in active_assets:
-            top_node = self._get_namespace_root(namespace)
+            top_node = self._resolve_top_node(namespace,
+                                              asset_by_namespace.get(namespace))
             if top_node:
                 self._connect_node_to_layer(top_node, self.ACTIVE_LAYER)
                 stats['active_moved'] += 1
@@ -453,7 +462,8 @@ class DisplayLayerManager(object):
         # Step 5: Move inactive assets to CTX_Inactive
         logger.info("Step 5: Moving inactive assets to CTX_Inactive...")
         for namespace in inactive_assets:
-            top_node = self._get_namespace_root(namespace)
+            top_node = self._resolve_top_node(namespace,
+                                              asset_by_namespace.get(namespace))
             if top_node:
                 self._connect_node_to_layer(top_node, self.INACTIVE_LAYER)
                 stats['inactive_moved'] += 1
@@ -471,6 +481,105 @@ class DisplayLayerManager(object):
         logger.info("=" * 80)
 
         return stats
+
+    def _resolve_top_node(self, namespace, asset=None):
+        """Resolve an asset's top transform, by namespace or by targetNode.
+
+        Namespace lookup is tried first, since it is how every reference-based
+        asset resolves.  Assets that carry no real Maya namespace -- CFX
+        standins adopted from a scene built by an upstream tool, for example --
+        have their namespace attribute set to an identity string that matches
+        no ':' prefix, so the lookup finds nothing.  For those, fall back to
+        the Maya node linked on CTX_Asset.targetNode.
+
+        Args:
+            namespace (str): Namespace or identity string.
+            asset: Optional CTXAssetNode used for the fallback.
+
+        Returns:
+            str or None: Top transform node name.
+        """
+        top_node = self._get_namespace_root(namespace)
+        if top_node:
+            return top_node
+
+        if asset is None:
+            return None
+
+        target = self._get_asset_target_node(asset)
+        if not target:
+            return None
+
+        top_nodes = self._get_top_nodes_from_asset(target)
+        if not top_nodes:
+            return None
+
+        # _get_top_nodes_from_asset returns a shape's immediate parent.  For a
+        # nested structure such as CFX's <basename>/<basename>_aiStandIn/shape
+        # that is the middle transform, so climb to the outermost node still
+        # belonging to this asset.
+        top_node = self._walk_up_to_identity_root(top_nodes[0], namespace)
+
+        logger.debug("Resolved '%s' via targetNode -> %s", namespace, top_node)
+        return top_node
+
+    def _walk_up_to_identity_root(self, node, identity):
+        """Climb to the outermost ancestor whose name still belongs to an asset.
+
+        Stops at the first ancestor whose short name does not start with the
+        asset's identity string, which is what separates an asset's own
+        transforms from the scene group holding them.
+
+        Args:
+            node (str): Starting node.
+            identity (str): Asset identity, normally the publish basename.
+
+        Returns:
+            str: Outermost node belonging to this asset.
+        """
+        current = node
+
+        # Bounded to avoid spinning on a cyclic or pathological hierarchy.
+        for _ in range(_MAX_HIERARCHY_DEPTH):
+            try:
+                parents = cmds.listRelatives(current, parent=True, fullPath=True) or []
+            except Exception:
+                return current
+
+            if not parents:
+                return current
+
+            parent = parents[0]
+            short_name = parent.split('|')[-1].split(':')[-1]
+            if not short_name.startswith(identity):
+                return current
+
+            current = parent
+
+        logger.warning("Hierarchy walk hit depth limit at %s", current)
+        return current
+
+    def _get_asset_target_node(self, asset):
+        """Return the Maya node linked on CTX_Asset.targetNode, if any."""
+        node_name = asset if isinstance(asset, str) else asset.node_name
+
+        try:
+            if not cmds.objExists(node_name):
+                return None
+            if not cmds.attributeQuery('targetNode', node=node_name, exists=True):
+                return None
+            linked = cmds.listConnections(
+                '{}.targetNode'.format(node_name),
+                source=True, destination=False
+            ) or []
+        except Exception as e:
+            logger.debug("Could not read targetNode on %s: %s", node_name, e)
+            return None
+
+        for node in linked:
+            if cmds.objExists(node):
+                return node
+        return None
 
     def _get_namespace_root(self, namespace):
         """Get the root/top transform node from a namespace.

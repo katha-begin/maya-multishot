@@ -41,6 +41,19 @@ NODE_TYPE_AI_STANDIN = nodes_legacy.NODE_TYPE_AI_STANDIN
 NODE_TYPE_RS_PROXY = nodes_legacy.NODE_TYPE_RS_PROXY
 NODE_TYPE_REFERENCE = nodes_legacy.NODE_TYPE_REFERENCE
 
+# Node creation helpers.  This package shadows core/nodes.py, so anything
+# callers reach for via "from core.nodes import ..." must be re-exported here
+# or the import raises at runtime.  The Asset Manager imports these lazily
+# inside its menu handlers, so a missing name stays invisible until an artist
+# clicks Create StandIn / Create Proxy / Import CFX.
+create_standin_with_namespace = nodes_legacy.create_standin_with_namespace
+create_redshift_proxy_with_namespace = nodes_legacy.create_redshift_proxy_with_namespace
+create_standin_sequence = nodes_legacy.create_standin_sequence
+
+# Note: do NOT re-export MAYA_AVAILABLE or cmds here.  The functions above
+# read those from nodes_legacy's own globals, so a patch applied to this
+# package would silently have no effect.  Tests patch nodes_legacy directly.
+
 __all__ = [
     'NodeSchema',
     'NodeFactory',
@@ -49,5 +62,8 @@ __all__ = [
     'NODE_TYPE_AI_STANDIN',
     'NODE_TYPE_RS_PROXY',
     'NODE_TYPE_REFERENCE',
+    'create_standin_with_namespace',
+    'create_redshift_proxy_with_namespace',
+    'create_standin_sequence',
 ]
 

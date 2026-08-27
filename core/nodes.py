@@ -711,3 +711,127 @@ def create_redshift_proxy_with_namespace(namespace, file_path):
     finally:
         # Restore original namespace
         cmds.namespace(set=current_ns)
+
+
+def create_standin_sequence(namespace, frame_path, config=None, group_name=None):
+    """Create an Arnold StandIn pointed at a frame sequence.
+
+    Used by sequence-publish asset types such as CFX, whose publish is a
+    directory of per-frame .ass files rather than a single file.  The path
+    keeps its literal frame token (e.g. '####'); Arnold substitutes the
+    current frame itself once useFrameExtension is enabled.
+
+    Builds the three-level structure observed in production scenes:
+
+        <group>
+          <ns>:<basename>                    top transform
+            <ns>:<basename>_aiStandIn        standin transform
+              <ns>:<basename>_aiStandInShape aiStandIn shape
+
+    This is deliberately separate from create_standin_with_namespace(), which
+    builds a two-level '...AIS'/'...AISShape' structure that does not match.
+
+    Args:
+        namespace (str): Namespace, which is also the node basename.
+        frame_path (str): Path containing the literal frame token.
+        config: Optional ProjectConfig for attribute and group names.
+        group_name (str): Optional override for the parent group.
+
+    Returns:
+        tuple: (top_transform, standin_transform, shape) full node names.
+
+    Raises:
+        RuntimeError: If Maya is not available.
+    """
+    if not MAYA_AVAILABLE:
+        raise RuntimeError("Maya is not available, cannot create standin")
+
+    from core import asset_types
+
+    suffix = asset_types.DEFAULT_STANDIN_SUFFIX
+    if config is not None and hasattr(config, 'get_cfx_standin_suffix'):
+        suffix = config.get_cfx_standin_suffix()
+
+    if group_name is None:
+        group_name = 'Cfx_Grp'
+        if config is not None and hasattr(config, 'get_cfx_group_name'):
+            group_name = config.get_cfx_group_name()
+
+    def _attr(key, fallback):
+        if config is not None and hasattr(config, 'get_cfx_attribute'):
+            return config.get_cfx_attribute(key)
+        return fallback
+
+    path_attr = _attr('path', 'dso')
+    use_seq_attr = _attr('useFrameExtension', 'useFrameExtension')
+    frame_attr = _attr('frameNumber', 'frameNumber')
+
+    frame_driver = 'time'
+    if config is not None and hasattr(config, 'get_cfx_frame_driver'):
+        frame_driver = config.get_cfx_frame_driver()
+
+    names = asset_types.build_standin_node_names(namespace, suffix=suffix)
+
+    if not cmds.namespace(exists=namespace):
+        cmds.namespace(add=namespace)
+        logger.info("Created namespace: {}".format(namespace))
+
+    current_ns = cmds.namespaceInfo(currentNamespace=True)
+    cmds.namespace(set=namespace)
+
+    try:
+        top = cmds.createNode('transform', name=names['top'])
+        transform = cmds.createNode('transform', name=names['transform'],
+                                    parent=top)
+        shape = cmds.createNode('aiStandIn', name=names['shape'],
+                                parent=transform)
+
+        cmds.setAttr("{}.{}".format(shape, path_attr), frame_path, type='string')
+        cmds.setAttr("{}.{}".format(shape, use_seq_attr), 1)
+
+        if frame_driver == 'time':
+            _connect_frame_time(shape, frame_attr)
+
+        top_full = "{}:{}".format(namespace, names['top'])
+        transform_full = "{}:{}".format(namespace, names['transform'])
+        shape_full = "{}:{}".format(namespace, names['shape'])
+    finally:
+        cmds.namespace(set=current_ns)
+
+    # The group lives in the root namespace, so parent after restoring it.
+    _parent_under_group(top_full, group_name)
+
+    logger.info("Created StandIn sequence: {} (shape: {}) -> {}".format(
+        top_full, shape_full, frame_path))
+
+    return top_full, transform_full, shape_full
+
+
+def _connect_frame_time(shape, frame_attr):
+    """Drive a standin's frame attribute from the scene time node.
+
+    Left non-fatal: a standin with an undriven frame still renders the frame
+    its attribute currently holds, which is better than aborting the import.
+    """
+    plug = "{}.{}".format(shape, frame_attr)
+    try:
+        existing = cmds.listConnections(plug, source=True, destination=False)
+        if existing:
+            logger.debug("Frame attr already driven by %s -- leaving as is",
+                         existing[0])
+            return
+        cmds.connectAttr('time1.outTime', plug, force=True)
+        logger.debug("Connected time1.outTime -> %s", plug)
+    except Exception as e:
+        logger.warning("Could not drive %s from time1: %s", plug, e)
+
+
+def _parent_under_group(node, group_name):
+    """Parent a node under a scene group, creating the group if needed."""
+    try:
+        if not cmds.objExists(group_name):
+            cmds.createNode('transform', name=group_name)
+            logger.info("Created group: {}".format(group_name))
+        cmds.parent(node, group_name)
+    except Exception as e:
+        logger.warning("Could not parent %s under %s: %s", node, group_name, e)
