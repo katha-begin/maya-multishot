@@ -362,3 +362,45 @@ Path shape (project EGA, root `X:/`):
 - No live Maya testing yet for import / adopt / shot switch.
 - EGA project config not created (templates live in the SWA config; they are
   project-agnostic).
+
+## Multi-project config (2026-08-28) -- same branch `feature/cfx-asset-type`
+
+Was: ONE config (`ctx_config.json`) with SWA + `V:/` baked in, and FOUR loaders
+that disagreed. Now: base + per-project overlay, one resolution order.
+
+```
+project_configs/
+  base.json        shared: templates, patterns, tokens, gafferAttributes,
+                   batchRender, slateManager, assetTypePolicies, cfx
+  SWA.json         {"extends":"base.json"} + project + roots
+  EGA.json         {"extends":"base.json"} + project + roots   <- values are TODO
+  ctx_config.json  {"extends":"SWA.json"}  <- default pointer; NOT a copy
+```
+
+- `ProjectConfig` understands `"extends"` (relative to the file's own dir).
+  `deep_merge`: **dicts recurse, lists REPLACE**. Validation runs on the MERGED
+  result, so an overlay declares only what it changes. No `extends` key ->
+  loads exactly as before (full back-compat).
+- `config/config_resolver.resolve_config_path()` is THE way to find a config:
+  `explicit > CTX_Manager.config_path > $CTX_CONFIG > repo default`.
+  Use `use_scene=False` at Maya startup (no scene open yet).
+- `ctx_config.json` merged == old file exactly (verified), except a repaired
+  mojibake em dash in `deptPriority.description`.
+
+### Do not revert
+- `main_window._load_config` stamps `CTX_Manager.config_path` ONLY when unset
+  or missing. Unconditional stamping rebinds an EGA scene to SWA.
+- `_reload_config_for_scene()` runs on kAfterOpen/kAfterNew BEFORE shots load.
+  Without it a second scene from another project resolves against stale roots.
+- A nonexistent `$CTX_CONFIG` is honoured, NOT ignored -- a typo must fail
+  loudly rather than silently load another project's roots. (Two pipeline_api
+  tests encode this; they were right and my first cut was wrong.)
+- Env var comes BEFORE the repo path in `_get_default_search_paths`;
+  `find_config()` returns the first hit, so the old order made it dead code.
+
+### Still TODO for EGA
+`project_configs/EGA.json` has a `_todo` key listing the unknowns: imgRoot,
+linux mounts, dept list + deptPriority, assetType list, renderer. `projRoot`
+`X:/` and code `EGA` are the only confirmed values (from the CFX path).
+`tokens.assetType.values` currently holds the union (incl. CFX) in base --
+split per project once the real lists are known.
