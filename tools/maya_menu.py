@@ -1083,10 +1083,10 @@ def install():
         try:
             import os
             from config.project_config import ProjectConfig
-            config_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                'project_configs', 'ctx_config.json'
-            )
+            from config.config_resolver import resolve_config_path
+            # Menu setup runs at Maya startup, before any scene is open, so
+            # scene-bound resolution has nothing to read yet.
+            config_path = resolve_config_path(use_scene=False)
             if os.path.exists(config_path):
                 cfg = ProjectConfig(config_path)
                 setup_logging(**cfg.get_logging_config())

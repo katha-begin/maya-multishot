@@ -188,6 +188,18 @@ class CTXManagerNode(NodeWrapper):
         """
         self.set_attribute('config_path', path)
 
+    def get_config_path(self):
+        """Get the project config file path recorded on this scene.
+
+        This is what binds a scene to the project it was built against, so a
+        scene from one project keeps loading that project's roots and
+        templates rather than the repository default.
+
+        Returns:
+            str: Config path, or '' when unset.
+        """
+        return self.get_attribute('config_path') or ''
+
     # Discovery methods
 
     @staticmethod

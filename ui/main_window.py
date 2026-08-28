@@ -602,13 +602,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.delete_all_btn.clicked.connect(self._on_delete_all)
     
     def _load_config(self):
-        """Load project configuration."""
+        """Load project configuration for the open scene.
+
+        The path is resolved by config.config_resolver, so a scene built
+        against one project loads that project's config rather than whatever
+        the repository defaults to.
+        """
         try:
-            config_path = os.path.join(os.path.dirname(__file__), '..', 'project_configs', 'ctx_config.json')
-            config_path = os.path.abspath(config_path)
+            from config.config_resolver import resolve_config_path
+
+            config_path = os.path.abspath(resolve_config_path())
 
             if not os.path.exists(config_path):
                 self.statusBar().showMessage("Config file not found")
+                logger.error("Config file not found: %s", config_path)
                 return
 
             self._config = ProjectConfig(config_path)
@@ -619,12 +626,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 logger.warning("Failed to create platform config: %s", exc)
                 self._platform_config = None
 
-            # Set config path in CTX_Manager node
+            # Stamp the config onto CTX_Manager only when the scene does not
+            # already name a valid one.  Overwriting unconditionally would
+            # rebind an EGA scene to whatever config happened to load -- the
+            # binding this attribute exists to preserve.
             manager = self._context_manager.get_or_create_manager()
-            manager.set_config_path(config_path)
+            existing = ''
+            try:
+                existing = manager.get_config_path() or ''
+            except Exception:
+                existing = ''
 
-            self.statusBar().showMessage("Config loaded")
-            logger.info("Config loaded from: %s", config_path)
+            if not existing or not os.path.exists(existing):
+                manager.set_config_path(config_path)
+                logger.info("Bound scene to config: %s", config_path)
+
+            project = self._config.get_project_code() or '?'
+            self.statusBar().showMessage("Config loaded: {}".format(project))
+            logger.info("Config loaded from: %s (project %s)",
+                        config_path, project)
         except Exception as e:
             logger.error("Failed to load config: %s", e)
             self.statusBar().showMessage("Failed to load config")
@@ -2376,9 +2396,37 @@ class MainWindow(QtWidgets.QMainWindow):
         self._shots = []
         self._active_shot_index = None
         self.current_shot_label.setText("Current Shot: None")
+
+        # Reload the config first: the newly opened scene may belong to a
+        # different project, and the cached ProjectConfig still holds the
+        # previous scene's roots and templates.  Loading shots before this
+        # would resolve their paths against the wrong project.
+        self._reload_config_for_scene()
+
         # Re-use the existing load method
         self._load_existing_shots()
         logger.info("Shot table refreshed after scene change")
+
+    def _reload_config_for_scene(self):
+        """Reload project config if the open scene belongs to another project.
+
+        Cheap no-op when the scene resolves to the config already loaded.
+        """
+        try:
+            from config.config_resolver import resolve_config_path
+
+            resolved = os.path.abspath(resolve_config_path())
+            current = os.path.abspath(self._config.config_path) \
+                if self._config and self._config.config_path else ''
+
+            if resolved == current:
+                return
+
+            logger.info("Scene uses a different config (%s -> %s), reloading",
+                        current or 'none', resolved)
+            self._load_config()
+        except Exception as exc:
+            logger.warning("Could not reload config for scene: %s", exc)
 
     def _on_render_state_changed(self, shot_id, status):
         """Called when render state changes. Refreshes Rnd column via Qt main thread."""

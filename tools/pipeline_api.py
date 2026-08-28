@@ -37,17 +37,25 @@ class PipelineAPI(object):
         """Initialise the API.
 
         Args:
-            config_path (str|None): Path to ctx_config.json.
-                Falls back to the CTX_CONFIG environment variable, then to
-                DEFAULT_CONFIG_PATH ('project_configs/ctx_config.json').
+            config_path (str|None): Path to ctx_config.json.  When omitted the
+                path is resolved by config.config_resolver: the open scene's
+                CTX_Manager, then the CTX_CONFIG environment variable, then the
+                repository default.
             maya_standalone (bool): When True, calls
                 maya.standalone.initialize() before the first Maya operation.
         """
-        self._config_path = (
-            config_path
-            or os.environ.get(CONFIG_ENV_VAR)
-            or DEFAULT_CONFIG_PATH
-        )
+        try:
+            from config.config_resolver import resolve_config_path
+            self._config_path = resolve_config_path(config_path)
+        except Exception as exc:
+            # Never let config resolution stop the API from constructing; the
+            # missing-file error surfaces on first use with a useful path.
+            logger.debug('Config resolution failed (%s), using fallback', exc)
+            self._config_path = (
+                config_path
+                or os.environ.get(CONFIG_ENV_VAR)
+                or DEFAULT_CONFIG_PATH
+            )
         self._maya_standalone = maya_standalone
         self._config = None
         self._platform_config = None

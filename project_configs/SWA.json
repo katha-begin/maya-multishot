@@ -1,0 +1,18 @@
+{
+  "extends": "base.json",
+  "project": {
+    "name": "SWA",
+    "code": "SWA",
+    "description": "Sample project configuration for Context Variables Pipeline"
+  },
+  "roots": {
+    "windows": {
+      "projRoot": "V:/",
+      "imgRoot": "W:/"
+    },
+    "linux": {
+      "projRoot": "/mnt/igloo_swa_v/",
+      "imgRoot": "/mnt/igloo_swa_w/"
+    }
+  }
+}

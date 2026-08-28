@@ -15,6 +15,39 @@ import json
 import os
 
 
+# Maximum depth of an "extends" chain, so a malformed set of configs cannot
+# recurse forever.
+_MAX_EXTENDS_DEPTH = 8
+
+
+def deep_merge(base, overlay):
+    """Merge overlay onto base, returning a new dict.
+
+    Dictionaries merge recursively.  Every other value -- including lists --
+    is replaced wholesale rather than combined.  Replacement is the safer rule
+    for this config: a project's ``dept.values`` should be that project's list,
+    not the base list with the project's entries appended.
+
+    Args:
+        base (dict): Values to start from.
+        overlay (dict): Values that win.
+
+    Returns:
+        dict: Merged result.  Neither input is modified.
+    """
+    merged = dict(base)
+
+    for key, value in overlay.items():
+        if (key in merged
+                and isinstance(merged[key], dict)
+                and isinstance(value, dict)):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+
+    return merged
+
+
 class ProjectConfig(object):
     """
     Loads and manages project configuration from JSON files.
@@ -64,17 +97,80 @@ class ProjectConfig(object):
         """
         if not os.path.exists(config_path):
             raise IOError("Configuration file not found: {}".format(config_path))
-        
+
+        self.data = self._load_with_extends(config_path, [])
+        self.config_path = config_path
+
+        # Validate the merged result, so a project overlay only has to declare
+        # what it changes rather than repeating every required key.
+        self._validate()
+
+    @classmethod
+    def _read_json(cls, config_path):
+        """Read one JSON file with the module's error contract."""
         try:
             with open(config_path, 'r') as f:
-                self.data = json.load(f)
+                return json.load(f)
         except (IOError, OSError) as e:
             raise IOError("Failed to read configuration file: {}".format(e))
         except ValueError as e:
-            raise ValueError("Invalid JSON in configuration file: {}".format(e))
-        
-        self.config_path = config_path
-        self._validate()
+            raise ValueError(
+                "Invalid JSON in configuration file {}: {}".format(config_path, e))
+
+    @classmethod
+    def _load_with_extends(cls, config_path, chain):
+        """Load a config, resolving an optional 'extends' parent first.
+
+        A config may name a parent with ``"extends": "base.json"``, resolved
+        relative to the config's own directory.  The parent loads first and
+        the child merges over it, so a project overlay declares only what it
+        changes.  This keeps shared machinery -- templates, patterns, gaffer
+        attributes -- in one place, where it cannot drift between projects.
+
+        A config with no 'extends' key loads exactly as it always has.
+
+        Args:
+            config_path (str): Config to load.
+            chain (list): Absolute paths already being loaded, for cycle
+                detection.
+
+        Returns:
+            dict: Merged configuration data, without the 'extends' key.
+
+        Raises:
+            IOError: If a file is missing.
+            ValueError: On invalid JSON, a cycle, or excessive nesting.
+        """
+        abs_path = os.path.abspath(config_path)
+
+        if abs_path in chain:
+            raise ValueError(
+                "Circular 'extends' in configuration: {}".format(
+                    ' -> '.join(chain + [abs_path])))
+
+        if len(chain) >= _MAX_EXTENDS_DEPTH:
+            raise ValueError(
+                "Configuration 'extends' nested more than {} levels deep: "
+                "{}".format(_MAX_EXTENDS_DEPTH, abs_path))
+
+        raw = cls._read_json(config_path)
+
+        parent_ref = raw.pop('extends', None)
+        if not parent_ref:
+            return raw
+
+        parent_path = parent_ref
+        if not os.path.isabs(parent_path):
+            parent_path = os.path.join(os.path.dirname(abs_path), parent_path)
+
+        if not os.path.exists(parent_path):
+            raise IOError(
+                "Configuration '{}' extends '{}', which does not exist "
+                "(looked in {})".format(config_path, parent_ref, parent_path))
+
+        parent_data = cls._load_with_extends(parent_path, chain + [abs_path])
+
+        return deep_merge(parent_data, raw)
     
     def _validate(self):
         """
@@ -355,17 +451,22 @@ class ProjectConfig(object):
         """
         paths = []
 
-        # 1. Repository-based (recommended)
+        # 1. Environment variable.  This must come BEFORE the repository path:
+        # find_config() returns the first hit, so when the repo config was
+        # listed first the environment variable could never win, which made it
+        # dead configuration.  CTX_CONFIG is the current name; CTX_CONFIG_PATH
+        # is kept as a deprecated alias.
+        for var in ('CTX_CONFIG', 'CTX_CONFIG_PATH'):
+            env_config = os.environ.get(var)
+            if env_config:
+                paths.append(env_config)
+
+        # 2. Repository-based (default)
         # Assuming this module is in <repo>/config/project_config.py
         module_dir = os.path.dirname(os.path.abspath(__file__))
         repo_root = os.path.dirname(module_dir)
         repo_config = os.path.join(repo_root, 'project_configs', 'ctx_config.json')
         paths.append(repo_config)
-
-        # 2. Environment variable
-        env_config = os.environ.get('CTX_CONFIG_PATH')
-        if env_config:
-            paths.append(env_config)
 
         # 3. Workspace-based (legacy)
         # This would need to be determined from Maya workspace
