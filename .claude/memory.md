@@ -382,8 +382,18 @@ project_configs/
   result, so an overlay declares only what it changes. No `extends` key ->
   loads exactly as before (full back-compat).
 - `config/config_resolver.resolve_config_path()` is THE way to find a config:
-  `explicit > CTX_Manager.config_path > $CTX_CONFIG > repo default`.
+  `explicit > CTX_Manager.config_path > SCENE LOCATION > $CTX_CONFIG > default`.
   Use `use_scene=False` at Maya startup (no scene open yet).
+- **Scene-location detection**: `detect_config_from_scene()` matches the open
+  scene against each config's `projRoot + project + sceneBase` prefix (longest
+  wins; case-insensitive on Windows). `X:/EGA/all/scene/...` -> EGA. This works
+  because every shot path comes from `$projRoot$project/$sceneBase/...`.
+  It sits ABOVE `$CTX_CONFIG` on purpose: env is per-session, the scene is the
+  specific thing being worked on.
+- **UI picker**: Multishot Manager `Tools > Project Config...` lists projects
+  with roots, marks active + detected, and offers `Browse...` (opens at the
+  scene's directory). Selection is stored on `CTX_Manager.config_path` and
+  triggers a shot reload.
 - `ctx_config.json` merged == old file exactly (verified), except a repaired
   mojibake em dash in `deptPriority.description`.
 
