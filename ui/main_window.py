@@ -326,6 +326,12 @@ class MainWindow(QtWidgets.QMainWindow):
         slate_action.triggered.connect(self._open_slate_manager)
         tools_menu.addAction(slate_action)
 
+        # Project config picker
+        project_action = QtWidgets.QAction("Project Config...", self)
+        project_action.setStatusTip("Choose which project config this scene uses")
+        project_action.triggered.connect(self._open_project_config_picker)
+        tools_menu.addAction(project_action)
+
         # Settings action (existing functionality)
         settings_action = QtWidgets.QAction("Settings", self)
         settings_action.setStatusTip("Open Settings")
@@ -2406,6 +2412,110 @@ class MainWindow(QtWidgets.QMainWindow):
         # Re-use the existing load method
         self._load_existing_shots()
         logger.info("Shot table refreshed after scene change")
+
+    def _open_project_config_picker(self):
+        """Let the user choose which project config this scene uses.
+
+        Detection normally gets this right from the scene's location, so this
+        is the escape hatch for scenes saved outside a project root, or for
+        pointing at a config that does not live in the repository.
+        """
+        try:
+            from config.config_resolver import (
+                list_project_configs, detect_config_from_scene,
+                get_open_scene_path, get_default_config_path)
+        except Exception as exc:
+            logger.error("Could not load config resolver: %s", exc)
+            return
+
+        current = ''
+        if self._config and self._config.config_path:
+            current = os.path.abspath(self._config.config_path)
+
+        entries = []
+        for name, path in list_project_configs():
+            try:
+                cfg = ProjectConfig(path)
+                root = cfg.get_root('projRoot') or '?'
+                label = "{}  ({})".format(cfg.get_project_code() or name, root)
+            except Exception:
+                label = "{}  (unreadable)".format(name)
+            entries.append((label, path))
+
+        detected = detect_config_from_scene()
+        labels = []
+        for label, path in entries:
+            marks = []
+            if os.path.abspath(path) == current:
+                marks.append('active')
+            if detected and os.path.abspath(path) == os.path.abspath(detected):
+                marks.append('detected from scene')
+            if marks:
+                label = "{}  [{}]".format(label, ', '.join(marks))
+            labels.append(label)
+
+        labels.append("Browse...")
+
+        choice, ok = QtWidgets.QInputDialog.getItem(
+            self, "Project Config",
+            "Config for this scene:\n\nScene: {}".format(
+                get_open_scene_path() or '(unsaved)'),
+            labels, 0, False)
+
+        if not ok:
+            return
+
+        if choice == "Browse...":
+            start_dir = os.path.dirname(current or get_default_config_path())
+            scene = get_open_scene_path()
+            if scene:
+                # Open where the scene lives, which is normally inside the
+                # project root the user is looking for.
+                start_dir = os.path.dirname(scene)
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Select Project Config", start_dir, "JSON (*.json)")
+            if not path:
+                return
+        else:
+            path = entries[labels.index(choice)][1]
+
+        self._apply_project_config(path)
+
+    def _apply_project_config(self, config_path):
+        """Bind the scene to a config and reload everything that depends on it.
+
+        Args:
+            config_path (str): Config to switch to.
+        """
+        config_path = os.path.abspath(config_path)
+
+        try:
+            new_config = ProjectConfig(config_path)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(
+                self, "Invalid Config",
+                "Could not load:\n{}\n\n{}".format(config_path, exc))
+            return
+
+        try:
+            manager = self._context_manager.get_or_create_manager()
+            manager.set_config_path(config_path)
+        except Exception as exc:
+            logger.warning("Could not record config on CTX_Manager: %s", exc)
+
+        self._config = new_config
+        try:
+            self._platform_config = PlatformConfig(self._config)
+        except Exception as exc:
+            logger.warning("Failed to create platform config: %s", exc)
+            self._platform_config = None
+
+        project = self._config.get_project_code() or '?'
+        self.statusBar().showMessage("Config loaded: {}".format(project))
+        logger.info("Switched project config to %s (%s)", config_path, project)
+
+        # Shot paths were resolved against the previous project's roots.
+        self._reload_shots_from_scene()
 
     def _reload_config_for_scene(self):
         """Reload project config if the open scene belongs to another project.

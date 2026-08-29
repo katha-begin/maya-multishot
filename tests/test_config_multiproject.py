@@ -292,5 +292,119 @@ class TestSceneBoundResolution(unittest.TestCase):
                              config_resolver.get_default_config_path())
 
 
+class TestSceneProjectDetection(unittest.TestCase):
+    """A scene path already encodes its project via projRoot + project."""
+
+    SWA_SCENE = 'V:/SWA/all/scene/Ep04/sq0070/SH0140/lighting/version/a.ma'
+    EGA_SCENE = 'X:/EGA/all/scene/Ep02/sq0220/SH1350/cfx/version/b.ma'
+
+    def _detect(self, scene):
+        return config_resolver.detect_config_from_scene(scene)
+
+    def test_swa_scene_detects_swa(self):
+        got = self._detect(self.SWA_SCENE)
+        self.assertIsNotNone(got)
+        self.assertEqual(ProjectConfig(got).get_project_code(), 'SWA')
+
+    def test_ega_scene_detects_ega(self):
+        got = self._detect(self.EGA_SCENE)
+        self.assertIsNotNone(got)
+        self.assertEqual(ProjectConfig(got).get_project_code(), 'EGA')
+
+    def test_backslash_scene_path(self):
+        got = self._detect(self.EGA_SCENE.replace('/', '\\'))
+        self.assertIsNotNone(got)
+        self.assertEqual(ProjectConfig(got).get_project_code(), 'EGA')
+
+    def test_unrelated_path_detects_nothing(self):
+        self.assertIsNone(self._detect('C:/temp/scratch/untitled.ma'))
+
+    def test_empty_scene_detects_nothing(self):
+        self.assertIsNone(self._detect(''))
+
+    def test_right_drive_wrong_project_detects_nothing(self):
+        self.assertIsNone(self._detect('V:/OTHER/all/scene/Ep01/x.ma'))
+
+    def test_project_prefix_shape(self):
+        cfg = ProjectConfig(os.path.join(CONFIG_DIR, 'EGA.json'))
+        self.assertEqual(config_resolver.get_project_prefix(cfg),
+                         'X:/EGA/all/scene/')
+
+    def test_unloadable_config_does_not_break_detection(self):
+        """One malformed config must not abort the whole scan."""
+        broken = os.path.join(CONFIG_DIR, 'ZZBROKEN.json')
+        with io.open(broken, 'w', encoding='utf-8') as f:
+            f.write(u'{ not valid json')
+        try:
+            got = self._detect(self.EGA_SCENE)
+            self.assertIsNotNone(got)
+            self.assertEqual(ProjectConfig(got).get_project_code(), 'EGA')
+        finally:
+            os.remove(broken)
+
+
+class TestDetectionInResolutionOrder(unittest.TestCase):
+
+    EGA_SCENE = 'X:/EGA/all/scene/Ep02/sq0220/SH1350/cfx/version/b.ma'
+
+    def setUp(self):
+        for var in (config_resolver.ENV_VAR, config_resolver.LEGACY_ENV_VAR):
+            os.environ.pop(var, None)
+
+    def _patch_scene(self, scene_path, bound=None):
+        class MockCmds(object):
+            def ls(self, **kwargs):
+                return ['CTX_Manager'] if bound else []
+
+            def attributeQuery(self, attr, **kwargs):
+                return attr in ('ctx_type', 'config_path')
+
+            def getAttr(self, plug):
+                if plug.endswith('.ctx_type'):
+                    return 'CTX_Manager'
+                return bound
+
+            def file(self, **kwargs):
+                return scene_path
+        return MockCmds()
+
+    def test_detection_beats_env_var(self):
+        """A session launched for SWA must still open an EGA scene as EGA."""
+        os.environ[config_resolver.ENV_VAR] = os.path.join(CONFIG_DIR, 'SWA.json')
+        with patch.object(config_resolver, 'MAYA_AVAILABLE', True), \
+             patch.object(config_resolver, 'cmds', self._patch_scene(self.EGA_SCENE)):
+            resolved = config_resolver.resolve_config_path()
+        self.assertEqual(ProjectConfig(resolved).get_project_code(), 'EGA')
+
+    def test_explicit_scene_binding_beats_detection(self):
+        swa = os.path.join(CONFIG_DIR, 'SWA.json')
+        with patch.object(config_resolver, 'MAYA_AVAILABLE', True), \
+             patch.object(config_resolver, 'cmds',
+                          self._patch_scene(self.EGA_SCENE, bound=swa)):
+            resolved = config_resolver.resolve_config_path()
+        self.assertEqual(resolved, swa)
+
+    def test_env_used_when_scene_matches_nothing(self):
+        ega = os.path.join(CONFIG_DIR, 'EGA.json')
+        os.environ[config_resolver.ENV_VAR] = ega
+        with patch.object(config_resolver, 'MAYA_AVAILABLE', True), \
+             patch.object(config_resolver, 'cmds',
+                          self._patch_scene('C:/tmp/untitled.ma')):
+            self.assertEqual(config_resolver.resolve_config_path(), ega)
+
+    def test_use_scene_false_skips_detection(self):
+        with patch.object(config_resolver, 'MAYA_AVAILABLE', True), \
+             patch.object(config_resolver, 'cmds', self._patch_scene(self.EGA_SCENE)):
+            self.assertEqual(
+                config_resolver.resolve_config_path(use_scene=False),
+                config_resolver.get_default_config_path())
+
+    def test_unsaved_scene_falls_back_to_default(self):
+        with patch.object(config_resolver, 'MAYA_AVAILABLE', True), \
+             patch.object(config_resolver, 'cmds', self._patch_scene('')):
+            self.assertEqual(config_resolver.resolve_config_path(),
+                             config_resolver.get_default_config_path())
+
+
 if __name__ == '__main__':
     unittest.main()
