@@ -373,6 +373,14 @@ class CTXShotNode(NodeWrapper):
         self.set_attribute('start_frame', int(start))
         self.set_attribute('end_frame', int(end))
 
+    def get_fps(self):
+        """Get frames per second.
+
+        Returns:
+            float: Frames per second
+        """
+        return self.get_attribute('fps')
+
     def set_fps(self, fps):
         """Set frames per second.
 
@@ -380,6 +388,38 @@ class CTXShotNode(NodeWrapper):
             fps (float): Frames per second
         """
         self.set_attribute('fps', float(fps))
+
+    def get_handles(self):
+        """Get handle frames before/after the shot.
+
+        Returns:
+            int: Handle frames
+        """
+        return self.get_attribute('handles')
+
+    def set_handles(self, handles):
+        """Set handle frames before/after the shot.
+
+        Args:
+            handles (int): Handle frames
+        """
+        self.set_attribute('handles', int(handles))
+
+    def get_frame_offset(self):
+        """Get the shot's frame offset.
+
+        Returns:
+            int: Frame offset
+        """
+        return self.get_attribute('frame_offset')
+
+    def set_frame_offset(self, offset):
+        """Set the shot's frame offset.
+
+        Args:
+            offset (int): Frame offset
+        """
+        self.set_attribute('frame_offset', int(offset))
 
     def get_ep_code(self):
         """Get episode code.
