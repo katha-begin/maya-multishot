@@ -72,9 +72,21 @@ def _get_shot_code(shot_node):
     if not cmds.objExists(node_name):
         return ''
 
-    if cmds.attributeQuery('shot', node=node_name, exists=True):
-        return cmds.getAttr('{}.shot'.format(node_name)) or ''
+    return _read_shot_code(node_name)
 
+
+def _read_shot_code(node_name):
+    """Read the shot code attribute of a CTX_Shot node.
+
+    Schema-based shot nodes store it as 'shot_code'; 'shot' is the legacy
+    name.  Reading only 'shot' made reconciliation skip every schema-based
+    shot ("could not determine shot code").
+    """
+    for attr in ('shot_code', 'shot'):
+        if cmds.attributeQuery(attr, node=node_name, exists=True):
+            value = cmds.getAttr('{}.{}'.format(node_name, attr))
+            if value:
+                return value
     return ''
 
 
@@ -106,9 +118,7 @@ def _find_ctx_asset_for_shot(shot_node_name, namespace):
             return node
 
     # Method 2: scan all CTX_Asset nodes (handles orphaned nodes not yet wired)
-    shot_code = ''
-    if cmds.attributeQuery('shot', node=shot_node_name, exists=True):
-        shot_code = cmds.getAttr('{}.shot'.format(shot_node_name)) or ''
+    shot_code = _read_shot_code(shot_node_name)
 
     if shot_code:
         all_network = cmds.ls(type='network') or []

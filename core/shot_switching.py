@@ -95,8 +95,8 @@ class ShotSwitcher(object):
         Returns:
             bool: True if switch successful
         """
-        logger.info("=" * 60)
-        logger.info("SWITCHING TO SHOT: {}".format(shot_node))
+        logger.debug("=" * 60)
+        logger.debug("SWITCHING TO SHOT: {}".format(shot_node))
 
         # Validate nodes exist
         if not cmds.objExists(shot_node):
@@ -109,24 +109,24 @@ class ShotSwitcher(object):
         ep = cmds.getAttr("{}.ep_code".format(shot_node))
         seq = cmds.getAttr("{}.seq_code".format(shot_node))
         shot = cmds.getAttr("{}.shot_code".format(shot_node))
-        logger.info("Shot info: ep={}, seq={}, shot={}".format(ep, seq, shot))
+        logger.debug("Shot info: ep={}, seq={}, shot={}".format(ep, seq, shot))
 
         # Ensure global display layers exist (CTX_Active and CTX_Inactive)
         self.layer_manager.ensure_global_layers()
-        logger.info("Ensured global display layers exist")
+        logger.debug("Ensured global display layers exist")
 
         # Update manager's active shot
         cmds.setAttr("{}.active_shot_id".format(manager_node), shot_node, type="string")
-        logger.info("Updated manager active_shot_id to: {}".format(shot_node))
+        logger.debug("Updated manager active_shot_id to: {}".format(shot_node))
 
         # Deactivate other shots FIRST (before activating the new one)
         if hide_others:
-            logger.info("Deactivating other shots...")
+            logger.debug("Deactivating other shots...")
             self._deactivate_other_shots(shot_node, manager_node)
 
         # Set this shot as active (this will automatically show its layer via connection)
         cmds.setAttr("{}.is_active".format(shot_node), True)
-        logger.info("Set {}.is_active = True".format(shot_node))
+        logger.debug("Set {}.is_active = True".format(shot_node))
 
         # Add to history
         self._add_to_history(shot_node)
@@ -134,12 +134,12 @@ class ShotSwitcher(object):
         # Refresh the Layer Editor UI to show visibility changes
         try:
             cmds.refresh(force=True)
-            logger.info("Forced viewport refresh")
+            logger.debug("Forced viewport refresh")
         except Exception as e:
             logger.warning("Failed to refresh viewport: {}".format(e))
 
-        logger.info("Shot switch complete!")
-        logger.info("=" * 60)
+        logger.info("Switched to shot %s (ep=%s seq=%s shot=%s)", shot_node, ep, seq, shot)
+        logger.debug("=" * 60)
         return True
     
     def get_active_shot(self, manager_node):
@@ -244,7 +244,7 @@ class ShotSwitcher(object):
                     if cmds.getAttr('{}.ctx_type'.format(node)) == 'CTX_Shot':
                         if cmds.attributeQuery('is_active', node=node, exists=True):
                             cmds.setAttr('{}.is_active'.format(node), False)
-                            logger.info("Set {}.is_active = False".format(node))
+                            logger.debug("Set {}.is_active = False".format(node))
             except Exception as e:
                 logger.warning("Failed to deactivate shot {}: {}".format(node, e))
 
