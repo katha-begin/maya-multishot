@@ -354,9 +354,6 @@ class MainWindow(QtWidgets.QMainWindow):
         relaunches the Multishot Manager so new flags/parenting take effect.
         """
         try:
-            import sys
-            import importlib
-
             # Close Gaffer Manager first so it is recreated with correct parent
             from ui.gaffer_manager_dialog import GafferManagerDialog
             if GafferManagerDialog._instance is not None:
@@ -377,18 +374,11 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception:
                 pass
 
-            # Reload all project modules
-            prefixes = ('core.', 'ui.', 'tools.', 'utils.',
-                        'core', 'ui', 'tools', 'utils')
-            to_reload = [
-                name for name, mod in list(sys.modules.items())
-                if mod is not None and name.startswith(prefixes)
-            ]
-            for name in reversed(to_reload):
-                try:
-                    importlib.reload(sys.modules[name])
-                except Exception:
-                    pass
+            # Drop all project modules (and stale bytecode) so the relaunch
+            # below imports fresh code. Works on Python 2, which has no
+            # importlib.reload, and never touches other tools' modules.
+            import ctx_bootstrap
+            ctx_bootstrap.prepare()
 
             # Close this window -- the launch below will create a fresh one
             self.close()

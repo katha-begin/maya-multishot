@@ -17,6 +17,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+from core.compat import string_types
 
 logger = logging.getLogger(__name__)
 
@@ -561,7 +562,7 @@ class DisplayLayerManager(object):
 
     def _get_asset_target_node(self, asset):
         """Return the Maya node linked on CTX_Asset.targetNode, if any."""
-        node_name = asset if isinstance(asset, str) else asset.node_name
+        node_name = asset if isinstance(asset, string_types) else asset.node_name
 
         try:
             if not cmds.objExists(node_name):

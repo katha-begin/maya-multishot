@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 """Launch script for Slate Manager dialog in Maya with docking support.
 
-Run this in Maya Script Editor:
+Works wherever the repo is installed. Run it from the CTX Tools menu, or in
+the Maya Script Editor:
     import sys
-    sys.path.insert(0, r'E:/dev/maya-multishot')
-    exec(open(r'E:/dev/maya-multishot/launch_slate_manager.py').read())
+    sys.path.insert(0, r'<path to maya-multishot>')
+    exec(open(r'<path to maya-multishot>/launch_slate_manager.py').read())
 """
 
 from __future__ import absolute_import
@@ -15,13 +16,35 @@ import sys
 import os
 import logging
 
-try:
-    repo_root = os.path.dirname(os.path.abspath(__file__))
-except NameError:
-    repo_root = r'E:/dev/maya-multishot'
 
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
+def _find_repo_root():
+    """Return the maya-multishot folder this launcher belongs to.
+
+    Uses this file's folder when __file__ is set, otherwise the first sys.path
+    entry holding the repo: exec() from the Script Editor defines no __file__,
+    and Maya can leave a stale one behind from userSetup.py.
+    """
+    candidates = []
+    try:
+        candidates.append(os.path.dirname(os.path.abspath(__file__)))
+    except NameError:
+        pass
+    candidates.extend(sys.path)
+    for path in candidates:
+        if path and os.path.isfile(os.path.join(path, 'ctx_bootstrap.py')):
+            return os.path.abspath(path)
+    raise RuntimeError(
+        "Cannot find the maya-multishot folder. Add it to sys.path first:\n"
+        "    import sys; sys.path.insert(0, r'<path to maya-multishot>')")
+
+
+# Put this checkout first on sys.path so its packages win over any other copy.
+# (No module purge here: the Multishot Manager keeps a live reference to the
+# Slate Manager's class, which a purge would orphan.)
+repo_root = _find_repo_root()
+sys.path[:] = [p for p in sys.path
+               if os.path.normcase(os.path.abspath(p)) != os.path.normcase(repo_root)]
+sys.path.insert(0, repo_root)
 
 logging.basicConfig(level=logging.INFO,
                     format='%(name)s - %(levelname)s: %(message)s')

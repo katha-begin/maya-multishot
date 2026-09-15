@@ -21,6 +21,7 @@ Usage::
 from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
+from core.compat import string_types
 
 logger = get_logger(__name__)
 
@@ -176,7 +177,7 @@ class SceneValidator(object):
         """
         from core.nodes.wrappers import CTXShotNode
 
-        if isinstance(shot_node, str):
+        if isinstance(shot_node, string_types):
             shot_node = CTXShotNode(shot_node)
 
         if hasattr(shot_node, 'get_shot_id'):

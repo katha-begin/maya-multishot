@@ -191,6 +191,20 @@ Full task docs at: `spec/phase6/` (INDEX.md + STREAM_6A through STREAM_6G)
 - Stream 6-G `restore_all()` method name in spec differs from implementation (`clear()`) — cosmetic
 - Live Maya testing for slate originals capture/restore flow (other flows validated in Maya)
 
+### Install Anywhere + Python 2.7 Runtime ✅ (2026-09-10)
+
+The repo is cloned to a different folder per studio (e.g. `X:\EGA\_temp\rich\script\maya-multishot`) and runs in Maya 2022 Python 2 mode as well as Python 3.
+
+**Key design decisions (do not revert):**
+- Never hardcode an install path. `ctx_bootstrap.py` (repo root) is both the marker and the helper: `REPO_ROOT`, `purge_modules()`, `clear_bytecode()`, `prepare()`, `run_script()`. It imports nothing from the repo.
+- Launchers (`launch_*.py`) find the repo from their own folder, else the first `sys.path` entry holding `ctx_bootstrap.py` (a Script Editor `exec()` has no `__file__`, and Maya can leave a stale one), then put it first on `sys.path`.
+- The menu runs launchers with `ctx_bootstrap.run_script()` — never a bare `exec()` inside a function, which hands the script `tools/maya_menu.py`'s globals and `__file__`.
+- Reload = purge, not `importlib.reload`: `ctx_bootstrap.prepare()` drops modules **by file location** (this checkout plus any older CTX checkout already loaded), never by name prefix — `core`/`ui`/`tools`/`config` are common package names in studio environments.
+- Never put `core/` or any other subfolder on `sys.path` (removed from `core/nodes/__init__.py`).
+- Batch Render uses the running Maya's `Render.exe` (`MAYA_LOCATION`) before the hardcoded install paths.
+
+**Remaining gap:** if a studio tool imports its own package literally named `core`/`ui`/`tools`/`config` before ours, our packages would need a unique namespace (e.g. `ctx_multishot.core`).
+
 ---
 
 ## 3. Non-Negotiable Rules
@@ -204,6 +218,9 @@ Full task docs at: `spec/phase6/` (INDEX.md + STREAM_6A through STREAM_6G)
   - No bare `super()` — always `super(ClassName, self)` or `super(ClassName, cls)`
   - No f-strings, no type hints, no `yield from`, no `async/await`, no `pathlib`, no `raise X from Y`
   - Use `.format()` for string interpolation
+  - **Strings are `unicode` on Python 2** (`maya.cmds`, PySide2 and `json` all return it): never `isinstance(x, str)` — use `from core.compat import string_types`
+  - Python-3-only runtime calls break on 2.7 even though the file compiles: no `os.makedirs(exist_ok=)` (use `core.compat.makedirs`), no `threading.main_thread()` (`core.compat.is_main_thread`), no `Thread(daemon=True)` (set `t.daemon = True`), no `subprocess.run` / `FileNotFoundError` / `TimeoutExpired` (`Popen` + `OSError`), no `importlib.reload` (`ctx_bootstrap.prepare()`). Env dicts passed to `Popen` must hold `str`, not `unicode`
+  - Check under both interpreters: Maya 2022 ships `bin/mayapy2.exe` (2.7) next to `bin/mayapy.exe` (3.7)
 
 ### Node System: Always Use Schema-Based Wrappers
 
@@ -409,8 +426,9 @@ If none found → attribute omitted (not applied)
 # ❌ WRONG — breaks after module reload (stale class object)
 gaffer_node = gaffer.node_name if isinstance(gaffer, CTXLightGafferNode) else gaffer
 
-# ✅ CORRECT — safe across reloads
-gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
+# ✅ CORRECT — safe across reloads; string_types also accepts Python 2 unicode
+from core.compat import string_types
+gaffer_node = gaffer if isinstance(gaffer, string_types) else gaffer.node_name
 ```
 Apply this pattern everywhere a method accepts `(wrapper_or_str)`.
 
@@ -442,6 +460,8 @@ Apply this pattern everywhere a method accepts `(wrapper_or_str)`.
 | **Main UI** | `ui/main_window.py` |
 | **Tests** | `tests/` |
 | **Launch scripts** | `launch_multishot_dockable.py` |
+| **Find repo / purge modules / run launchers** | `ctx_bootstrap.py` |
+| **Python 2/3 helpers** | `core/compat.py` |
 
 ---
 
@@ -532,6 +552,8 @@ except ImportError:
 ```
 
 Tests run without Maya installed. Always write tests that work in both modes.
+
+Python 2.7 check (Maya 2022): from the repo root run `mayapy2 -m unittest tests.test_compat tests.test_ctx_bootstrap` — those two files use plain `unittest` (no `unittest.mock`) so they run there. Note `tests/` is listed in `.gitignore`: add new test files with `git add -f`.
 
 ---
 

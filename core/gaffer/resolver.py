@@ -9,6 +9,7 @@ from __future__ import absolute_import, division, print_function
 
 from ..nodes.wrappers.gaffer import CTXLightGafferNode
 from ..logging_config import get_logger
+from ..compat import string_types
 
 logger = get_logger(__name__)
 
@@ -84,7 +85,7 @@ class AttributeResolver(object):
             raise ValueError("Unsupported attribute: {}".format(attribute))
         
         # Convert to wrapper if needed
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
         
         # Build chain from child to parent
@@ -219,7 +220,7 @@ class AttributeResolver(object):
         source_gaffer = result['source_gaffer']
 
         # Convert to wrapper if needed
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
 
         return {

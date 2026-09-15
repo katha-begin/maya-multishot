@@ -17,6 +17,7 @@ except ImportError:
 
 from ..base import NodeWrapper
 from ..schemas.sequence import CTXSequenceSchema
+from ...compat import string_types
 
 
 class CTXSequenceNode(NodeWrapper):
@@ -165,7 +166,7 @@ class CTXSequenceNode(NodeWrapper):
             raise RuntimeError("Maya is not available")
 
         # Get gaffer node name -- use str check to avoid isinstance failure after reload
-        gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
+        gaffer_node = gaffer if isinstance(gaffer, string_types) else gaffer.node_name
 
         # Unidirectional connection: gaffer.message -> sequence.gaffer
         # Sequence owns gaffer (direct ownership)
@@ -224,7 +225,7 @@ class CTXSequenceNode(NodeWrapper):
             slate (CTXSlateNode or str): Slate node or node name.
         """
         self._ensure_slate_attr()
-        slate_name = slate if isinstance(slate, str) else slate.node_name
+        slate_name = slate if isinstance(slate, string_types) else slate.node_name
         cmds.connectAttr(
             '{}.message'.format(slate_name),
             '{}.slate'.format(self.node_name),

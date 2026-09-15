@@ -29,6 +29,7 @@ except ImportError:
 from core.slate.manager import SlateManager
 from core.slate.resolver import SlateResolver
 from core.nodes.wrappers.slate import CTXSlateNode
+from core.compat import string_types
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +329,7 @@ class SlateManagerDialog(QtWidgets.QMainWindow):
         """
         if slate is None:
             return
-        target_name = slate if isinstance(slate, str) else slate.node_name
+        target_name = slate if isinstance(slate, string_types) else slate.node_name
         for i in range(self._slate_combo.count()):
             wrapper = self._slate_combo.itemData(i)
             if wrapper is not None and wrapper.node_name == target_name:

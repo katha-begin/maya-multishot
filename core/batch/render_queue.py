@@ -6,6 +6,7 @@ from __future__ import absolute_import, division, print_function
 import threading
 
 from core.logging_config import get_logger
+from core.compat import is_main_thread
 
 logger = get_logger(__name__)
 
@@ -30,7 +31,7 @@ def _prepare_on_main(preparer, job):
     """
     try:
         import maya.utils as maya_utils
-        if threading.current_thread() is threading.main_thread():
+        if is_main_thread():
             return preparer.prepare(job)
         return maya_utils.executeInMainThreadWithResult(preparer.prepare, job)
     except ImportError:

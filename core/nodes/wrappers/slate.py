@@ -9,6 +9,7 @@ except ImportError:
 
 from ..base import NodeWrapper
 from ..schemas.slate import CTXSlateSchema
+from ...compat import string_types
 
 
 class CTXSlateNode(NodeWrapper):
@@ -177,7 +178,7 @@ class CTXSlateNode(NodeWrapper):
             parent (CTXSlateNode or str): Parent slate node or node name.
         """
         self._ensure_parent_slate_attr()
-        parent_name = parent if isinstance(parent, str) else parent.node_name
+        parent_name = parent if isinstance(parent, string_types) else parent.node_name
         cmds.connectAttr(
             '{}.message'.format(parent_name),
             '{}.parentSlate'.format(self.node_name),

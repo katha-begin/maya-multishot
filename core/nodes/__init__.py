@@ -13,14 +13,10 @@ from __future__ import absolute_import, division, print_function
 from .base import NodeSchema, NodeFactory, NodeWrapper
 
 # Import NodeManager from the parent core module (core/nodes.py file)
-# This maintains backward compatibility with existing code
-import sys
+# This maintains backward compatibility with existing code.
+# Loaded by file path below, so core/ itself never goes on sys.path (that
+# would expose "gaffer", "renderers", ... as top-level names to other tools).
 import os
-
-# Get the parent directory (core/)
-parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
 
 # Import from core.nodes module (the file, not this package)
 # We need to import it as a module to avoid circular imports.

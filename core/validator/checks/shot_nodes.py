@@ -11,6 +11,7 @@ from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck
+from core.compat import string_types
 
 logger = get_logger(__name__)
 
@@ -94,7 +95,7 @@ class CTXNodeHierarchyCheck(BaseCheck):
             gaffer = None
 
         if gaffer is not None:
-            gaffer_name = gaffer if isinstance(gaffer, str) else gaffer.node_name
+            gaffer_name = gaffer if isinstance(gaffer, string_types) else gaffer.node_name
             if not cmds.objExists(gaffer_name):
                 missing_connections.append('gaffer')
                 logger.debug('Gaffer node does not exist: %s', gaffer_name)

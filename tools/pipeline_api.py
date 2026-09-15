@@ -19,6 +19,7 @@ from __future__ import absolute_import, division, print_function
 import os
 
 from core.logging_config import get_logger, setup_logging
+from core.compat import string_types
 
 logger = get_logger(__name__)
 
@@ -328,7 +329,7 @@ class PipelineAPI(object):
             from core.nodes.wrappers import CTXShotNode, CTXManagerNode
             all_shots = CTXShotNode.list_all()
             for s in all_shots:
-                if isinstance(s, str):
+                if isinstance(s, string_types):
                     from core.nodes.wrappers.shot import CTXShotNode as _ShotCls
                     s = _ShotCls(s)
                 try:
@@ -340,7 +341,7 @@ class PipelineAPI(object):
             managers = CTXManagerNode.list_all()
             if managers:
                 mgr = managers[0]
-                if isinstance(mgr, str):
+                if isinstance(mgr, string_types):
                     from core.nodes.wrappers.manager import CTXManagerNode as _MgrCls
                     mgr = _MgrCls(mgr)
                 try:

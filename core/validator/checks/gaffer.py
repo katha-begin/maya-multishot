@@ -11,6 +11,7 @@ from __future__ import absolute_import, division, print_function
 
 from core.logging_config import get_logger
 from core.validator.base_check import BaseCheck
+from core.compat import string_types
 
 logger = get_logger(__name__)
 
@@ -59,7 +60,7 @@ class GafferChainCheck(BaseCheck):
         from core.nodes.wrappers import CTXLightGafferNode, CTXLightContextNode
 
         # Resolve to wrapper
-        gaffer_node_name = gaffer if isinstance(gaffer, str) else gaffer.node_name
+        gaffer_node_name = gaffer if isinstance(gaffer, string_types) else gaffer.node_name
         gaffer_wrapper = CTXLightGafferNode(gaffer_node_name)
 
         cycles_found = False

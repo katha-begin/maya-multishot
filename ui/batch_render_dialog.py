@@ -833,7 +833,8 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
                 QtCore.QMetaObject.invokeMethod(
                     self, '_on_render_finished', QtCore.Qt.QueuedConnection)
 
-        self._render_thread = threading.Thread(target=run, daemon=True)
+        self._render_thread = threading.Thread(target=run)
+        self._render_thread.daemon = True  # Python 2's Thread() has no daemon=
         self._render_thread.start()
 
     # ------------------------------------------------------------------
@@ -898,7 +899,8 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
                 QtCore.QMetaObject.invokeMethod(
                     self, '_on_render_finished', QtCore.Qt.QueuedConnection)
 
-        self._render_thread = threading.Thread(target=run, daemon=True)
+        self._render_thread = threading.Thread(target=run)
+        self._render_thread.daemon = True  # Python 2's Thread() has no daemon=
         self._render_thread.start()
 
     # ------------------------------------------------------------------

@@ -20,6 +20,7 @@ from .resolver import AttributeResolver
 from .manager import GafferManager
 from ..renderers import get_maya_attr
 from ..logging_config import get_logger
+from ..compat import string_types
 
 logger = get_logger(__name__)
 
@@ -52,7 +53,7 @@ class LightOperations(object):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
 
         # Build chain root-first (master -> ... -> shot)
@@ -143,7 +144,7 @@ class LightOperations(object):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
 
         light_ctx = None
@@ -207,7 +208,7 @@ class LightOperations(object):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
 
         results = {}
@@ -460,7 +461,7 @@ class LightOperations(object):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
 
         target_light = GafferManager._find_light_in_chain(gaffer, light_name)

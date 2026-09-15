@@ -150,7 +150,13 @@ class SettingsDialog(QtWidgets.QDialog):
         
         self.config_path_edit = QtWidgets.QLineEdit()
         self.config_path_edit.setPlaceholderText("Path to project_config.json")
-        self.config_path_edit.setText("E:/dev/maya-multishot/config/project_config.json")
+        from config.config_resolver import (get_default_config_path,
+                                            resolve_config_path)
+        try:
+            config_path = resolve_config_path()
+        except Exception:
+            config_path = get_default_config_path()
+        self.config_path_edit.setText(config_path)
         self.config_path_edit.setReadOnly(True)
         file_layout.addWidget(self.config_path_edit)
         

@@ -14,6 +14,7 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+from core.compat import string_types
 
 
 class TemplateManager(object):
@@ -69,7 +70,7 @@ class TemplateManager(object):
             ValueError: If template syntax is invalid
         """
         for name, template in self.templates.items():
-            if not isinstance(template, str):
+            if not isinstance(template, string_types):
                 raise ValueError(
                     "Template '{}' must be a string, got {}".format(
                         name, type(template).__name__

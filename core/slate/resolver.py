@@ -21,6 +21,7 @@ except ImportError:
     MAYA_AVAILABLE = False
 
 from core.logging_config import get_logger
+from core.compat import string_types
 
 logger = get_logger(__name__)
 
@@ -48,7 +49,7 @@ class SlateResolver(object):
         """
         from core.nodes.wrappers.slate import CTXSlateNode
 
-        current = slate_node if not isinstance(slate_node, str) else CTXSlateNode(slate_node)
+        current = slate_node if not isinstance(slate_node, string_types) else CTXSlateNode(slate_node)
         chain = []
         visited = set()
 
@@ -277,7 +278,7 @@ class SlateResolver(object):
             return None
 
         # Resolve string to wrapper
-        if isinstance(node, str):
+        if isinstance(node, string_types):
             try:
                 ctx_type = cmds.getAttr('{}.ctx_type'.format(node))
                 if ctx_type == 'CTX_Shot':

@@ -12,6 +12,7 @@ import os
 import time
 
 from core.logging_config import get_logger
+from core.compat import makedirs
 
 logger = get_logger(__name__)
 
@@ -48,7 +49,7 @@ class TempSceneManager(object):
 
     def _save_manifest(self):
         """Write current manifest to disk."""
-        os.makedirs(self.temp_dir, exist_ok=True)
+        makedirs(self.temp_dir)
         try:
             with open(self._manifest_path, 'w') as f:
                 json.dump(self._entries, f, indent=2)
@@ -108,7 +109,7 @@ class TempSceneManager(object):
         Returns:
             str: Full path (file does not exist yet).
         """
-        os.makedirs(self.temp_dir, exist_ok=True)
+        makedirs(self.temp_dir)
         timestamp = time.strftime('%Y%m%d_%H%M%S')
         filename = 'batch_%s_%s%s' % (shot_id, timestamp, suffix)
         return os.path.join(self.temp_dir, filename)

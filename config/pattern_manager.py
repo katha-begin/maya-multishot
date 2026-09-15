@@ -14,6 +14,7 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+from core.compat import string_types
 
 
 class PatternManager(object):
@@ -81,7 +82,7 @@ class PatternManager(object):
             ValueError: If pattern syntax is invalid
         """
         for name, pattern in self.patterns.items():
-            if not isinstance(pattern, str):
+            if not isinstance(pattern, string_types):
                 raise ValueError(
                     "Pattern '{}' must be a string, got {}".format(
                         name, type(pattern).__name__

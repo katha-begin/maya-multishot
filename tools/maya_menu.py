@@ -26,6 +26,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 try:
     import maya.cmds as cmds
     import maya.mel as mel
@@ -57,6 +59,9 @@ logger = get_logger(__name__)
 # Menu name constant
 CTX_MENU_NAME = "CTXToolsMenu"
 CTX_MENU_LABEL = "CTX Tools"
+
+# This checkout's folder, so launchers and reload work wherever it is installed
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def create_ctx_menu():
@@ -287,61 +292,21 @@ def reload_menu():
     try:
         logger.info("Reloading CTX Tools menu and modules...")
 
-        # Step 0: Clear __pycache__ so stale .pyc files cannot shadow fixed .py files
-        import os
-        import shutil
-        try:
-            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            for dirpath, dirnames, _ in os.walk(repo_root):
-                if '__pycache__' in dirnames:
-                    cache_dir = os.path.join(dirpath, '__pycache__')
-                    shutil.rmtree(cache_dir, ignore_errors=True)
-            logger.info("Cleared __pycache__ directories")
-        except Exception as cache_err:
-            logger.warning("Could not clear __pycache__: {}".format(cache_err))
-
-        # Step 1: Reload Python modules
-        import sys
-
-        # List of module prefixes to reload
-        module_prefixes = [
-            'core.',
-            'ui.',
-            'tools.',
-            'utils.',
-        ]
-
-        # Find all loaded modules that match our prefixes
-        modules_to_reload = []
-        for module_name in list(sys.modules.keys()):
-            for prefix in module_prefixes:
-                if module_name.startswith(prefix) or module_name in ['core', 'ui', 'tools', 'utils']:
-                    if sys.modules[module_name] is not None:
-                        modules_to_reload.append(module_name)
-                    break
-
-        # Reload modules in reverse order (to handle dependencies)
-        logger.info("Reloading {} modules...".format(len(modules_to_reload)))
-        for module_name in reversed(modules_to_reload):
-            try:
-                if sys.modules[module_name] is not None:
-                    import importlib
-                    importlib.reload(sys.modules[module_name])
-                    logger.debug("Reloaded: {}".format(module_name))
-            except Exception as e:
-                logger.warning("Failed to reload {}: {}".format(module_name, e))
+        # Step 1: Clear stale bytecode and every loaded CTX Tools module so the
+        # imports below read the files on disk. Purging instead of
+        # importlib.reload works on Python 2 (which has no importlib.reload)
+        # and does not depend on the order modules get reloaded in.
+        import ctx_bootstrap
+        purged = ctx_bootstrap.prepare(_REPO_ROOT)
+        logger.info("Cleared {} modules".format(len(purged)))
 
         # Step 2: Remove old menu first
         remove_ctx_menu()
 
-        # Step 3: Reload this module itself
+        # Step 3: Import a fresh copy of this module and build the menu from it
         try:
-            import importlib
             import tools.maya_menu as menu_module
-            importlib.reload(menu_module)
             logger.info("Reloaded tools.maya_menu")
-
-            # Step 4: Call create_ctx_menu from the RELOADED module
             menu_module.create_ctx_menu()
 
         except Exception as e:
@@ -354,7 +319,7 @@ def reload_menu():
         cmds.confirmDialog(
             title="Reload Complete",
             message="CTX Tools menu and modules reloaded successfully!\n\n"
-                    "Reloaded {} modules.".format(len(modules_to_reload)),
+                    "Reloaded {} modules.".format(len(purged)),
             button=["OK"],
             defaultButton="OK"
         )
@@ -489,32 +454,31 @@ def open_gaffer_manager():
 _batch_render_dialog = None
 
 
+def _run_launcher(filename, label):
+    """Run one of this install's launch_*.py scripts.
+
+    The script runs with its own globals and __file__ (ctx_bootstrap.run_script).
+    A bare exec() here would hand it this module's globals, so it would work
+    out the repo folder from tools/maya_menu.py instead of from itself.
+    """
+    import sys
+    if _REPO_ROOT not in sys.path:
+        sys.path.insert(0, _REPO_ROOT)
+    try:
+        import ctx_bootstrap
+        ctx_bootstrap.run_script(os.path.join(_REPO_ROOT, filename))
+    except Exception as exc:
+        cmds.warning("Failed to launch {}: {}".format(label, exc))
+
+
 def open_batch_render_dialog():
     """Open Batch Render dialog using dockable launcher."""
-    import sys
-    import os
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    try:
-        exec(open(os.path.join(repo_root, 'launch_batch_render_dockable.py')).read())
-    except Exception as exc:
-        import maya.cmds as cmds
-        cmds.warning("Failed to launch Batch Render: {}".format(exc))
+    _run_launcher('launch_batch_render_dockable.py', 'Batch Render')
 
 
 def open_slate_manager():
     """Open Slate Manager dialog using dockable launcher."""
-    import sys
-    import os
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
-    try:
-        exec(open(os.path.join(repo_root, 'launch_slate_manager.py')).read())
-    except Exception as exc:
-        import maya.cmds as cmds
-        cmds.warning("Failed to launch Slate Manager: {}".format(exc))
+    _run_launcher('launch_slate_manager.py', 'Slate Manager')
 
 
 def open_asset_manager():
@@ -1071,9 +1035,9 @@ def install():
     This is a convenience function that can be called from userSetup.py
     to automatically create the menu when Maya starts.
 
-    Example userSetup.py:
+    Example userSetup.py (full version: examples/userSetup.py):
         import sys
-        sys.path.append(r'T:\pipeline\development\maya\maya-multishot')
+        sys.path.insert(0, r'<path to maya-multishot>')
 
         from tools import maya_menu
         maya_menu.install()
@@ -1108,49 +1072,19 @@ def reload_all_modules():
     """Reload all project modules without recreating menu.
 
     This is useful for development when you want to reload code changes
-    without recreating the menu UI.
+    without recreating the menu UI. Every loaded CTX Tools module is dropped
+    from sys.modules, so the next use imports the files on disk (works on
+    Python 2, which has no importlib.reload).
 
     Usage in Maya Script Editor:
         from tools import maya_menu
         maya_menu.reload_all_modules()
+
+    Returns:
+        tuple: (modules cleared, 0) -- the old (reloaded, failed) shape.
     """
-    import sys
-    import importlib
-
-    # List of module prefixes to reload
-    module_prefixes = [
-        'core.',
-        'ui.',
-        'tools.',
-        'utils.',
-    ]
-
-    # Find all loaded modules that match our prefixes
-    modules_to_reload = []
-    for module_name in list(sys.modules.keys()):
-        for prefix in module_prefixes:
-            if module_name.startswith(prefix) or module_name in ['core', 'ui', 'tools', 'utils']:
-                if sys.modules[module_name] is not None:
-                    modules_to_reload.append(module_name)
-                break
-
-    # Reload modules in reverse order (to handle dependencies)
-    logger.info("Reloading %d modules...", len(modules_to_reload))
-
-    reloaded_count = 0
-    failed_count = 0
-
-    for module_name in reversed(modules_to_reload):
-        try:
-            if sys.modules[module_name] is not None:
-                importlib.reload(sys.modules[module_name])
-                logger.debug("Reloaded: %s", module_name)
-                reloaded_count += 1
-        except Exception as e:
-            logger.warning("Failed to reload %s: %s", module_name, e)
-            failed_count += 1
-
-    logger.info("Reload complete: %d succeeded, %d failed", reloaded_count, failed_count)
-
-    return reloaded_count, failed_count
+    import ctx_bootstrap
+    purged = ctx_bootstrap.prepare(_REPO_ROOT)
+    logger.info("Cleared %d modules; they re-import on next use", len(purged))
+    return len(purged), 0
 

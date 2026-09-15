@@ -12,6 +12,7 @@ except ImportError:
     MAYA_AVAILABLE = False
 
 from core.logging_config import get_logger
+from core.compat import string_types
 
 logger = get_logger(__name__)
 
@@ -57,7 +58,7 @@ class SlateManager(object):
         from core.nodes.wrappers.slate import CTXSlateNode
         from core.nodes.wrappers.sequence import CTXSequenceNode
 
-        seq = seq_node if not isinstance(seq_node, str) else CTXSequenceNode(seq_node)
+        seq = seq_node if not isinstance(seq_node, string_types) else CTXSequenceNode(seq_node)
         seq_code = seq.get_attribute('sequenceCode') or seq.node_name
 
         slate_name = name if name else 'seq_{}'.format(seq_code)
@@ -95,7 +96,7 @@ class SlateManager(object):
         from core.nodes.wrappers.slate import CTXSlateNode
         from core.nodes.wrappers.shot import CTXShotNode
 
-        shot = shot_node if not isinstance(shot_node, str) else CTXShotNode(shot_node)
+        shot = shot_node if not isinstance(shot_node, string_types) else CTXShotNode(shot_node)
         shot_id = '{}_{}'.format(shot.get_seq_code(), shot.get_shot_code())
 
         slate_name = name if name else shot_id
@@ -136,7 +137,7 @@ class SlateManager(object):
         """
         from core.nodes.wrappers.shot import CTXShotNode
 
-        shot = shot_node if not isinstance(shot_node, str) else CTXShotNode(shot_node)
+        shot = shot_node if not isinstance(shot_node, string_types) else CTXShotNode(shot_node)
         existing = shot.get_slate()
         if existing is not None:
             return existing
@@ -159,7 +160,7 @@ class SlateManager(object):
         """
         from core.nodes.wrappers.slate import CTXSlateNode
 
-        slate_node = slate if not isinstance(slate, str) else CTXSlateNode(slate)
+        slate_node = slate if not isinstance(slate, string_types) else CTXSlateNode(slate)
         layer = slate_node.add_layer(layer_name, renderable=renderable, enabled=override_enabled)
         logger.info("Added layer %r to slate %s (renderable=%s, enabled=%s)",
                     layer_name, slate_node.node_name, renderable, override_enabled)
@@ -175,7 +176,7 @@ class SlateManager(object):
         """
         from core.nodes.wrappers.slate import CTXSlateNode
 
-        slate_node = slate if not isinstance(slate, str) else CTXSlateNode(slate)
+        slate_node = slate if not isinstance(slate, string_types) else CTXSlateNode(slate)
         slate_node.remove_layer(layer_name)
         logger.info("Removed layer %r from slate %s", layer_name, slate_node.node_name)
 

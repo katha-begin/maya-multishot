@@ -13,6 +13,7 @@ import os
 import datetime
 
 from core.logging_config import get_logger
+from core.compat import makedirs, string_types
 
 logger = get_logger(__name__)
 
@@ -80,7 +81,7 @@ class GafferSerializer(object):
         except ImportError:
             raise RuntimeError("Maya is required for gaffer export/import")
 
-        shot_node_name = shot_node if isinstance(shot_node, str) else shot_node.node_name
+        shot_node_name = shot_node if isinstance(shot_node, string_types) else shot_node.node_name
 
         # Resolve shot ID
         try:
@@ -144,7 +145,7 @@ class GafferSerializer(object):
 
         from core.nodes.wrappers import CTXLightGafferNode, CTXLightContextNode
 
-        shot_node_name = shot_node if isinstance(shot_node, str) else shot_node.node_name
+        shot_node_name = shot_node if isinstance(shot_node, string_types) else shot_node.node_name
 
         version = data.get('version', 1)
         if version != self.FORMAT_VERSION:
@@ -228,7 +229,7 @@ class GafferSerializer(object):
         """
         parent = os.path.dirname(os.path.abspath(path))
         if parent:
-            os.makedirs(parent, exist_ok=True)
+            makedirs(parent)
         with open(path, 'w') as fh:
             json.dump(data, fh, indent=2)
         logger.info("Gaffer exported to %s", path)

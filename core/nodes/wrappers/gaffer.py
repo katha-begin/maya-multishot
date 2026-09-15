@@ -17,6 +17,7 @@ except ImportError:
 
 from ..base import NodeWrapper
 from ..schemas.gaffer import CTXLightGafferSchema
+from ...compat import string_types
 
 
 class CTXLightGafferNode(NodeWrapper):
@@ -63,7 +64,7 @@ class CTXLightGafferNode(NodeWrapper):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        parent_node = parent_gaffer if isinstance(parent_gaffer, str) else parent_gaffer.node_name
+        parent_node = parent_gaffer if isinstance(parent_gaffer, string_types) else parent_gaffer.node_name
 
         # Unidirectional connection: parent_gaffer.message -> child_gaffer.parentGaffer
         # This creates the inheritance chain for attribute resolution

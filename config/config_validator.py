@@ -12,6 +12,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from core.compat import string_types
+
 
 class ConfigValidationError(Exception):
     """Exception raised for configuration validation errors."""
@@ -122,7 +124,7 @@ class ConfigValidator(object):
         Args:
             version (str): Version string
         """
-        if not isinstance(version, str):
+        if not isinstance(version, string_types):
             self.errors.append(
                 "Version must be a string, got {}".format(type(version).__name__)
             )
@@ -155,12 +157,12 @@ class ConfigValidator(object):
                 )
 
         # Validate field types
-        if 'name' in project and not isinstance(project['name'], str):
+        if 'name' in project and not isinstance(project['name'], string_types):
             self.errors.append(
                 "Project name must be a string, got {}".format(type(project['name']).__name__)
             )
 
-        if 'code' in project and not isinstance(project['code'], str):
+        if 'code' in project and not isinstance(project['code'], string_types):
             self.errors.append(
                 "Project code must be a string, got {}".format(type(project['code']).__name__)
             )
@@ -182,7 +184,7 @@ class ConfigValidator(object):
 
         # Validate each root
         for root_name, root_path in roots.items():
-            if not isinstance(root_path, str):
+            if not isinstance(root_path, string_types):
                 self.errors.append(
                     "Root '{}' must be a string, got {}".format(
                         root_name, type(root_path).__name__
@@ -203,7 +205,7 @@ class ConfigValidator(object):
 
         # Validate each static path
         for path_name, path_value in static_paths.items():
-            if not isinstance(path_value, str):
+            if not isinstance(path_value, string_types):
                 self.errors.append(
                     "Static path '{}' must be a string, got {}".format(
                         path_name, type(path_value).__name__
@@ -224,7 +226,7 @@ class ConfigValidator(object):
 
         # Validate each template
         for template_name, template_value in templates.items():
-            if not isinstance(template_value, str):
+            if not isinstance(template_value, string_types):
                 self.errors.append(
                     "Template '{}' must be a string, got {}".format(
                         template_name, type(template_value).__name__
@@ -250,7 +252,7 @@ class ConfigValidator(object):
         # Validate each pattern
         import re
         for pattern_name, pattern_value in patterns.items():
-            if not isinstance(pattern_value, str):
+            if not isinstance(pattern_value, string_types):
                 self.errors.append(
                     "Pattern '{}' must be a string, got {}".format(
                         pattern_name, type(pattern_value).__name__

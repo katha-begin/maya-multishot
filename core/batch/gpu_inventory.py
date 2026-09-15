@@ -8,10 +8,14 @@ from __future__ import absolute_import, division, print_function
 
 import subprocess
 import os
+import threading
 
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Seconds before a hung nvidia-smi is killed
+NVIDIA_SMI_TIMEOUT = 10
 
 
 class GPUInfo(object):
@@ -50,23 +54,45 @@ def detect_gpus():
         if os.name == 'nt':
             kwargs['creationflags'] = 0x08000000  # subprocess.CREATE_NO_WINDOW
 
-        result = subprocess.run(
+        # Popen + communicate rather than subprocess.run, which Python 2 lacks
+        proc = subprocess.Popen(
             [
                 'nvidia-smi',
                 '--query-gpu=index,name,memory.total,memory.free,utilization.gpu',
                 '--format=csv,noheader,nounits',
             ],
-            capture_output=True,
-            text=True,
-            timeout=10,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
             **kwargs
         )
-        if result.returncode != 0:
-            logger.warning("nvidia-smi returned non-zero: %s", result.stderr)
+
+        # communicate(timeout=) is Python 3 only; a timer kill works on both
+        timed_out = []
+
+        def _kill():
+            timed_out.append(True)
+            try:
+                proc.kill()
+            except OSError:
+                pass  # exited just before the timer fired
+
+        timer = threading.Timer(NVIDIA_SMI_TIMEOUT, _kill)
+        timer.start()
+        try:
+            stdout, stderr = proc.communicate()
+        finally:
+            timer.cancel()
+
+        if timed_out:
+            logger.warning("nvidia-smi timed out")
+            return []
+        if proc.returncode != 0:
+            logger.warning("nvidia-smi returned non-zero: %s", stderr)
             return []
 
         gpus = []
-        for line in result.stdout.strip().splitlines():
+        for line in stdout.strip().splitlines():
             parts = [p.strip() for p in line.split(',')]
             if len(parts) < 5:
                 continue
@@ -84,11 +110,9 @@ def detect_gpus():
         logger.debug("Detected %d GPU(s): %s", len(gpus), [g.name for g in gpus])
         return gpus
 
-    except FileNotFoundError:
+    except OSError:
+        # nvidia-smi is missing. Python 3's FileNotFoundError is an OSError.
         logger.debug("nvidia-smi not found -- no NVIDIA GPUs detected")
-        return []
-    except subprocess.TimeoutExpired:
-        logger.warning("nvidia-smi timed out")
         return []
     except Exception as exc:
         logger.warning("GPU detection failed: %s", exc)

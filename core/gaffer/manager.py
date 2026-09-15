@@ -19,6 +19,7 @@ from ..nodes.wrappers.gaffer import CTXLightGafferNode
 from ..nodes.wrappers.light_context import CTXLightContextNode
 from ..renderers import get_maya_attr
 from ..logging_config import get_logger
+from ..compat import string_types
 
 logger = get_logger(__name__)
 
@@ -50,7 +51,7 @@ class GafferManager(object):
             raise RuntimeError("Maya is not available")
 
         # Convert to wrapper if needed
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
 
         # Normalize light_shape to the actual shape node (not a transform).
@@ -152,7 +153,7 @@ class GafferManager(object):
             raise RuntimeError("Maya is not available")
         
         # Convert to wrapper if needed
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
         
         # Find the light context
@@ -187,7 +188,7 @@ class GafferManager(object):
             raise RuntimeError("Maya is not available")
         
         # Convert to wrapper if needed
-        if isinstance(child_gaffer, str):
+        if isinstance(child_gaffer, string_types):
             child_gaffer = CTXLightGafferNode(child_gaffer)
         
         # Check if light context already exists in this gaffer
@@ -262,7 +263,7 @@ class GafferManager(object):
             return []
 
         # Convert to wrapper if needed
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
 
         lights_info = []

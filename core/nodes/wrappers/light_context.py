@@ -19,6 +19,7 @@ except ImportError:
 
 from ..base import NodeWrapper
 from ..schemas.light_context import CTXLightContextSchema
+from ...compat import string_types
 
 
 class CTXLightContextNode(NodeWrapper):
@@ -127,7 +128,7 @@ class CTXLightContextNode(NodeWrapper):
         if cmds is None:
             raise RuntimeError("Maya is not available")
 
-        gaffer_node = gaffer if isinstance(gaffer, str) else str(gaffer.node_name)
+        gaffer_node = gaffer if isinstance(gaffer, string_types) else str(gaffer.node_name)
 
         if not cmds.objExists(gaffer_node):
             raise RuntimeError("Gaffer node does not exist: '{}'".format(gaffer_node))

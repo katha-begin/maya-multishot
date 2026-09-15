@@ -10,6 +10,7 @@ import os
 import subprocess
 import threading
 
+from core.compat import makedirs
 from core.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -24,10 +25,21 @@ DEFAULT_RENDER_BINS = [
 
 
 def _find_render_bin():
-    """Locate the Maya Render executable."""
+    """Locate the Maya Render executable.
+
+    Order: MAYA_RENDER_BIN, the running Maya's own bin folder (MAYA_LOCATION,
+    so a studio install anywhere renders with the same version), the common
+    install paths, then 'Render' on PATH.
+    """
     env_bin = os.environ.get('MAYA_RENDER_BIN')
     if env_bin and os.path.exists(env_bin):
         return env_bin
+    maya_location = os.environ.get('MAYA_LOCATION')
+    if maya_location:
+        exe = 'Render.exe' if os.name == 'nt' else 'Render'
+        local_bin = os.path.join(maya_location, 'bin', exe)
+        if os.path.exists(local_bin):
+            return local_bin
     for path in DEFAULT_RENDER_BINS:
         if os.path.exists(path):
             return path
@@ -72,7 +84,8 @@ class JobDispatcher(object):
         Args:
             job (RenderJob): Prepared job (must have temp_scene_path set).
         """
-        t = threading.Thread(target=self._run_job, args=(job,), daemon=True)
+        t = threading.Thread(target=self._run_job, args=(job,))
+        t.daemon = True  # attribute, not kwarg: Python 2's Thread() lacks daemon=
         with self._lock:
             self._threads.append(t)
         t.start()
@@ -138,7 +151,9 @@ class JobDispatcher(object):
         env = os.environ.copy()
         gpu_env_var = get_gpu_env_var(renderer_name, self.config)
         if gpu_env_var:
-            env[gpu_env_var] = str(gpu_index)
+            # str(): config values are unicode on Python 2, and Popen there
+            # rejects a unicode environment ("environment can only contain strings")
+            env[str(gpu_env_var)] = str(gpu_index)
         env['MAYA_APP_DIR'] = os.path.join(
             os.path.expanduser('~'), '.maya_render_gpu%d' % gpu_index
         )
@@ -153,7 +168,7 @@ class JobDispatcher(object):
         self._notify(job, layer_name, 'rendering', 'Started')
 
         try:
-            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            makedirs(os.path.dirname(log_path))
             popen_kwargs = {'env': env, 'stderr': subprocess.STDOUT}
             if os.name == 'nt':
                 popen_kwargs['creationflags'] = 0x08000000  # CREATE_NO_WINDOW

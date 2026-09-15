@@ -15,6 +15,7 @@ except ImportError:
     cmds = None
 
 from ..nodes.wrappers.gaffer import CTXLightGafferNode
+from ..compat import string_types
 
 
 class ChainOperations(object):
@@ -143,7 +144,7 @@ class ChainOperations(object):
                 }
         """
         # Convert to wrapper if needed
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
         
         errors = []
@@ -205,7 +206,7 @@ class ChainOperations(object):
                 }
         """
         # Convert to wrapper if needed
-        if isinstance(gaffer, str):
+        if isinstance(gaffer, string_types):
             gaffer = CTXLightGafferNode(gaffer)
 
         chain = gaffer.build_chain()

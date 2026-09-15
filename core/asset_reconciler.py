@@ -21,6 +21,7 @@ except ImportError:
     MAYA_AVAILABLE = False
 
 from core.logging_config import get_logger
+from core.compat import string_types
 
 logger = get_logger(__name__)
 
@@ -66,7 +67,7 @@ def _get_shot_code(shot_node):
     if not MAYA_AVAILABLE:
         return ''
 
-    node_name = shot_node if isinstance(shot_node, str) else shot_node.node_name
+    node_name = shot_node if isinstance(shot_node, string_types) else shot_node.node_name
 
     if not cmds.objExists(node_name):
         return ''
@@ -198,7 +199,7 @@ def reconcile_assets_for_shot(shot_node):
         logger.warning("reconcile_assets_for_shot: Maya not available")
         return empty
 
-    node_name = shot_node if isinstance(shot_node, str) else shot_node.node_name
+    node_name = shot_node if isinstance(shot_node, string_types) else shot_node.node_name
 
     if not cmds.objExists(node_name):
         logger.warning("reconcile_assets_for_shot: shot node does not exist: %s",

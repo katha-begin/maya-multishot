@@ -13,6 +13,7 @@ from __future__ import absolute_import, division, print_function
 import json
 import logging
 import os
+from core.compat import string_types
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +150,7 @@ class ShotMetadataLoader(object):
 
                 value = data[json_field]
 
-                if isinstance(value, (str, unicode if 'unicode' in dir(__builtins__) else str)):
+                if isinstance(value, string_types):
                     value_str = str(value).strip()
                     if '-' in value_str:
                         parts = value_str.split('-')

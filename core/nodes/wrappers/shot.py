@@ -13,6 +13,7 @@ except ImportError:
 
 from ..base import NodeWrapper
 from ..schemas import CTXShotSchema
+from ...compat import string_types
 
 
 class CTXShotNode(NodeWrapper):
@@ -172,7 +173,7 @@ class CTXShotNode(NodeWrapper):
             raise RuntimeError("Maya is not available")
 
         # Get gaffer node name -- use str check to avoid isinstance failure after reload
-        gaffer_node = gaffer if isinstance(gaffer, str) else gaffer.node_name
+        gaffer_node = gaffer if isinstance(gaffer, string_types) else gaffer.node_name
 
         # Verify nodes exist
         if not cmds.objExists(self.node_name):
@@ -330,7 +331,7 @@ class CTXShotNode(NodeWrapper):
             slate (CTXSlateNode or str): Slate node or node name.
         """
         self._ensure_slate_attr()
-        slate_name = slate if isinstance(slate, str) else slate.node_name
+        slate_name = slate if isinstance(slate, string_types) else slate.node_name
         cmds.connectAttr(
             '{}.message'.format(slate_name),
             '{}.slate'.format(self.node_name),
