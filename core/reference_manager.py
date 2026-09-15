@@ -58,12 +58,12 @@ def reference_file(file_path, namespace, reference_type='file'):
             returnNewNodes=False
         )
 
-        logger.info("DEBUG: cmds.file() returned: {} (type: {})".format(result, type(result)))
+        logger.debug("cmds.file() returned: {} (type: {})".format(result, type(result)))
 
         # Query the reference node name from the file path
         try:
             ref_node = cmds.referenceQuery(file_path, referenceNode=True)
-            logger.info("DEBUG: cmds.referenceQuery() returned: {} (type: {})".format(ref_node, type(ref_node)))
+            logger.debug("cmds.referenceQuery() returned: {} (type: {})".format(ref_node, type(ref_node)))
         except Exception as e:
             logger.error("Failed to query reference node for {}: {}".format(file_path, e))
             return None

@@ -185,7 +185,7 @@ class CTXConverter(object):
                 logger.warning("Failed to query reference {}: {}".format(ref_node, e))
                 continue
 
-        logger.info("Detected {} assets in scene ({} CTX-ready)".format(
+        logger.debug("Detected {} assets in scene ({} CTX-ready)".format(
             len(assets),
             sum(1 for a in assets if a['ctx_ready'])
         ))
@@ -338,7 +338,7 @@ class CTXConverter(object):
 
         # Link using message attribute
         linked = link_to_maya_node(ctx_asset_node, maya_node)
-        logger.info("Linked {} to {} (namespace: {})".format(
+        logger.debug("Linked {} to {} (namespace: {})".format(
             ctx_asset_node, maya_node, namespace))
         return True
     
@@ -376,7 +376,7 @@ class CTXConverter(object):
             logger.debug("link_all_by_namespace: no CTX_Asset nodes for '{}'".format(namespace))
             return 0
 
-        logger.info("link_all_by_namespace: linking {} node(s) to {} (namespace: {})".format(
+        logger.debug("link_all_by_namespace: linking {} node(s) to {} (namespace: {})".format(
             len(ctx_nodes), ref_node, namespace))
 
         # Step 3: connect reference.message -> each CTX_Asset.targetNode
@@ -396,13 +396,13 @@ class CTXConverter(object):
                     '{}.targetNode'.format(ctx_node),
                     force=True
                 )
-                logger.info("  Connected: {}.message -> {}.targetNode".format(ref_node, ctx_node))
+                logger.debug("  Connected: {}.message -> {}.targetNode".format(ref_node, ctx_node))
                 linked_count += 1
             except RuntimeError as e:
                 logger.warning("  Failed to connect {} -> {}.targetNode: {}".format(
                     ref_node, ctx_node, str(e)))
 
-        logger.info("link_all_by_namespace: linked {}/{} nodes for '{}'".format(
+        logger.debug("link_all_by_namespace: linked {}/{} nodes for '{}'".format(
             linked_count, len(ctx_nodes), namespace))
         return linked_count
 
@@ -421,13 +421,13 @@ class CTXConverter(object):
         Returns:
             str or None: CTX_Asset node name if found
         """
-        logger.info("  _find_ctx_node_by_identity: Searching for {} {} {} in shot {}".format(
+        logger.debug("  _find_ctx_node_by_identity: Searching for {} {} {} in shot {}".format(
             asset_type, asset_name, variant, shot_code))
 
         # Get all CTX_Asset nodes
         all_network = cmds.ls(type='network') or []
         ctx_asset_nodes = [n for n in all_network if n.startswith('CTX_Asset_')]
-        logger.info("    Found {} CTX_Asset nodes total".format(len(ctx_asset_nodes)))
+        logger.debug("    Found {} CTX_Asset nodes total".format(len(ctx_asset_nodes)))
 
         for ctx_node in ctx_asset_nodes:
             # Check if node has required attributes
@@ -452,10 +452,10 @@ class CTXConverter(object):
             if (node_type == asset_type and
                 node_name == asset_name and
                 node_variant == variant):
-                logger.info("    Found CTX node by identity: {}".format(ctx_node))
+                logger.debug("    Found CTX node by identity: {}".format(ctx_node))
                 return ctx_node
 
-        logger.info("    No CTX node found for identity: {} {} {} {}".format(
+        logger.debug("    No CTX node found for identity: {} {} {} {}".format(
             asset_type, asset_name, variant, shot_code))
         return None
 
@@ -470,36 +470,36 @@ class CTXConverter(object):
         Returns:
             str or None: CTX_Asset node name if found
         """
-        logger.info("  _find_ctx_node_for_maya_node: Searching for CTX node linked to '{}'".format(maya_node))
+        logger.debug("  _find_ctx_node_for_maya_node: Searching for CTX node linked to '{}'".format(maya_node))
 
         # Try message connection first (fast, direct query)
         ctx_assets = get_linked_ctx_assets(maya_node)
-        logger.info("    Message connection query returned: {}".format(ctx_assets))
+        logger.debug("    Message connection query returned: {}".format(ctx_assets))
         if ctx_assets:
-            logger.info("    Found CTX node via message: {}".format(ctx_assets[0]))
+            logger.debug("    Found CTX node via message: {}".format(ctx_assets[0]))
             return ctx_assets[0]  # Return first CTX_Asset found
 
         # Fall back to scanning all CTX_Asset nodes for string attribute links
         all_network = cmds.ls(type='network') or []
         ctx_asset_nodes = [n for n in all_network if n.startswith('CTX_Asset_')]
-        logger.info("    Scanning {} CTX_Asset nodes for string attribute links".format(len(ctx_asset_nodes)))
+        logger.debug("    Scanning {} CTX_Asset nodes for string attribute links".format(len(ctx_asset_nodes)))
 
         for ctx_node in ctx_asset_nodes:
             # Check old maya_node string attribute (backward compatibility)
             if cmds.attributeQuery('maya_node', node=ctx_node, exists=True):
                 linked_node = cmds.getAttr('{}.maya_node'.format(ctx_node))
                 if linked_node == maya_node:
-                    logger.info("    Found CTX node via maya_node string attr: {}".format(ctx_node))
+                    logger.debug("    Found CTX node via maya_node string attr: {}".format(ctx_node))
                     return ctx_node
 
             # Check new targetNodeStr string attribute (fallback)
             if cmds.attributeQuery('targetNodeStr', node=ctx_node, exists=True):
                 linked_node = cmds.getAttr('{}.targetNodeStr'.format(ctx_node))
                 if linked_node == maya_node:
-                    logger.info("    Found CTX node via targetNodeStr string attr: {}".format(ctx_node))
+                    logger.debug("    Found CTX node via targetNodeStr string attr: {}".format(ctx_node))
                     return ctx_node
 
-        logger.info("    No CTX node found for maya_node '{}'".format(maya_node))
+        logger.debug("    No CTX node found for maya_node '{}'".format(maya_node))
         return None
     
     def convert_to_ctx(self, maya_node, shot_node, asset_type, asset_name, variant, version, dept='anim'):
@@ -541,12 +541,12 @@ class CTXConverter(object):
         # Check if CTX_Asset node already exists by namespace or identity
         namespace = "{}_{}_{}".format(asset_type, asset_name, variant)
         shot_code = shot_node_obj.get_shot_code()
-        logger.info("=" * 80)
-        logger.info("CONVERT_TO_CTX DEBUG:")
-        logger.info("  maya_node: {}".format(maya_node))
-        logger.info("  namespace: {}".format(namespace))
-        logger.info("  shot_code: {}".format(shot_code))
-        logger.info("  version to set: {}".format(version))
+        logger.debug("=" * 80)
+        logger.debug("CONVERT_TO_CTX DEBUG:")
+        logger.debug("  maya_node: {}".format(maya_node))
+        logger.debug("  namespace: {}".format(namespace))
+        logger.debug("  shot_code: {}".format(shot_code))
+        logger.debug("  version to set: {}".format(version))
 
         # Primary: find by namespace for this shot
         existing_ctx_node = self._find_ctx_node_by_identity(
@@ -554,28 +554,28 @@ class CTXConverter(object):
         # Fallback: find by Maya node link
         if not existing_ctx_node:
             existing_ctx_node = self._find_ctx_node_for_maya_node(maya_node)
-        logger.info("  existing_ctx_node found: {}".format(existing_ctx_node))
+        logger.debug("  existing_ctx_node found: {}".format(existing_ctx_node))
 
         if existing_ctx_node:
-            logger.info("CTX_Asset node already exists for {}: {}".format(maya_node, existing_ctx_node))
+            logger.debug("CTX_Asset node already exists for {}: {}".format(maya_node, existing_ctx_node))
 
             # Update existing node instead of creating new one
             ctx_node = CTXAssetNode(existing_ctx_node)
 
             # Update version if different
             current_version = ctx_node.get_version()
-            logger.info("  current version in CTX node: {}".format(current_version))
+            logger.debug("  current version in CTX node: {}".format(current_version))
             if current_version != version:
-                logger.info("  Updating version from {} to {}".format(current_version, version))
+                logger.debug("  Updating version from {} to {}".format(current_version, version))
                 ctx_node.set_version(version)
             else:
-                logger.info("  Version unchanged: {}".format(current_version))
+                logger.debug("  Version unchanged: {}".format(current_version))
 
             # Ensure link to Maya node exists
             link_to_maya_node(existing_ctx_node, maya_node)
 
-            logger.info("  Returning existing CTX node: {}".format(ctx_node.node_name))
-            logger.info("=" * 80)
+            logger.debug("  Returning existing CTX node: {}".format(ctx_node.node_name))
+            logger.debug("=" * 80)
             return ctx_node.node_name
 
         # Get file path from Maya node
@@ -590,7 +590,7 @@ class CTXConverter(object):
             raise ValueError("Unsupported node type: {}".format(node_type))
 
         # Create NEW CTX_Asset node (only if doesn't exist)
-        logger.info("Creating new CTX_Asset node for {}".format(maya_node))
+        logger.debug("Creating new CTX_Asset node for {}".format(maya_node))
         ctx_node = CTXAssetNode.create_asset(
             asset_type=asset_type,
             asset_name=asset_name,
@@ -607,10 +607,10 @@ class CTXConverter(object):
         use_message = link_to_maya_node(ctx_node.node_name, maya_node)
 
         if use_message:
-            logger.info("Converted {} to CTX-managed asset: {} (message link)".format(
+            logger.debug("Converted {} to CTX-managed asset: {} (message link)".format(
                 maya_node, ctx_node.node_name))
         else:
-            logger.info("Converted {} to CTX-managed asset: {} (string fallback)".format(
+            logger.debug("Converted {} to CTX-managed asset: {} (string fallback)".format(
                 maya_node, ctx_node.node_name))
 
         # Note: Connection to shot node is already done in create_asset()

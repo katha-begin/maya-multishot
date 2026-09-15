@@ -23,13 +23,13 @@ class AddShotDialog(QtWidgets.QDialog):
         self._config = config
         self._selected_shots = []
         self._existing_shots = set()  # Store existing shots for persistent checkboxes
-        self._marking_project = None
+        self._projects = []
 
         self._setup_ui()
         self._connect_signals()
         self._load_existing_shots()
-        self._discover_shots()
-    
+        self._load_projects()
+
     def _setup_ui(self):
         self.setWindowTitle("Add Shots")
         self.setModal(True)
@@ -43,6 +43,15 @@ class AddShotDialog(QtWidgets.QDialog):
         instructions.setWordWrap(True)
         main_layout.addWidget(instructions)
 
+        # Project picker: only the chosen project is listed
+        project_layout = QtWidgets.QHBoxLayout()
+        project_layout.addWidget(QtWidgets.QLabel("Project:"))
+        self.project_combo = QtWidgets.QComboBox()
+        self.project_combo.setMinimumWidth(200)
+        project_layout.addWidget(self.project_combo)
+        project_layout.addStretch()
+        main_layout.addLayout(project_layout)
+
         # Add filter text box
         filter_layout = QtWidgets.QHBoxLayout()
         filter_label = QtWidgets.QLabel("Filter:")
@@ -53,7 +62,7 @@ class AddShotDialog(QtWidgets.QDialog):
         main_layout.addLayout(filter_layout)
 
         self.tree_widget = QtWidgets.QTreeWidget()
-        self.tree_widget.setHeaderLabels(["Project / Episode / Sequence / Shot"])
+        self.tree_widget.setHeaderLabels(["Episode / Sequence / Shot"])
         self.tree_widget.setSelectionMode(QtWidgets.QAbstractItemView.NoSelection)
         self.tree_widget.setAlternatingRowColors(True)
         main_layout.addWidget(self.tree_widget)
@@ -92,65 +101,100 @@ class AddShotDialog(QtWidgets.QDialog):
         except Exception:
             return None
 
-    def _discover_shots(self):
-        """List shots for every project config, the scene's project first.
+    def _load_projects(self):
+        """Fill the project picker, the scene's project selected, and list it.
 
-        A project that cannot be listed gets a line saying why, instead of
-        leaving the tree silently empty.
+        Only the selected project is scanned and listed; picking another one
+        in the combo box lists that project instead.
         """
         from core import shot_discovery
 
         try:
-            projects = shot_discovery.list_projects()
+            self._projects = shot_discovery.list_projects()
         except Exception as e:
             logger.exception("Failed to list project configs: %s", e)
+            self._projects = []
             self._add_info_item("Could not list project configs: {}".format(e))
             return
 
-        if not projects:
+        if not self._projects:
             self._add_info_item("No project configs found in project_configs")
             return
 
         current = self._current_project_code()
-        projects.sort(key=lambda p: (p['code'] != current, p['code']))
+        self.project_combo.blockSignals(True)
+        selected = 0
+        for index, project in enumerate(self._projects):
+            label = project['code']
+            if project['code'] == current:
+                label = "{}  (current scene)".format(label)
+                selected = index
+            self.project_combo.addItem(label)
+        self.project_combo.setCurrentIndex(selected)
+        self.project_combo.blockSignals(False)
 
-        for project in projects:
-            code = project['code']
-            if project['error']:
-                self._add_info_item("{}  (config error: {})".format(code, project['error']))
-                continue
+        self.project_combo.currentIndexChanged.connect(self._show_project)
+        self._show_project(selected)
 
-            try:
-                base_path = shot_discovery.get_scene_base(project['config'])
-                if not base_path or not os.path.isdir(base_path):
-                    logger.warning("Scene folder for %s not found: %s", code, base_path)
-                    self._add_info_item("{}  (scene folder not found: {})".format(
-                        code, (base_path or '').replace('\\', '/')))
-                    continue
-                episodes = shot_discovery.discover_shots(base_path)
-            except Exception as e:
-                logger.exception("Failed to discover shots for %s: %s", code, e)
-                self._add_info_item("{}  (could not list shots: {})".format(code, e))
-                continue
+    def _show_project(self, index):
+        """List the shots of the project at ``index`` in the picker."""
+        from core import shot_discovery
 
-            label = "{}  (current scene)".format(code) if code == current else code
-            project_item = self._add_checkable_item(self.tree_widget, label)
-            for ep_name, sequences in episodes:
-                ep_item = self._add_checkable_item(project_item, ep_name)
-                for seq_name, shots in sequences:
-                    seq_item = self._add_checkable_item(ep_item, seq_name)
-                    for shot_name in shots:
-                        shot_item = self._add_checkable_item(seq_item, shot_name)
-                        shot_item.setData(0, QtCore.Qt.UserRole, {
-                            'project': code,
-                            'config_path': project['config_path'],
-                            'ep': ep_name,
-                            'seq': seq_name,
-                            'shot': shot_name
-                        })
+        self.tree_widget.clear()
+        if not 0 <= index < len(self._projects):
+            return
 
-        # Mark existing shots after discovery
-        self._mark_existing_shots()
+        project = self._projects[index]
+        if project['error']:
+            self._add_info_item("Config error: {}".format(project['error']))
+            return
+
+        try:
+            base_path = shot_discovery.get_scene_base(project['config'])
+            if not base_path or not os.path.isdir(base_path):
+                logger.warning("Scene folder for %s not found: %s", project['code'], base_path)
+                self._add_info_item("Scene folder not found: {}".format(
+                    (base_path or '').replace('\\', '/')))
+                return
+            episodes = shot_discovery.discover_shots(base_path)
+        except Exception as e:
+            logger.exception("Failed to discover shots for %s: %s", project['code'], e)
+            self._add_info_item("Could not list shots: {}".format(e))
+            return
+
+        if not episodes:
+            self._add_info_item("No shots found in {}".format(base_path.replace('\\', '/')))
+            return
+
+        # Building hundreds of items would otherwise fire itemChanged per item.
+        self.tree_widget.blockSignals(True)
+        try:
+            self._populate_project(project, episodes)
+        finally:
+            self.tree_widget.blockSignals(False)
+
+        if project['code'] == self._current_project_code():
+            # Scene shots belong to the scene's project; another project may
+            # reuse the same shot codes.
+            self._mark_tree_items(self.tree_widget.invisibleRootItem())
+
+        if self.filter_edit.text():
+            self._on_filter_changed(self.filter_edit.text())
+
+    def _populate_project(self, project, episodes):
+        for ep_name, sequences in episodes:
+            ep_item = self._add_checkable_item(self.tree_widget, ep_name)
+            for seq_name, shots in sequences:
+                seq_item = self._add_checkable_item(ep_item, seq_name)
+                for shot_name in shots:
+                    shot_item = self._add_checkable_item(seq_item, shot_name)
+                    shot_item.setData(0, QtCore.Qt.UserRole, {
+                        'project': project['code'],
+                        'config_path': project['config_path'],
+                        'ep': ep_name,
+                        'seq': seq_name,
+                        'shot': shot_name
+                    })
 
     def _add_checkable_item(self, parent, text):
         item = QtWidgets.QTreeWidgetItem([text])
@@ -181,11 +225,9 @@ class AddShotDialog(QtWidgets.QDialog):
             if shot_data:
                 key = (shot_data['ep'], shot_data['seq'], shot_data['shot'])
                 if key not in self._existing_shots:
-                    item.setBackground(column, QtGui.QBrush(QtCore.Qt.Transparent))
-                    item.setForeground(column, QtGui.QBrush(QtGui.QColor()))  # Default text color
+                    self._clear_item_colors(item, column)
             else:
-                item.setBackground(column, QtGui.QBrush(QtCore.Qt.Transparent))
-                item.setForeground(column, QtGui.QBrush(QtGui.QColor()))  # Default text color
+                self._clear_item_colors(item, column)
 
         # Propagate to children
         if item.childCount() > 0:
@@ -194,6 +236,17 @@ class AddShotDialog(QtWidgets.QDialog):
                 child = item.child(i)
                 child.setCheckState(column, state)
     
+    @staticmethod
+    def _clear_item_colors(item, column):
+        """Return an item to the view's default colours.
+
+        Clearing the roles works on PySide2 and PySide6 alike.  The previous
+        QBrush(QtCore.Qt.Transparent) raised AttributeError on every unchecked
+        item: the colour is spelled Qt.transparent.
+        """
+        item.setData(column, QtCore.Qt.BackgroundRole, None)
+        item.setData(column, QtCore.Qt.ForegroundRole, None)
+
     def _on_select_all(self):
         self._set_all_check_states(QtCore.Qt.Checked)
     
@@ -238,38 +291,14 @@ class AddShotDialog(QtWidgets.QDialog):
             ctx = ContextManager()
             existing_shots = ctx.get_all_shots()
 
-            print("=== DEBUG: Loading existing shots ===")
-            print("Found {} shots in scene".format(len(existing_shots)))
-
             # Build set of existing shot identifiers (ep, seq, shot)
             for shot in existing_shots:
-                ep = shot.get_ep_code()
-                seq = shot.get_seq_code()
-                shot_code = shot.get_shot_code()
-                self._existing_shots.add((ep, seq, shot_code))
-                print("  Existing shot: ep='{}', seq='{}', shot='{}'".format(ep, seq, shot_code))
-                logger.debug("Loaded existing shot: {} / {} / {}".format(ep, seq, shot_code))
+                self._existing_shots.add(
+                    (shot.get_ep_code(), shot.get_seq_code(), shot.get_shot_code()))
 
-            print("Total existing shots loaded: {}".format(len(self._existing_shots)))
-            print("Existing shots set: {}".format(self._existing_shots))
-            logger.info("Loaded {} existing shots from scene: {}".format(
-                len(self._existing_shots), self._existing_shots))
+            logger.debug("Loaded %d existing shots from scene", len(self._existing_shots))
         except Exception as e:
-            print("ERROR loading existing shots: {}".format(e))
-            import traceback
-            traceback.print_exc()
-            logger.warning("Failed to load existing shots: {}".format(e))
-
-    def _mark_existing_shots(self):
-        """Mark tree items for shots that already exist in the scene.
-
-        Scene shots belong to the scene's project, so only that project's
-        items are marked -- another project may reuse the same shot codes.
-        """
-        logger.info("Starting to mark {} existing shots in tree".format(len(self._existing_shots)))
-        self._marking_project = self._current_project_code()
-        self._mark_tree_items(self.tree_widget.invisibleRootItem())
-        logger.info("Finished marking existing shots")
+            logger.exception("Failed to load existing shots: %s", e)
 
     def _mark_tree_items(self, parent_item):
         """Recursively mark tree items that match existing shots.
@@ -284,20 +313,7 @@ class AddShotDialog(QtWidgets.QDialog):
             if shot_data:
                 # This is a shot item
                 key = (shot_data['ep'], shot_data['seq'], shot_data['shot'])
-                print("  Checking tree item: ep='{}', seq='{}', shot='{}'".format(
-                    shot_data['ep'], shot_data['seq'], shot_data['shot']))
-                print("    Key: {}".format(key))
-                print("    In existing_shots? {}".format(key in self._existing_shots))
-
-                logger.debug("Checking shot item: {} / {} / {}".format(
-                    shot_data['ep'], shot_data['seq'], shot_data['shot']))
-
-                same_project = (self._marking_project is None
-                                or shot_data.get('project') == self._marking_project)
-                if key in self._existing_shots and same_project:
-                    print("    >>> MARKING AS CHECKED AND ORANGE <<<")
-                    logger.info("Marking existing shot as checked: {} / {} / {}".format(
-                        shot_data['ep'], shot_data['seq'], shot_data['shot']))
+                if key in self._existing_shots:
                     # Block signals to avoid triggering itemChanged
                     self.tree_widget.blockSignals(True)
                     item.setCheckState(0, QtCore.Qt.Checked)

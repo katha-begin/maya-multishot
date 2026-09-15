@@ -109,7 +109,7 @@ class DisplayLayerManager(object):
         # Create CTX_Active layer (visible)
         if not cmds.objExists(self.ACTIVE_LAYER):
             cmds.createDisplayLayer(name=self.ACTIVE_LAYER, empty=True, noRecurse=True)
-            logger.info("Created active layer: {}".format(self.ACTIVE_LAYER))
+            logger.debug("Created active layer: {}".format(self.ACTIVE_LAYER))
 
         # Set active layer visible
         self.show_layer(self.ACTIVE_LAYER)
@@ -117,7 +117,7 @@ class DisplayLayerManager(object):
         # Create CTX_Inactive layer (hidden)
         if not cmds.objExists(self.INACTIVE_LAYER):
             cmds.createDisplayLayer(name=self.INACTIVE_LAYER, empty=True, noRecurse=True)
-            logger.info("Created inactive layer: {}".format(self.INACTIVE_LAYER))
+            logger.debug("Created inactive layer: {}".format(self.INACTIVE_LAYER))
 
         # Set inactive layer hidden
         self.hide_layer(self.INACTIVE_LAYER)
@@ -132,10 +132,10 @@ class DisplayLayerManager(object):
             shot_node (str): CTX_Shot node name
             layer_name (str): Display layer name
         """
-        logger.info("=" * 60)
-        logger.info("CONNECTING VISIBILITY TO IS_ACTIVE")
-        logger.info("Shot node: {}".format(shot_node))
-        logger.info("Layer name: {}".format(layer_name))
+        logger.debug("=" * 60)
+        logger.debug("CONNECTING VISIBILITY TO IS_ACTIVE")
+        logger.debug("Shot node: {}".format(shot_node))
+        logger.debug("Layer name: {}".format(layer_name))
 
         if not cmds.objExists(shot_node):
             logger.warning("Shot node does not exist: {}".format(shot_node))
@@ -149,41 +149,41 @@ class DisplayLayerManager(object):
         source_attr = "{}.is_active".format(shot_node)
         dest_attr = "{}.visibility".format(layer_name)
 
-        logger.info("Source attr: {}".format(source_attr))
-        logger.info("Dest attr: {}".format(dest_attr))
+        logger.debug("Source attr: {}".format(source_attr))
+        logger.debug("Dest attr: {}".format(dest_attr))
 
         # Check if already connected
         connections = cmds.listConnections(dest_attr, source=True, destination=False, plugs=True) or []
-        logger.info("Existing connections to {}: {}".format(dest_attr, connections))
+        logger.debug("Existing connections to {}: {}".format(dest_attr, connections))
 
         if source_attr in connections:
-            logger.info("Already connected! Skipping.")
+            logger.debug("Already connected! Skipping.")
             return  # Already connected
 
         # Disconnect any existing connections to visibility
         if connections:
-            logger.info("Disconnecting existing connections...")
+            logger.debug("Disconnecting existing connections...")
             for conn in connections:
                 try:
                     cmds.disconnectAttr(conn, dest_attr)
-                    logger.info("Disconnected: {} -> {}".format(conn, dest_attr))
+                    logger.debug("Disconnected: {} -> {}".format(conn, dest_attr))
                 except Exception as e:
                     logger.warning("Failed to disconnect {}: {}".format(conn, e))
 
         # Connect is_active to visibility
         try:
-            logger.info("Connecting {} -> {}".format(source_attr, dest_attr))
+            logger.debug("Connecting {} -> {}".format(source_attr, dest_attr))
             cmds.connectAttr(source_attr, dest_attr, force=True)
-            logger.info("SUCCESS! Connection established.")
+            logger.debug("SUCCESS! Connection established.")
 
             # Verify connection
             is_connected = cmds.isConnected(source_attr, dest_attr)
-            logger.info("Verification: isConnected = {}".format(is_connected))
+            logger.debug("Verification: isConnected = {}".format(is_connected))
         except Exception as e:
             logger.error("FAILED to connect: {}".format(e))
             logger.error("Will fall back to manual visibility control")
 
-        logger.info("=" * 60)
+        logger.debug("=" * 60)
 
     def create_display_layer(self, ep_code, seq_code, shot_code, shot_node=None):
         """Create display layer for shot and link to CTX_Shot node.
@@ -233,11 +233,11 @@ class DisplayLayerManager(object):
             maya_node (str): Maya node name (can be reference node, shape, or transform)
             layer_name (str): Display layer name
         """
-        logger.info("=" * 80)
-        logger.info("ASSIGN_TO_LAYER CALLED")
-        logger.info("  maya_node: {}".format(maya_node))
-        logger.info("  layer_name: {}".format(layer_name))
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
+        logger.debug("ASSIGN_TO_LAYER CALLED")
+        logger.debug("  maya_node: {}".format(maya_node))
+        logger.debug("  layer_name: {}".format(layer_name))
+        logger.debug("=" * 80)
 
         if not cmds.objExists(layer_name):
             logger.error("Layer '{}' does not exist!".format(layer_name))
@@ -247,7 +247,7 @@ class DisplayLayerManager(object):
             logger.error("Node '{}' does not exist!".format(maya_node))
             raise ValueError("Node '{}' does not exist".format(maya_node))
 
-        logger.info("Both layer and node exist - proceeding...")
+        logger.debug("Both layer and node exist - proceeding...")
 
         # Get the top-level transform nodes
         top_nodes = self._get_top_nodes_from_asset(maya_node)
@@ -256,15 +256,15 @@ class DisplayLayerManager(object):
             logger.warning("No top nodes found for: {}".format(maya_node))
             return
 
-        logger.info("Found {} top nodes for {}: {}".format(
+        logger.debug("Found {} top nodes for {}: {}".format(
             len(top_nodes), maya_node, top_nodes))
 
         # Connect each top node to the display layer
         for top_node in top_nodes:
-            logger.info("Connecting top node: {}".format(top_node))
+            logger.debug("Connecting top node: {}".format(top_node))
             self._connect_node_to_layer(top_node, layer_name)
 
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
 
     def assign_to_layer_from_ctx_asset(self, ctx_asset_node, shot_node):
         """Assign asset to display layer based on shot active status.
@@ -279,18 +279,18 @@ class DisplayLayerManager(object):
         Returns:
             bool: True if successful, False otherwise
         """
-        logger.info("=" * 80)
-        logger.info("ASSIGN_TO_LAYER_FROM_CTX_ASSET CALLED")
-        logger.info("  ctx_asset_node: {}".format(ctx_asset_node.node_name))
-        logger.info("  shot_node: {}".format(shot_node.node_name))
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
+        logger.debug("ASSIGN_TO_LAYER_FROM_CTX_ASSET CALLED")
+        logger.debug("  ctx_asset_node: {}".format(ctx_asset_node.node_name))
+        logger.debug("  shot_node: {}".format(shot_node.node_name))
+        logger.debug("=" * 80)
 
         # Determine which layer to use based on shot active status
         is_active = shot_node.is_active()
         layer_name = self.ACTIVE_LAYER if is_active else self.INACTIVE_LAYER
 
-        logger.info("Shot is_active: {}".format(is_active))
-        logger.info("Target layer: {}".format(layer_name))
+        logger.debug("Shot is_active: {}".format(is_active))
+        logger.debug("Target layer: {}".format(layer_name))
 
         # Ensure global layers exist
         self.ensure_global_layers()
@@ -310,13 +310,13 @@ class DisplayLayerManager(object):
             logger.warning("No top node found for namespace '{}'".format(namespace))
             return False
 
-        logger.info("Found top node: {}".format(top_node))
+        logger.debug("Found top node: {}".format(top_node))
 
         # Connect the top node to the display layer
-        logger.info("Connecting top node to layer {}...".format(layer_name))
+        logger.debug("Connecting top node to layer {}...".format(layer_name))
         self._connect_node_to_layer(top_node, layer_name)
 
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
         return True
 
     def move_shot_assets_to_layer(self, shot_node, target_layer):
@@ -329,15 +329,15 @@ class DisplayLayerManager(object):
         Returns:
             int: Number of assets moved
         """
-        logger.info("=" * 80)
-        logger.info("MOVING SHOT ASSETS TO LAYER")
-        logger.info("  Shot: {}".format(shot_node.node_name))
-        logger.info("  Target layer: {}".format(target_layer))
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
+        logger.debug("MOVING SHOT ASSETS TO LAYER")
+        logger.debug("  Shot: {}".format(shot_node.node_name))
+        logger.debug("  Target layer: {}".format(target_layer))
+        logger.debug("=" * 80)
 
         # Get all assets for this shot
         assets = shot_node.get_assets()
-        logger.info("Found {} assets in shot".format(len(assets)))
+        logger.debug("Found {} assets in shot".format(len(assets)))
 
         moved_count = 0
         for asset in assets:
@@ -353,12 +353,12 @@ class DisplayLayerManager(object):
                 continue
 
             # Move to target layer
-            logger.info("Moving {} to {}".format(top_node, target_layer))
+            logger.debug("Moving {} to {}".format(top_node, target_layer))
             self._connect_node_to_layer(top_node, target_layer)
             moved_count += 1
 
-        logger.info("Moved {} assets to {}".format(moved_count, target_layer))
-        logger.info("=" * 80)
+        logger.debug("Moved {} assets to {}".format(moved_count, target_layer))
+        logger.debug("=" * 80)
         return moved_count
 
     def switch_shot_layers(self, active_shot_node, all_shot_nodes):
@@ -382,11 +382,11 @@ class DisplayLayerManager(object):
             dict: Statistics {active_moved: int, inactive_moved: int,
                              total_assets: int, shared_assets: int}
         """
-        logger.info("=" * 80)
-        logger.info("SWITCHING SHOT LAYERS (Full Asset List Subtraction)")
-        logger.info("  Active shot: {}".format(active_shot_node.node_name))
-        logger.info("  Total shots: {}".format(len(all_shot_nodes)))
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
+        logger.debug("SWITCHING SHOT LAYERS (Full Asset List Subtraction)")
+        logger.debug("  Active shot: {}".format(active_shot_node.node_name))
+        logger.debug("  Total shots: {}".format(len(all_shot_nodes)))
+        logger.debug("=" * 80)
 
         stats = {
             'active_moved': 0,
@@ -400,7 +400,7 @@ class DisplayLayerManager(object):
         self.ensure_global_layers()
 
         # Step 1: Collect ALL unique assets from ALL shots (using namespace as key)
-        logger.info("Step 1: Collecting all assets from all shots...")
+        logger.debug("Step 1: Collecting all assets from all shots...")
         all_assets = set()  # Use set to avoid duplicates
         asset_shot_count = {}  # Track how many shots each asset appears in
         # Keep one asset per namespace so nodes that carry no real Maya
@@ -410,7 +410,7 @@ class DisplayLayerManager(object):
         for shot_node in all_shot_nodes:
             shot_code = shot_node.get_shot_code()
             assets = shot_node.get_assets()
-            logger.info("  Shot {}: {} assets".format(shot_code, len(assets)))
+            logger.debug("  Shot {}: {} assets".format(shot_code, len(assets)))
 
             for asset in assets:
                 namespace = asset.get_namespace()
@@ -423,33 +423,33 @@ class DisplayLayerManager(object):
                     asset_shot_count[namespace] += 1
 
         stats['total_assets'] = len(all_assets)
-        logger.info("Total unique assets found: {}".format(stats['total_assets']))
+        logger.debug("Total unique assets found: {}".format(stats['total_assets']))
 
         # Count shared assets (assets used in multiple shots)
         stats['shared_assets'] = sum(1 for count in asset_shot_count.values() if count > 1)
         if stats['shared_assets'] > 0:
-            logger.info("Shared assets (used in multiple shots): {}".format(stats['shared_assets']))
+            logger.debug("Shared assets (used in multiple shots): {}".format(stats['shared_assets']))
             for namespace, count in asset_shot_count.items():
                 if count > 1:
                     logger.debug("  {} used in {} shots".format(namespace, count))
 
         # Step 2: Get assets for active shot
-        logger.info("Step 2: Collecting active shot's assets...")
+        logger.debug("Step 2: Collecting active shot's assets...")
         active_assets = set()
         for asset in active_shot_node.get_assets():
             namespace = asset.get_namespace()
             if namespace:
                 active_assets.add(namespace)
 
-        logger.info("Active shot has {} assets".format(len(active_assets)))
+        logger.debug("Active shot has {} assets".format(len(active_assets)))
 
         # Step 3: Calculate inactive assets (all - active)
-        logger.info("Step 3: Calculating inactive assets...")
+        logger.debug("Step 3: Calculating inactive assets...")
         inactive_assets = all_assets - active_assets
-        logger.info("Inactive assets: {}".format(len(inactive_assets)))
+        logger.debug("Inactive assets: {}".format(len(inactive_assets)))
 
         # Step 4: Move active assets to CTX_Active
-        logger.info("Step 4: Moving active assets to CTX_Active...")
+        logger.debug("Step 4: Moving active assets to CTX_Active...")
         for namespace in active_assets:
             top_node = self._resolve_top_node(namespace,
                                               asset_by_namespace.get(namespace))
@@ -461,7 +461,7 @@ class DisplayLayerManager(object):
                 stats['skipped'] += 1
 
         # Step 5: Move inactive assets to CTX_Inactive
-        logger.info("Step 5: Moving inactive assets to CTX_Inactive...")
+        logger.debug("Step 5: Moving inactive assets to CTX_Inactive...")
         for namespace in inactive_assets:
             top_node = self._resolve_top_node(namespace,
                                               asset_by_namespace.get(namespace))
@@ -472,14 +472,14 @@ class DisplayLayerManager(object):
                 logger.warning("  No top node found for namespace: {}".format(namespace))
                 stats['skipped'] += 1
 
-        logger.info("=" * 80)
-        logger.info("Layer switch complete:")
-        logger.info("  Total assets: {}".format(stats['total_assets']))
-        logger.info("  Active (visible): {}".format(stats['active_moved']))
-        logger.info("  Inactive (hidden): {}".format(stats['inactive_moved']))
-        logger.info("  Shared assets: {}".format(stats['shared_assets']))
-        logger.info("  Skipped: {}".format(stats['skipped']))
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
+        logger.debug("Layer switch complete:")
+        logger.debug("  Total assets: {}".format(stats['total_assets']))
+        logger.debug("  Active (visible): {}".format(stats['active_moved']))
+        logger.debug("  Inactive (hidden): {}".format(stats['inactive_moved']))
+        logger.debug("  Shared assets: {}".format(stats['shared_assets']))
+        logger.debug("  Skipped: {}".format(stats['skipped']))
+        logger.debug("=" * 80)
 
         return stats
 
@@ -509,6 +509,19 @@ class DisplayLayerManager(object):
 
         target = self._get_asset_target_node(asset)
         if not target:
+            return None
+
+        # A reference's nodes live in the reference's own namespace.  Look
+        # that up rather than walking every node the reference holds -- an
+        # Alembic set can hold hundreds of thousands, on every shot switch.
+        try:
+            if cmds.nodeType(target) == 'reference':
+                ref_ns = (cmds.referenceQuery(target, namespace=True) or '').lstrip(':')
+                if ref_ns and ref_ns != namespace.rstrip(':'):
+                    return self._get_namespace_root(ref_ns)
+                return None
+        except Exception as e:
+            logger.debug("Could not read namespace of reference %s: %s", target, e)
             return None
 
         top_nodes = self._get_top_nodes_from_asset(target)
@@ -614,7 +627,7 @@ class DisplayLayerManager(object):
 
             # No parent -> world root -> top node
             if not parents:
-                logger.info("Top node (world root): {}".format(node))
+                logger.debug("Top node (world root): {}".format(node))
                 top_nodes.append(node)
                 continue
 
@@ -631,7 +644,7 @@ class DisplayLayerManager(object):
 
         # Sort for consistency and return the first top node
         top_nodes = sorted(top_nodes)
-        logger.info("Found {} top nodes, returning first: {}".format(len(top_nodes), top_nodes[0]))
+        logger.debug("Found {} top nodes, returning first: {}".format(len(top_nodes), top_nodes[0]))
         return top_nodes[0]
 
     def _get_top_nodes_from_asset(self, maya_node):
@@ -649,14 +662,14 @@ class DisplayLayerManager(object):
             list: List of top-level transform node names
         """
         node_type = cmds.nodeType(maya_node)
-        logger.info("Getting top nodes for {} (type: {})".format(maya_node, node_type))
+        logger.debug("Getting top nodes for {} (type: {})".format(maya_node, node_type))
 
         # Handle reference nodes
         if node_type == 'reference':
             try:
                 # Get all nodes from this reference
                 ref_nodes = cmds.referenceQuery(maya_node, nodes=True, dagPath=True) or []
-                logger.info("Reference has {} nodes".format(len(ref_nodes)))
+                logger.debug("Reference has {} nodes".format(len(ref_nodes)))
 
                 # Create a set for faster lookup
                 ref_nodes_set = set(ref_nodes)
@@ -673,16 +686,16 @@ class DisplayLayerManager(object):
                         # If no parent, it's top-level
                         if not parents:
                             top_nodes.append(node)
-                            logger.info("Found top-level transform (no parent): {}".format(node))
+                            logger.debug("Found top-level transform (no parent): {}".format(node))
                         # If parent is not in the reference, it's top-level
                         elif not any(p in ref_nodes_set for p in parents):
                             top_nodes.append(node)
-                            logger.info("Found top-level transform (parent outside ref): {}".format(node))
+                            logger.debug("Found top-level transform (parent outside ref): {}".format(node))
                         else:
                             logger.debug("Skipping {} (parent {} is in reference)".format(
                                 node, parents[0]))
 
-                logger.info("Found {} top-level transforms total".format(len(top_nodes)))
+                logger.debug("Found {} top-level transforms total".format(len(top_nodes)))
                 return top_nodes
             except Exception as e:
                 logger.error("Failed to query reference nodes: {}".format(e))
@@ -694,7 +707,7 @@ class DisplayLayerManager(object):
         elif node_type in ['mesh', 'nurbsCurve', 'nurbsSurface', 'aiStandIn', 'RedshiftProxyMesh']:
             parents = cmds.listRelatives(maya_node, parent=True, fullPath=True) or []
             if parents:
-                logger.info("Using parent transform: {}".format(parents[0]))
+                logger.debug("Using parent transform: {}".format(parents[0]))
                 return [parents[0]]
             else:
                 logger.warning("Shape node has no parent: {}".format(maya_node))
@@ -716,9 +729,9 @@ class DisplayLayerManager(object):
             transform_node (str): Transform node name
             layer_name (str): Display layer name
         """
-        logger.info("  _connect_node_to_layer:")
-        logger.info("    transform_node: {}".format(transform_node))
-        logger.info("    layer_name: {}".format(layer_name))
+        logger.debug("  _connect_node_to_layer:")
+        logger.debug("    transform_node: {}".format(transform_node))
+        logger.debug("    layer_name: {}".format(layer_name))
 
         # Verify layer exists and has drawInfo attribute
         if not cmds.objExists(layer_name):
@@ -727,7 +740,7 @@ class DisplayLayerManager(object):
 
         # Check layer type
         layer_type = cmds.nodeType(layer_name)
-        logger.info("    Layer type: {}".format(layer_type))
+        logger.debug("    Layer type: {}".format(layer_type))
 
         # Check if layer has drawInfo attribute
         if not cmds.attributeQuery('drawInfo', node=layer_name, exists=True):
@@ -743,7 +756,7 @@ class DisplayLayerManager(object):
 
             # Verify it's a transform
             node_type = cmds.nodeType(transform_node)
-            logger.info("    Node type: {}".format(node_type))
+            logger.debug("    Node type: {}".format(node_type))
 
             if node_type != 'transform':
                 logger.warning("    Node is not a transform! Type: {}".format(node_type))
@@ -752,7 +765,7 @@ class DisplayLayerManager(object):
                     parents = cmds.listRelatives(transform_node, parent=True, fullPath=True)
                     if parents:
                         transform_node = parents[0]
-                        logger.info("    Using parent transform: {}".format(transform_node))
+                        logger.debug("    Using parent transform: {}".format(transform_node))
                     else:
                         logger.error("    Cannot find parent transform!")
                         return
@@ -761,16 +774,16 @@ class DisplayLayerManager(object):
             source_attr = "{}.drawInfo".format(layer_name)
             dest_attr = "{}.drawOverride".format(transform_node)
 
-            logger.info("    Attempting connection:")
-            logger.info("      Source: {}".format(source_attr))
-            logger.info("      Dest: {}".format(dest_attr))
+            logger.debug("    Attempting connection:")
+            logger.debug("      Source: {}".format(source_attr))
+            logger.debug("      Dest: {}".format(dest_attr))
 
             # Check if this node is already connected to ANY layer
             existing_layer_conn = cmds.listConnections(dest_attr,
                                                        source=True,
                                                        destination=False) or []
             if existing_layer_conn:
-                logger.info("    {} already connected to layer: {}".format(
+                logger.debug("    {} already connected to layer: {}".format(
                     transform_node, existing_layer_conn[0]))
                 # Disconnect from old layer if it's different
                 if existing_layer_conn[0] != layer_name:
@@ -779,18 +792,18 @@ class DisplayLayerManager(object):
                                                     destination=False,
                                                     plugs=True)[0]
                     cmds.disconnectAttr(old_conn, dest_attr)
-                    logger.info("    Disconnected from old layer")
+                    logger.debug("    Disconnected from old layer")
                 else:
-                    logger.info("    Already connected to correct layer - skipping")
+                    logger.debug("    Already connected to correct layer - skipping")
                     return  # Already connected to correct layer
 
             # Connect to new layer
             cmds.connectAttr(source_attr, dest_attr, force=True)
-            logger.info("    SUCCESS! Connected {} -> {}".format(source_attr, dest_attr))
+            logger.debug("    SUCCESS! Connected {} -> {}".format(source_attr, dest_attr))
 
             # Verify connection was made
             is_connected = cmds.isConnected(source_attr, dest_attr)
-            logger.info("    Verification: Connection exists = {}".format(is_connected))
+            logger.debug("    Verification: Connection exists = {}".format(is_connected))
 
         except Exception as e:
             logger.error("    FAILED to connect {} to layer: {}".format(transform_node, e))

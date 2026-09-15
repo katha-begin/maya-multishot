@@ -431,7 +431,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
         """
         from maya import cmds
 
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
         logger.info("MATCHING CTX READY STATUS (namespace-based)")
         logger.info("  Total filesystem assets: {}".format(len(self._assets)))
         logger.info("  Total scene assets: {}".format(len(self._scene_assets)))
@@ -538,7 +538,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
             if not matched:
                 logger.info("    NO MATCH for {}".format(asset_namespace))
 
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
 
     def _check_asset_in_scene(self, asset_data):
         """Check if asset actually exists in scene.
@@ -1036,7 +1036,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
         Args:
             row: Table row index
         """
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
         logger.info("APPLY VERSION BUTTON CLICKED - Row: {}".format(row))
 
         asset_data = self._assets[row]
@@ -1196,7 +1196,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
             logger.info("Updating table cell at row {} col 4 to: {}".format(row, version))
             self.asset_table.item(row, 4).setText(version)
             logger.info("Version setting complete!")
-            logger.info("=" * 80)
+            logger.debug("=" * 80)
 
             # Update status
             if version == asset_data['latest']:
@@ -2293,8 +2293,8 @@ class AssetManagerDialog(QtWidgets.QDialog):
             logger.info("Referencing geometry: {}".format(geometry_file))
             ref_node = reference_file(geometry_file, namespace)
 
-            logger.info("DEBUG: reference_file() returned: {}".format(ref_node))
-            logger.info("DEBUG: Type of ref_node: {}".format(type(ref_node)))
+            logger.debug("reference_file() returned: {}".format(ref_node))
+            logger.debug("Type of ref_node: {}".format(type(ref_node)))
 
             if not ref_node:
                 raise RuntimeError("Failed to create reference")
@@ -2303,7 +2303,7 @@ class AssetManagerDialog(QtWidgets.QDialog):
             if '/' in ref_node or '\\' in ref_node:
                 logger.warning("Got file path instead of reference node name, querying explicitly")
                 ref_node = cmds.referenceQuery(geometry_file, referenceNode=True)
-                logger.info("DEBUG: Queried reference node: {}".format(ref_node))
+                logger.debug("Queried reference node: {}".format(ref_node))
 
             # 2. Assign shader if requested
             if assign_shader and shader_files.get('shader'):
@@ -2435,8 +2435,8 @@ class AssetManagerDialog(QtWidgets.QDialog):
         # Check if CTX_Asset already exists for this asset
         ctx_asset_name = asset_data.get('ctx_node')
 
-        logger.info("DEBUG: ctx_asset_name from asset_data: {}".format(ctx_asset_name))
-        logger.info("DEBUG: asset_data keys: {}".format(asset_data.keys()))
+        logger.debug("ctx_asset_name from asset_data: {}".format(ctx_asset_name))
+        logger.debug("asset_data keys: {}".format(asset_data.keys()))
 
         if not ctx_asset_name or not cmds.objExists(ctx_asset_name):
             # Create new CTX_Asset node
@@ -2456,39 +2456,39 @@ class AssetManagerDialog(QtWidgets.QDialog):
             if shot_node_name and cmds.objExists(shot_node_name):
                 # Use existing shot node that was found when dialog opened
                 shot_node_obj = CTXShotNode(shot_node_name)
-                logger.info("DEBUG: Using stored CTX_Shot node: {}".format(shot_node_name))
+                logger.debug("Using stored CTX_Shot node: {}".format(shot_node_name))
             else:
                 # Shot node not stored, search for existing CTX_Shot nodes in scene
-                logger.info("DEBUG: Searching for existing CTX_Shot nodes in scene...")
+                logger.debug("Searching for existing CTX_Shot nodes in scene...")
                 all_network_nodes = cmds.ls(type='network') or []
                 ctx_shot_nodes = [n for n in all_network_nodes if n.startswith('CTX_Shot_')]
 
                 if ctx_shot_nodes:
                     # Found existing CTX_Shot node(s), find one that matches the shot code
-                    logger.info("DEBUG: Found {} CTX_Shot node(s), checking for matching shot code...".format(len(ctx_shot_nodes)))
+                    logger.debug("Found {} CTX_Shot node(s), checking for matching shot code...".format(len(ctx_shot_nodes)))
 
                     for existing_shot_node in ctx_shot_nodes:
                         try:
                             temp_shot_obj = CTXShotNode(existing_shot_node)
                             existing_shot_code = temp_shot_obj.get_shot_code()
 
-                            logger.info("DEBUG: Checking {} (shot code: {})".format(existing_shot_node, existing_shot_code))
+                            logger.debug("Checking {} (shot code: {})".format(existing_shot_node, existing_shot_code))
 
                             if existing_shot_code == shot_code:
                                 # Found matching shot node!
                                 shot_node_obj = temp_shot_obj
-                                logger.info("DEBUG: Found matching CTX_Shot node: {} (shot code: {})".format(
+                                logger.debug("Found matching CTX_Shot node: {} (shot code: {})".format(
                                     existing_shot_node, existing_shot_code))
 
                                 # Store shot node in shot_data for future use
                                 self._shot_data['shot_node'] = existing_shot_node
                                 break
                         except Exception as e:
-                            logger.warning("DEBUG: Failed to check shot node {}: {}".format(existing_shot_node, e))
+                            logger.debug("Failed to check shot node {}: {}".format(existing_shot_node, e))
                             continue
 
                     if not shot_node_obj:
-                        logger.warning("DEBUG: Found {} CTX_Shot node(s) but none match shot code '{}'".format(
+                        logger.debug("Found {} CTX_Shot node(s) but none match shot code '{}'".format(
                             len(ctx_shot_nodes), shot_code))
 
                 # If still no matching shot node found, create a new one

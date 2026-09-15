@@ -175,7 +175,7 @@ class AssetScanner(object):
             logger.debug("Publish path does not exist: %s", publish_path)
             return {}
 
-        logger.info("Scanning department: %s at %s", dept, publish_path)
+        logger.debug("Scanning department: %s at %s", dept, publish_path)
 
         # Collect version directories, sort latest first
         ver_pattern = self.config.get_token_pattern('ver') if self.config else None
@@ -191,7 +191,7 @@ class AssetScanner(object):
             return {}
 
         version_dirs.sort(reverse=True)
-        logger.info("Found %d versions: %s", len(version_dirs), [v[0] for v in version_dirs])
+        logger.debug("Found %d versions: %s", len(version_dirs), [v[0] for v in version_dirs])
 
         # First occurrence per key = latest version (versions sorted latest first)
         config_exts = self.config.get_extensions() if self.config else []
@@ -288,7 +288,7 @@ class AssetScanner(object):
         """
         from core.nodes.wrappers import CTXAssetNode
 
-        logger.info(
+        logger.debug(
             "Creating CTX_Asset node: %s %s %s (dept: %s, version: %s)",
             asset_type, asset_name, variant, dept, version
         )
@@ -313,7 +313,7 @@ class AssetScanner(object):
                     '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
                     '$ep_$seq_$shot__$assetName.$ext'
                 )
-                logger.info("Using camera-specific template: %s", asset_path_template)
+                logger.debug("Using camera-specific template: %s", asset_path_template)
             else:
                 asset_path_template = None
         else:
@@ -331,32 +331,32 @@ class AssetScanner(object):
         from core.ctx_converter import CTXConverter
         converter = CTXConverter()
         namespace_val = asset_node.get_namespace()
-        logger.info("=" * 80)
-        logger.info(
+        logger.debug("=" * 80)
+        logger.debug(
             "ASSET #%d - Linking all CTX_Asset nodes for namespace '%s'",
             asset_index + 1, namespace_val
         )
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
         linked_count = converter.link_all_by_namespace(namespace_val)
         linked = linked_count > 0
 
         if linked:
-            logger.info("+" * 80)
-            logger.info("DISPLAY LAYER ASSIGNMENT FOR ASSET #%d", asset_index + 1)
-            logger.info("  Asset node: %s", asset_node.node_name)
-            logger.info("  Namespace: %s", namespace_val)
-            logger.info("  Layer manager: %s", self.layer_manager)
-            logger.info("+" * 80)
+            logger.debug("+" * 80)
+            logger.debug("DISPLAY LAYER ASSIGNMENT FOR ASSET #%d", asset_index + 1)
+            logger.debug("  Asset node: %s", asset_node.node_name)
+            logger.debug("  Namespace: %s", namespace_val)
+            logger.debug("  Layer manager: %s", self.layer_manager)
+            logger.debug("+" * 80)
 
             if self.layer_manager:
-                logger.info("Layer manager available - assigning to display layer...")
+                logger.debug("Layer manager available - assigning to display layer...")
                 try:
-                    logger.info(
+                    logger.debug(
                         "CALLING assign_to_layer_from_ctx_asset(%s, %s)",
                         asset_node.node_name, shot_node.node_name
                     )
                     self.layer_manager.assign_to_layer_from_ctx_asset(asset_node, shot_node)
-                    logger.info("SUCCESS! Assigned %s to display layer", asset_node.node_name)
+                    logger.debug("SUCCESS! Assigned %s to display layer", asset_node.node_name)
                 except Exception as e:
                     logger.error("FAILED to assign %s to layer: %s", asset_node.node_name, e)
                     import traceback
@@ -364,14 +364,14 @@ class AssetScanner(object):
             else:
                 logger.warning("No layer_manager available")
 
-            logger.info("+" * 80)
+            logger.debug("+" * 80)
         else:
-            logger.info(
+            logger.debug(
                 "No matching Maya reference found for %s (will link when asset is loaded)",
                 asset_node.node_name
             )
 
-        logger.info("Created asset node: %s for file: %s", asset_node.node_name, file_path)
+        logger.debug("Created asset node: %s for file: %s", asset_node.node_name, file_path)
         return asset_node
 
     def _parse_filename(self, filename, is_dir=False):

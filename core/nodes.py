@@ -13,6 +13,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from core.logging_config import get_logger
 
 try:
@@ -52,6 +54,14 @@ PATH_ATTRS = {
     NODE_TYPE_RS_PROXY: 'fileName',
     NODE_TYPE_REFERENCE: 'ftn'  # file texture name
 }
+
+
+def _same_path(a, b):
+    """True when two file paths name the same file (slashes and, on Windows, case ignored)."""
+    if not a or not b:
+        return False
+    return (os.path.normcase(os.path.normpath(a))
+            == os.path.normcase(os.path.normpath(b)))
 
 
 class NodeManager(object):
@@ -483,27 +493,22 @@ class NodeManager(object):
         try:
             if node_type in node_attr_map:
                 attr = node_attr_map[node_type]
-                cmds.setAttr('{}.{}'.format(maya_node, attr),
-                             resolved_path, type='string')
+                plug = '{}.{}'.format(maya_node, attr)
+                if _same_path(cmds.getAttr(plug), resolved_path):
+                    logger.debug("%s already points at %s", plug, resolved_path)
+                    return True
+                cmds.setAttr(plug, resolved_path, type='string')
                 logger.debug("Set %s.%s: %s", node_type, attr, resolved_path)
                 return True
 
             elif node_type == 'reference':
-                # For references, use file command to swap
-                if MAYA_AVAILABLE:
-                    cmds.file(resolved_path, loadReference=maya_node)
-                    logger.debug("Reloaded reference %s: %s",
-                                 maya_node, resolved_path)
-                return True
+                return self._swap_reference(maya_node, resolved_path)
 
             else:
                 try:
                     if cmds.referenceQuery(maya_node, isNodeReferenced=True):
-                        if MAYA_AVAILABLE:
-                            cmds.file(resolved_path, loadReference=maya_node)
-                            logger.debug("Reloaded reference %s: %s",
-                                         maya_node, resolved_path)
-                        return True
+                        ref_node = cmds.referenceQuery(maya_node, referenceNode=True)
+                        return self._swap_reference(ref_node, resolved_path)
                 except Exception:
                     pass
 
@@ -516,6 +521,45 @@ class NodeManager(object):
         except Exception as e:
             logger.error("Failed to apply path to %s: %s", maya_node, e)
             return False
+
+    def _swap_reference(self, ref_node, resolved_path):
+        """Point a reference at ``resolved_path``, reloading only on a change.
+
+        ``cmds.file(path, loadReference=...)`` unloads and re-reads the file
+        even when the path is unchanged, so doing it on every shot switch
+        reloads every cache in the scene.  And when the path does not exist,
+        Maya leaves the reference unloaded and pointing at the missing file.
+        Both are avoided here.
+
+        Args:
+            ref_node (str): Reference node.
+            resolved_path (str): Path the reference should load.
+
+        Returns:
+            bool: True when the reference points at resolved_path.
+        """
+        if not MAYA_AVAILABLE:
+            return True
+
+        try:
+            current = cmds.referenceQuery(ref_node, filename=True,
+                                          withoutCopyNumber=True)
+        except Exception:
+            current = None
+
+        if current and _same_path(current, resolved_path):
+            if cmds.referenceQuery(ref_node, isLoaded=True):
+                logger.debug("Reference %s already loads %s", ref_node, resolved_path)
+                return True
+
+        if not os.path.isfile(resolved_path):
+            logger.warning("Not swapping reference %s: %s does not exist",
+                           ref_node, resolved_path)
+            return False
+
+        cmds.file(resolved_path, loadReference=ref_node)
+        logger.debug("Reloaded reference %s: %s", ref_node, resolved_path)
+        return True
 
     def update_shot_paths(self, shot_node, config, platform_config):
         """Update paths for all assets in a shot.

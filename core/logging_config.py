@@ -36,12 +36,18 @@ class _MayaOutputHandler(logging.Handler):
         WARNING       -> MGlobal.displayWarning()
         ERROR / ABOVE -> MGlobal.displayError()
 
+    MGlobal must only be called on Maya's main thread; calling it from a
+    worker (the batch render dispatcher logs from its job threads) can crash
+    Maya.  Records from other threads are handed to the main thread with
+    maya.utils.executeDeferred.
+
     Silently falls back to a no-op if maya.OpenMaya is not importable.
     """
 
     def __init__(self):
         super(_MayaOutputHandler, self).__init__()
         self._mglobal = None
+        self._defer = None
         self._available = False
         try:
             from maya import OpenMaya
@@ -49,18 +55,32 @@ class _MayaOutputHandler(logging.Handler):
             self._available = True
         except ImportError:
             pass
+        try:
+            import maya.utils
+            # Absent when maya.utils loads without a running Maya session.
+            self._defer = getattr(maya.utils, 'executeDeferred', None)
+        except ImportError:
+            pass
+
+    def _display(self, levelno, msg):
+        if levelno >= logging.ERROR:
+            self._mglobal.displayError(msg)
+        elif levelno >= logging.WARNING:
+            self._mglobal.displayWarning(msg)
+        else:
+            self._mglobal.displayInfo(msg)
 
     def emit(self, record):
         if not self._available:
             return
         try:
+            from core.compat import is_main_thread
+
             msg = self.format(record)
-            if record.levelno >= logging.ERROR:
-                self._mglobal.displayError(msg)
-            elif record.levelno >= logging.WARNING:
-                self._mglobal.displayWarning(msg)
+            if is_main_thread() or self._defer is None:
+                self._display(record.levelno, msg)
             else:
-                self._mglobal.displayInfo(msg)
+                self._defer(self._display, record.levelno, msg)
         except Exception:
             self.handleError(record)
 

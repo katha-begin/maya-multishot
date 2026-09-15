@@ -499,4 +499,34 @@ _ega_x, _ega_y, /mnt/ppr_dev_t. Real counts: EGA 611 shots, SWA 342.
 Fix: Add Shots lists every project (core/shot_discovery.py), explains missing
 projects, one project per scene guard, `_load_config` shows the reason + "restart
 Maya" hint for stale config code. Users who update while Maya is open must restart
-Maya once (old Reload cannot pick up the config package).
+Maya once (old Reload cannot pick up the config package). Pushed as 46a8c69.
+
+## Set Shot runs out of memory; Script Editor floods (2026-09-15)
+
+Reports after 46a8c69: "print a lot ... and crash", "a lot slower", "eat all memory
+and crash when set shot".
+
+Root cause (reproduced in mayapy 2 + 3): `NodeManager._apply_path_to_maya_node`
+did `cmds.file(path, loadReference=RN)` for every referenced asset on EVERY shot
+switch; Maya reloads even when the path is unchanged (kAfterLoadReference fires).
+In the morning EGA scenes resolved to non-existent V:/SWA paths, so the call
+failed; with the EGA config the paths resolve, so every Set Shot re-read every EGA
+Alembic cache. Second finding: a non-existent path leaves the reference UNLOADED and
+repointed. Also: display-layer targetNode fallback walked referenceQuery(nodes=True)
+over whole references; Add Shots printed ~2,900 lines per open (morning ~1,000);
+display_layers logged ~25 INFO lines per asset per switch; MGlobal was called from
+batch job threads.
+
+Fix (not yet pushed at time of writing): `_swap_reference` skips unchanged / missing
+paths; layer fallback uses the reference's namespace; logging demoted to DEBUG and UI
+prints removed (Add Shots open: 0 lines, 0.06s vs 0.53s); Maya log handler defers
+off-main-thread records. Tests: tests/test_reference_swap.py,
+tests/test_maya_log_handler_threads.py (plain unittest, pass under mayapy2).
+Not verified: a real EGA scene with its caches loaded (X: not reachable here).
+
+Follow-up the same day on the deployed 46a8c69: Add Shots flooded the Script Editor
+with `AttributeError: ... Qt has no attribute 'Transparent'` (old bug in
+`_on_item_changed`; 46a8c69 made it fire for every shot while building the tree) plus
+the per-shot debug prints. User asked for Add Shots to list only a selected project:
+added a Project combo (scene's project selected, one project scanned at a time).
+Offscreen check under mayapy 2 + 3: 10/10.

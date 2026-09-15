@@ -688,24 +688,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Initialize metadata loader if enabled
             metadata_loader = None
-            print("=" * 80)
-            print("DEBUG: Checking if metadata is enabled...")
-            print("DEBUG: self._config = {}".format(self._config))
+            logger.debug("Checking if metadata is enabled...")
+            logger.debug("self._config = {}".format(self._config))
 
             if self._config:
                 is_enabled = self._config.is_shot_metadata_enabled()
-                print("DEBUG: is_shot_metadata_enabled() = {}".format(is_enabled))
+                logger.debug("is_shot_metadata_enabled() = {}".format(is_enabled))
 
                 if is_enabled:
                     from core.shot_metadata_loader import ShotMetadataLoader
                     metadata_loader = ShotMetadataLoader(self._config)
-                    print("Shot metadata import ENABLED")
+                    logger.debug("Shot metadata import ENABLED")
                     logger.info("Shot metadata import enabled")
                 else:
-                    print("WARNING: Shot metadata import is DISABLED in config")
                     logger.warning("Shot metadata import is DISABLED in config")
             else:
-                print("WARNING: Config is None, cannot load metadata")
                 logger.warning("Config is None, cannot load metadata")
 
             # Clear current table
@@ -785,7 +782,7 @@ class MainWindow(QtWidgets.QMainWindow):
             str: Shot root path (e.g., "v:/SWA/all/scene/Ep04/sq0070/SH0180")
         """
         if not self._config:
-            print("WARNING: _build_shot_root_path - config is None")
+            logger.warning("_build_shot_root_path - config is None")
             return None
 
         try:
@@ -803,17 +800,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 'shot': shot_node.get_shot_code()
             }
 
-            print("DEBUG: Resolving shotRoot with context: {}".format(context))
+            logger.debug("Resolving shotRoot with context: {}".format(context))
 
             # Resolve shotRoot template
             shot_path = resolver.resolve_path('shotRoot', context)
 
-            print("DEBUG: Resolved shot_path: {}".format(shot_path))
+            logger.debug("Resolved shot_path: {}".format(shot_path))
 
             return shot_path
 
         except Exception as e:
-            print("ERROR: Failed to resolve shot root path: {}".format(e))
             logger.error("Failed to resolve shot root path: %s", e)
             import traceback
             traceback.print_exc()
@@ -1153,9 +1149,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # Create new CTX_Shot node if not found
                 if not ctx_shot:
-                    print("\n" + "="*80)
-                    print("CREATING NEW CTX_SHOT NODE FOR: {}".format(shot_id))
-                    print("="*80)
+                    logger.debug("CREATING NEW CTX_SHOT NODE FOR: {}".format(shot_id))
 
                     ctx_shot = self._context_manager.create_shot(
                         shot_data['ep'],
@@ -1163,7 +1157,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         shot_data['shot']
                     )
                     logger.info("Created new CTX_Shot node: %s", ctx_shot.node_name)
-                    print("Created CTX_Shot node: {}".format(ctx_shot.node_name))
+                    logger.debug("Created CTX_Shot node: {}".format(ctx_shot.node_name))
 
                     # Ensure global display layers exist (CTX_Active and CTX_Inactive)
                     try:
@@ -1174,31 +1168,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # Load metadata from JSON if available
                     if self._config and self._config.is_shot_metadata_enabled():
-                        print("\n" + "="*60)
-                        print("DEBUG: Loading metadata for NEW shot: {}".format(shot_id))
+                        logger.debug("Loading metadata for NEW shot: {}".format(shot_id))
                         try:
                             from core.shot_metadata_loader import ShotMetadataLoader
                             metadata_loader = ShotMetadataLoader(self._config)
                             shot_root = self._build_shot_root_path(ctx_shot)
-                            print("DEBUG: Shot root path: {}".format(shot_root))
+                            logger.debug("Shot root path: {}".format(shot_root))
 
                             metadata = metadata_loader.load_all_metadata(shot_id, shot_root)
-                            print("DEBUG: Loaded metadata: {}".format(metadata))
+                            logger.debug("Loaded metadata: {}".format(metadata))
 
                             if 'frame_range' in metadata:
                                 start, end = metadata['frame_range']
                                 ctx_shot.set_frame_range(start, end)
-                                print("DEBUG: Set frame range: {}-{}".format(start, end))
+                                logger.debug("Set frame range: {}-{}".format(start, end))
                                 logger.info("Loaded frame range from JSON: {}-{}".format(start, end))
 
                             if 'fps' in metadata:
                                 ctx_shot.set_fps(metadata['fps'])
-                                print("DEBUG: Set FPS: {}".format(metadata['fps']))
+                                logger.debug("Set FPS: {}".format(metadata['fps']))
                                 logger.info("Loaded FPS from JSON: {}".format(metadata['fps']))
                         except Exception as e:
-                            print("ERROR: Failed to load metadata: {}".format(e))
                             logger.error("Failed to load metadata for shot {}: {}".format(shot_id, e))
-                        print("="*60 + "\n")
 
                     # Scan filesystem and create CTX_Asset nodes for new shots only
                     if self._config:
@@ -2245,7 +2236,7 @@ class MainWindow(QtWidgets.QMainWindow):
             shot_data['project'], shot_data['ep'], shot_data['seq'], shot_data['shot']
         )
 
-        logger.info("=" * 80)
+        logger.debug("=" * 80)
         logger.info("SAVE SHOT: {}".format(shot_id))
 
         try:

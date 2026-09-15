@@ -94,14 +94,28 @@ def get_scene_base(config, platform=None):
 
 
 def _subdirs(path, accept):
-    """Sorted child folder names of ``path`` accepted by ``accept``."""
+    """Sorted child folder names of ``path`` accepted by ``accept``.
+
+    Uses os.scandir where available (Python 3.5+): on Windows the folder
+    listing already says which entries are folders, so the network share is
+    not asked again for every shot.  Python 2 falls back to listdir + isdir.
+    """
+    scandir = getattr(os, 'scandir', None)
     try:
-        names = sorted(os.listdir(path))
+        if scandir is not None:
+            names = []
+            for entry in scandir(path):
+                try:
+                    if accept(entry.name) and entry.is_dir():
+                        names.append(entry.name)
+                except OSError:
+                    continue
+            return sorted(names)
+        return sorted(n for n in os.listdir(path)
+                      if accept(n) and os.path.isdir(os.path.join(path, n)))
     except OSError as exc:
         logger.warning("Cannot list %s: %s", path, exc)
         return []
-    return [n for n in names
-            if accept(n) and os.path.isdir(os.path.join(path, n))]
 
 
 def discover_shots(scene_base):
