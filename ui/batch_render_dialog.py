@@ -807,10 +807,12 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
         self._cancel_all_btn.setEnabled(True)
         self._cancelled = False
 
+        api = self._create_pipeline_api()
+        if api is None:
+            return
+
         def run():
             try:
-                from tools.pipeline_api import PipelineAPI
-                api = PipelineAPI()
                 for job_spec in jobs_to_run:
                     if self._cancelled:
                         break
@@ -877,10 +879,12 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
 
         reserved = self._settings.get('reserve_gpus', 1)
 
+        api = self._create_pipeline_api()
+        if api is None:
+            return
+
         def run():
             try:
-                from tools.pipeline_api import PipelineAPI
-                api = PipelineAPI()
                 for jc in jobs_config:
                     if self._cancelled:
                         break
@@ -952,6 +956,24 @@ class BatchRenderDialog(QtWidgets.QMainWindow):
             if status_item and status_item.text().lower() in ('queued',):
                 status_item.setText('Cancelled')
                 status_item.setForeground(QtGui.QColor(150, 150, 150))
+
+    def _create_pipeline_api(self):
+        """Build the PipelineAPI a render thread will use, on the main thread.
+
+        PipelineAPI resolves its config from the open scene through
+        maya.cmds, which must not be called from the render thread.
+
+        Returns:
+            PipelineAPI or None: None when construction failed; the failure is
+                logged and the cancel buttons are reset.
+        """
+        try:
+            from tools.pipeline_api import PipelineAPI
+            return PipelineAPI()
+        except Exception as exc:
+            logger.exception("Could not start render: %s", exc)
+            self._on_render_finished()
+            return None
 
     def _on_render_finished(self):
         """Called in main thread when render thread completes."""

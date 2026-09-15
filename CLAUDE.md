@@ -205,6 +205,19 @@ The repo is cloned to a different folder per studio (e.g. `X:\EGA\_temp\rich\scr
 
 **Remaining gap:** if a studio tool imports its own package literally named `core`/`ui`/`tools`/`config` before ours, our packages would need a unique namespace (e.g. `ctx_multishot.core`).
 
+### Frame Range JSON + Regression Fixes ✅ (2026-09-15)
+
+**Frame range JSON:** the Edit Frame Range dialogs (single `ui/shot_context_dialog.py` and multi-shot in `ui/main_window.py`) have a "Save frame range to shot JSON" checkbox, ticked by default and shown only when `shotMetadata.enabled`. It writes `<shotRoot>/.{shot_id}.json`, the same file shot loading reads, via `ShotMetadataLoader.save_frame_range()` / `save_shot_frame_range()`.
+- Existing JSON: only start/end frame are rewritten; every other key (fps included) and the key order are kept.
+- Missing JSON: created with frame range + fps, in the config's `parseFormat` (`nested` / `range` / `separate`).
+- Never creates the shot folder; never overwrites a JSON it cannot parse.
+
+**Key design decisions (do not revert):**
+- `BatchRenderDialog` builds `PipelineAPI()` on the main thread (`_create_pipeline_api`) -- its `__init__` resolves the config through `maya.cmds`, which must not run on the render thread.
+- A scene binding to `ctx_config.json` is a legacy default, not a choice (old versions stamped it on every scene): scene-location detection beats it (`config_resolver.is_default_binding`) and `_load_config` restamps it with the detected config. Any other binding still beats detection.
+- `_reload_config_for_scene` calls `_load_config(create_manager=False)` -- opening a scene must not add a CTX_Manager node.
+- `asset_types.parse_asset_part`: a CAM-typed name without the `_camera` suffix (`CAM_shotCam_001`) falls back to the standard split, as before CFX.
+
 ---
 
 ## 3. Non-Negotiable Rules

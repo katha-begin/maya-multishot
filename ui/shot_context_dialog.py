@@ -26,15 +26,20 @@ logger = logging.getLogger(__name__)
 class ShotContextDialog(QtWidgets.QDialog):
     """Dialog for editing shot context properties."""
 
-    def __init__(self, shot_node, parent=None):
+    def __init__(self, shot_node, parent=None, json_saver=None):
         """Initialize shot context dialog.
 
         Args:
             shot_node (CTXShotNode): Shot node to edit
             parent (QWidget, optional): Parent widget
+            json_saver (callable, optional): ``json_saver(shot_node, start,
+                end, fps)`` writes the frame range to the shot JSON.  When
+                given, the dialog offers a "Save to shot JSON" checkbox.
         """
         super(ShotContextDialog, self).__init__(parent)
         self._shot_node = shot_node
+        self._json_saver = json_saver
+        self.save_json_check = None
         self._setup_ui()
         self._load_values()
 
@@ -93,6 +98,14 @@ class ShotContextDialog(QtWidgets.QDialog):
         form_layout.addRow("Frame Offset:", self.offset_spin)
 
         layout.addLayout(form_layout)
+
+        if self._json_saver is not None:
+            self.save_json_check = QtWidgets.QCheckBox("Save frame range to shot JSON")
+            self.save_json_check.setChecked(True)
+            self.save_json_check.setToolTip(
+                "Update start/end frame in the shot's JSON, or create the JSON "
+                "when it is missing, so the range is kept on reload.")
+            layout.addWidget(self.save_json_check)
 
         # Buttons
         button_layout = QtWidgets.QHBoxLayout()
@@ -157,12 +170,24 @@ class ShotContextDialog(QtWidgets.QDialog):
             self._shot_node.set_frame_offset(offset)
 
             logger.info("Saved shot context for: %s", self._shot_node.get_shot_id())
-            return True
 
         except Exception as e:
             logger.error("Failed to save shot values: %s", e)
             QtWidgets.QMessageBox.warning(self, "Error", "Failed to save: {}".format(e))
             return False
+
+        if self.save_json_check is not None and self.save_json_check.isChecked():
+            try:
+                self._json_saver(self._shot_node, start, end, fps)
+            except Exception as e:
+                # The node already holds the new range; only the JSON failed.
+                logger.error("Failed to save frame range JSON: %s", e)
+                QtWidgets.QMessageBox.warning(
+                    self, "Frame Range JSON",
+                    "The frame range was applied to the shot, but the JSON "
+                    "could not be saved:\n\n{}".format(e))
+
+        return True
 
     def _on_apply(self):
         """Handle Apply button click."""

@@ -448,3 +448,34 @@ HEAD (all remaining failures pre-exist on HEAD).
 Open: if a studio tool imports its own top-level `core`/`ui`/`tools`/`config`
 before ours, our packages still need a unique namespace. Confirm first by
 printing `sys.modules['core'].__file__` in the failing session.
+
+## Regression review + frame range JSON (2026-09-15) -- on `main`
+
+Review of old main 2d15856 vs 638dc79 (CFX + multi-project + py2) found no
+change to SWA workflows (test suite per-test diff: 0 regressions; maya.standalone
+smoke of scan / CTX_Asset / display layers / gaffer / validator identical), but
+four real issues, now fixed:
+
+1. Batch/Quick Render built `PipelineAPI()` inside the render thread; its
+   `__init__` now calls maya.cmds via `resolve_config_path()`. Built on the main
+   thread in `BatchRenderDialog._create_pipeline_api()`.
+2. Old Multishot Manager stamped `ctx_config.json` on EVERY scene, so EGA scenes
+   touched by it stayed bound to SWA. `config_resolver.is_default_binding()`:
+   detection beats a ctx_config.json binding; `_load_config` restamps it.
+3. `CAM_<name>_<var>` publishes stopped parsing -> fall back to standard split.
+4. Scene open/new with the window open created CTX_Manager ->
+   `_load_config(create_manager=False)` on reload.
+
+Feature: Edit Frame Range (single + multi) checkbox "Save frame range to shot
+JSON" (default on, only when shotMetadata.enabled). User decisions: existing
+JSON -> update ONLY start/end frame (keep fps + all other keys); missing JSON ->
+create in the config format (frame range + fps); write on OK/Apply.
+`ShotMetadataLoader.save_frame_range()` writes the inverse of
+`load_frame_range()` per parseFormat; never creates the shot folder, never
+overwrites unparseable JSON. Tests: `tests/test_shot_metadata_writer.py`
+(plain unittest, passes under mayapy2).
+
+Testing notes: the user's Maya `userSetup.py` loads CTX tools from E:/dev during
+`maya.standalone.initialize()` -- set `MAYA_SKIP_USERSETUP_PY=1` or a "baseline"
+run silently imports the dev checkout. Headless Maya crashes creating Qt widgets:
+test dialogs in mayapy WITHOUT standalone (PySide + stand-in shot node).

@@ -597,15 +597,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.add_shots_btn.clicked.connect(self._on_add_shots)
         self.delete_all_btn.clicked.connect(self._on_delete_all)
     
-    def _load_config(self):
+    def _load_config(self, create_manager=True):
         """Load project configuration for the open scene.
 
         The path is resolved by config.config_resolver, so a scene built
         against one project loads that project's config rather than whatever
         the repository defaults to.
+
+        Args:
+            create_manager (bool): Create CTX_Manager when the scene has none,
+                so the config can be recorded on it.  Pass False when reacting
+                to a scene being opened: that must not add nodes to the scene.
         """
         try:
-            from config.config_resolver import resolve_config_path
+            from config.config_resolver import (
+                resolve_config_path, is_default_binding)
 
             config_path = os.path.abspath(resolve_config_path())
 
@@ -625,17 +631,29 @@ class MainWindow(QtWidgets.QMainWindow):
             # Stamp the config onto CTX_Manager only when the scene does not
             # already name a valid one.  Overwriting unconditionally would
             # rebind an EGA scene to whatever config happened to load -- the
-            # binding this attribute exists to preserve.
-            manager = self._context_manager.get_or_create_manager()
-            existing = ''
-            try:
-                existing = manager.get_config_path() or ''
-            except Exception:
-                existing = ''
+            # binding this attribute exists to preserve.  A ctx_config.json
+            # binding is the exception: older versions wrote it onto every
+            # scene, so it is replaced once a project has been detected.
+            if create_manager:
+                manager = self._context_manager.get_or_create_manager()
+            else:
+                from core.nodes.wrappers import CTXManagerNode
+                manager = CTXManagerNode.get_manager()
 
-            if not existing or not os.path.exists(existing):
-                manager.set_config_path(config_path)
-                logger.info("Bound scene to config: %s", config_path)
+            if manager is not None:
+                existing = ''
+                try:
+                    existing = manager.get_config_path() or ''
+                except Exception:
+                    existing = ''
+
+                same = existing and (
+                    os.path.normcase(os.path.abspath(existing))
+                    == os.path.normcase(config_path))
+                if (not existing or not os.path.exists(existing)
+                        or (is_default_binding(existing) and not same)):
+                    manager.set_config_path(config_path)
+                    logger.info("Bound scene to config: %s", config_path)
 
             project = self._config.get_project_code() or '?'
             self.statusBar().showMessage("Config loaded: {}".format(project))
@@ -789,6 +807,48 @@ class MainWindow(QtWidgets.QMainWindow):
             import traceback
             traceback.print_exc()
             return None
+
+    def _can_save_frame_range_json(self):
+        """Return True when shot metadata JSON is configured and read.
+
+        Writing a JSON that shot loading never reads would only mislead.
+        """
+        return bool(self._config and self._config.is_shot_metadata_enabled())
+
+    def _save_frame_range_json(self, shot_node, start, end, fps=None):
+        """Write a shot's frame range to its metadata JSON.
+
+        Updates only the start and end frame of an existing JSON; creates the
+        file in the configured format when it is missing.
+
+        Args:
+            shot_node (CTXShotNode): Shot node
+            start (int): Start frame
+            end (int): End frame
+            fps (float): Written only when the JSON is being created
+
+        Returns:
+            tuple: (json_path, created)
+
+        Raises:
+            Exception: When the JSON cannot be written; the message says why.
+        """
+        from core.shot_metadata_loader import ShotMetadataLoader
+
+        shot_id = shot_node.get_shot_id()
+        shot_root = self._build_shot_root_path(shot_node)
+        if not shot_root:
+            raise ValueError(
+                "Could not resolve the shot folder for {}".format(shot_id))
+
+        loader = ShotMetadataLoader(self._config)
+        json_path, created = loader.save_shot_frame_range(
+            shot_id, shot_root, start, end, fps=fps)
+
+        self.statusBar().showMessage("{} {} ({}-{})".format(
+            'Created' if created else 'Updated',
+            os.path.basename(json_path), start, end))
+        return json_path, created
 
     def _parse_scene_filename(self):
         """Parse current Maya scene filename to extract dept and version.
@@ -1858,7 +1918,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
 
             # Open dialog
-            dialog = ShotContextDialog(shot_data['ctx_node'], parent=self)
+            json_saver = (self._save_frame_range_json
+                          if self._can_save_frame_range_json() else None)
+            dialog = ShotContextDialog(shot_data['ctx_node'], parent=self,
+                                       json_saver=json_saver)
             if dialog.exec_() == QtWidgets.QDialog.Accepted:
                 # Update frame range display in table
                 try:
@@ -1946,6 +2009,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
         layout.addWidget(table)
 
+        save_json_check = None
+        if self._can_save_frame_range_json():
+            save_json_check = QtWidgets.QCheckBox("Save frame range to shot JSON")
+            save_json_check.setChecked(True)
+            save_json_check.setToolTip(
+                "Update start/end frame in each shot's JSON, or create the "
+                "JSON when it is missing, so the range is kept on reload.")
+            layout.addWidget(save_json_check)
+
         # Buttons
         button_layout = QtWidgets.QHBoxLayout()
         button_layout.addStretch()
@@ -1963,6 +2035,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Execute dialog
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            save_json = save_json_check is not None and save_json_check.isChecked()
+            json_saved = 0
+            json_failures = []
+
             # Apply changes to all shots
             for i, (row, shot_node) in enumerate(shot_nodes):
                 try:
@@ -1994,8 +2070,29 @@ class MainWindow(QtWidgets.QMainWindow):
                         "Update Error",
                         "Failed to update shot at row {}:\n\n{}".format(row, str(e))
                     )
+                    continue
 
-            self.statusBar().showMessage("Updated {} shot(s)".format(len(shot_nodes)))
+                if save_json:
+                    try:
+                        self._save_frame_range_json(shot_node, start, end, fps=fps)
+                        json_saved += 1
+                    except Exception as e:
+                        logger.error("Failed to save frame range JSON for %s: %s",
+                                     shot_node.get_shot_id(), e)
+                        json_failures.append("{}: {}".format(shot_node.get_shot_id(), e))
+
+            if json_failures:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Frame Range JSON",
+                    "The frame range was applied to the shots, but these JSON "
+                    "files could not be saved:\n\n{}".format("\n".join(json_failures))
+                )
+
+            message = "Updated {} shot(s)".format(len(shot_nodes))
+            if save_json:
+                message += ", saved {} JSON".format(json_saved)
+            self.statusBar().showMessage(message)
 
     def _on_remove_shot(self, row):
         """Handle Remove button click.
@@ -2524,7 +2621,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             logger.info("Scene uses a different config (%s -> %s), reloading",
                         current or 'none', resolved)
-            self._load_config()
+            self._load_config(create_manager=False)
         except Exception as exc:
             logger.warning("Could not reload config for scene: %s", exc)
 

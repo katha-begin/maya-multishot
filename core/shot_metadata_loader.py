@@ -2,7 +2,8 @@
 """Shot Metadata Loader - Load shot metadata from JSON sidecar files.
 
 This module handles loading shot metadata (frame range, fps, etc.) from
-JSON sidecar files stored alongside Maya scene files.
+JSON sidecar files stored alongside Maya scene files, and writing a custom
+frame range back in the same format.
 
 Author: Context Variables Pipeline Team
 Date: 2026-02-17
@@ -10,6 +11,7 @@ Date: 2026-02-17
 
 from __future__ import absolute_import, division, print_function
 
+import collections
 import json
 import logging
 import os
@@ -267,4 +269,116 @@ class ShotMetadataLoader(object):
 
         logger.info("DEBUG: Final metadata dict: %s", metadata)
         return metadata
+
+    def save_frame_range(self, json_path, start, end, fps=None):
+        """Write a frame range to a shot JSON, in the format load_frame_range reads.
+
+        An existing file keeps everything except the start and end frame: its
+        other keys, including fps, are left untouched.  A missing file is
+        created with the frame range and, when given, fps.  The shot folder
+        itself is never created -- a missing folder means the path resolved
+        somewhere unexpected.
+
+        Args:
+            json_path (str): Path to the shot JSON file.
+            start (int): Start frame.
+            end (int): End frame.
+            fps (float): Written only when the file is being created.
+
+        Returns:
+            bool: True when the file was created, False when it was updated.
+
+        Raises:
+            ValueError: No shotMetadata config, end before start, or the
+                existing file is not a JSON object in the expected shape.
+            IOError: The shot folder does not exist.
+        """
+        if not self.metadata_config:
+            raise ValueError("No shotMetadata configuration found in config")
+
+        start = int(start)
+        end = int(end)
+        if end < start:
+            raise ValueError(
+                "End frame {} is before start frame {}".format(end, start))
+
+        folder = os.path.dirname(json_path)
+        if folder and not os.path.isdir(folder):
+            raise IOError("Shot folder does not exist: {}".format(folder))
+
+        created = not os.path.exists(json_path)
+        if created:
+            data = collections.OrderedDict()
+        else:
+            # Never rewrite a file that cannot be read back: that would
+            # destroy whatever else it holds.
+            with open(json_path, 'r') as f:
+                data = json.load(f, object_pairs_hook=collections.OrderedDict)
+            if not isinstance(data, dict):
+                raise ValueError(
+                    "Shot JSON is not an object: {}".format(json_path))
+
+        field_mapping = self.metadata_config.get('fieldMapping', {})
+        frame_range_config = field_mapping.get('frameRange', {})
+        json_field = frame_range_config.get('jsonField', 'sequence_frames')
+        parse_format = frame_range_config.get('parseFormat', 'range')
+        start_field = frame_range_config.get('startField', 'start_frame')
+        end_field = frame_range_config.get('endField', 'end_frame')
+
+        if parse_format == 'nested':
+            nested_obj = data.get(json_field)
+            if nested_obj is None:
+                nested_obj = collections.OrderedDict()
+                data[json_field] = nested_obj
+            elif not isinstance(nested_obj, dict):
+                raise ValueError("Field '{}' in {} is not an object".format(
+                    json_field, json_path))
+            nested_obj[start_field] = start
+            nested_obj[end_field] = end
+        elif parse_format == 'range':
+            data[json_field] = '{}-{}'.format(start, end)
+        elif parse_format == 'separate':
+            data[start_field] = start
+            data[end_field] = end
+        else:
+            raise ValueError(
+                "Unknown frameRange parseFormat '{}'".format(parse_format))
+
+        if created and fps is not None:
+            fps_field = field_mapping.get('fps', {}).get('jsonField', 'fps')
+            data[fps_field] = float(fps)
+
+        with open(json_path, 'w') as f:
+            # Explicit separators: Python 2's default leaves a trailing space
+            # after every comma when indenting.
+            f.write(json.dumps(data, indent=4, separators=(',', ': ')))
+
+        logger.info("%s shot JSON %s: frame range %d-%d",
+                    'Created' if created else 'Updated', json_path, start, end)
+        return created
+
+    def save_shot_frame_range(self, shot_id, shot_root_path, start, end,
+                              fps=None):
+        """Write a shot's frame range to the JSON path built from config.
+
+        Args:
+            shot_id (str): Shot ID (e.g., "Ep04_sq0070_SH0180")
+            shot_root_path (str): Shot root directory path
+            start (int): Start frame
+            end (int): End frame
+            fps (float): Written only when the file is being created
+
+        Returns:
+            tuple: (json_path, created)
+
+        Raises:
+            ValueError, IOError: See save_frame_range; also ValueError when the
+                JSON path cannot be built.
+        """
+        json_path = self.build_json_path(shot_id, shot_root_path)
+        if not json_path:
+            raise ValueError(
+                "Cannot build shot JSON path for {}".format(shot_id))
+        created = self.save_frame_range(json_path, start, end, fps=fps)
+        return json_path, created
 

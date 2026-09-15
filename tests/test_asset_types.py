@@ -93,6 +93,11 @@ class TestParseAssetPart(unittest.TestCase):
         self.assertEqual(info['name'], 'SWA_Ep04_SH0170_camera')
         self.assertEqual(info['variant'], asset_types.DEFAULT_VARIANT)
 
+    def test_camera_type_prefix_without_suffix_parses_as_standard(self):
+        """CAM_<name>_<variant> publishes were found before CFX; keep them."""
+        info = asset_types.parse_asset_part('CAM_shotCam_001')
+        self.assertEqual(info, {'type': 'CAM', 'name': 'shotCam', 'variant': '001'})
+
     def test_standard_too_few_parts_is_rejected(self):
         self.assertIsNone(asset_types.parse_asset_part('CHAR_Only'))
 

@@ -24,6 +24,10 @@ Steps 1-2 are explicit bindings and beat inference.  Step 3 beats step 4
 because the environment variable is set once per session while the scene is
 the specific thing being worked on.
 
+One exception to step 2: a binding to ctx_config.json is not a choice.  Before
+multi-project configs every scene was stamped with it unconditionally, so it
+only binds when the scene's location matches no project.
+
 Usage:
     from config.config_resolver import resolve_config_path
 
@@ -126,6 +130,24 @@ def get_scene_config_path():
                 "falling back", path)
 
     return None
+
+
+def is_default_binding(path):
+    """Return True when a scene binding names the default pointer config.
+
+    The pre-multi-project Multishot Manager stamped ctx_config.json onto every
+    scene whatever its project, so such a binding says nothing about which
+    project the scene belongs to.
+
+    Args:
+        path (str): Config path recorded on a scene.
+
+    Returns:
+        bool
+    """
+    if not path:
+        return False
+    return os.path.basename(path).lower() == DEFAULT_CONFIG_NAME
 
 
 def get_env_config_path():
@@ -280,7 +302,7 @@ def resolve_config_path(explicit=None, use_scene=True):
 
     if use_scene:
         bound_path = get_scene_config_path()
-        if bound_path:
+        if bound_path and not is_default_binding(bound_path):
             logger.info('Config from scene CTX_Manager: %s', bound_path)
             return bound_path
 
@@ -293,6 +315,11 @@ def resolve_config_path(explicit=None, use_scene=True):
         if detected:
             logger.info('Config detected from scene location: %s', detected)
             return detected
+
+        if bound_path:
+            logger.info('Config from scene CTX_Manager (default binding): %s',
+                        bound_path)
+            return bound_path
 
     env_path = get_env_config_path()
     if env_path:

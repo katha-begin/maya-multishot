@@ -194,10 +194,8 @@ def parse_asset_part(asset_part, config=None):
     if mode == PARSE_NO_SEPARATOR_VARIANT:
         return _parse_no_separator_variant(asset_type, asset_part, policy)
 
-    if mode == PARSE_CAMERA:
-        # Type is declared as camera-parsed but the suffix did not match.
-        return None
-
+    # A camera-parsed type without the camera suffix, e.g. CAM_shotCam_001,
+    # falls through to the standard split -- the parse it always had.
     return _parse_standard(segments)
 
 

@@ -385,6 +385,30 @@ class TestDetectionInResolutionOrder(unittest.TestCase):
             resolved = config_resolver.resolve_config_path()
         self.assertEqual(resolved, swa)
 
+    def test_legacy_default_binding_loses_to_detection(self):
+        """Old versions stamped ctx_config.json on every scene, EGA included."""
+        legacy = os.path.join(CONFIG_DIR, 'ctx_config.json')
+        with patch.object(config_resolver, 'MAYA_AVAILABLE', True), \
+             patch.object(config_resolver, 'cmds',
+                          self._patch_scene(self.EGA_SCENE, bound=legacy)):
+            resolved = config_resolver.resolve_config_path()
+        self.assertEqual(ProjectConfig(resolved).get_project_code(), 'EGA')
+
+    def test_legacy_default_binding_kept_when_nothing_detected(self):
+        legacy = os.path.join(CONFIG_DIR, 'ctx_config.json')
+        os.environ[config_resolver.ENV_VAR] = os.path.join(CONFIG_DIR, 'EGA.json')
+        with patch.object(config_resolver, 'MAYA_AVAILABLE', True), \
+             patch.object(config_resolver, 'cmds',
+                          self._patch_scene('C:/tmp/untitled.ma', bound=legacy)):
+            self.assertEqual(config_resolver.resolve_config_path(), legacy)
+
+    def test_is_default_binding(self):
+        self.assertTrue(config_resolver.is_default_binding(
+            'X:/EGA/_temp/tool/project_configs/CTX_CONFIG.json'))
+        self.assertFalse(config_resolver.is_default_binding(
+            os.path.join(CONFIG_DIR, 'SWA.json')))
+        self.assertFalse(config_resolver.is_default_binding(''))
+
     def test_env_used_when_scene_matches_nothing(self):
         ega = os.path.join(CONFIG_DIR, 'EGA.json')
         os.environ[config_resolver.ENV_VAR] = ega
