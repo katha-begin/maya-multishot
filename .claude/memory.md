@@ -479,3 +479,24 @@ Testing notes: the user's Maya `userSetup.py` loads CTX tools from E:/dev during
 `maya.standalone.initialize()` -- set `MAYA_SKIP_USERSETUP_PY=1` or a "baseline"
 run silently imports the dev checkout. Headless Maya crashes creating Qt widgets:
 test dialogs in mayapy WITHOUT standalone (PySide + stand-in shot node).
+
+## Add Shots empty on the studio deploy (2026-09-15) -- fixed, not yet pushed at time of writing
+
+Report: Multishot Manager on the EC2 deploy (`T:\pipeline\development\maya\maya-multishot`
+= `/mnt/ppr_dev_t/pipeline/development/maya/maya-multishot`, a git checkout pulled
+from origin main) showed
+"Failed to load config" and an empty Add Shots tree. User expects SWA AND EGA listed.
+
+Evidence: deploy reflog -- pulled 2d15856 at 05:02 UTC, scene saved 05:56 (stamped
+ctx_config.json), pulled 033d762 at 06:19 while Maya stayed open. The 2d15856 Reload
+(menu `reload_all_modules` and window "Reload All Tools") only reloads core/ui/tools/utils,
+never `config`, so the new ui ran with the OLD ProjectConfig, which rejects "extends"
+configs ("Missing required keys ..."). `_load_config` swallowed it -> `_config` None ->
+AddShotDialog returned silently. HEAD code with the real scene loads EGA fine
+(reproduced in mayapy 2 and 3). Share mounts on EC2: /mnt/igloo_swa_v, _swa_w,
+_ega_x, _ega_y, /mnt/ppr_dev_t. Real counts: EGA 611 shots, SWA 342.
+
+Fix: Add Shots lists every project (core/shot_discovery.py), explains missing
+projects, one project per scene guard, `_load_config` shows the reason + "restart
+Maya" hint for stale config code. Users who update while Maya is open must restart
+Maya once (old Reload cannot pick up the config package).

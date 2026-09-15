@@ -218,6 +218,10 @@ The repo is cloned to a different folder per studio (e.g. `X:\EGA\_temp\rich\scr
 - `_reload_config_for_scene` calls `_load_config(create_manager=False)` -- opening a scene must not add a CTX_Manager node.
 - `asset_types.parse_asset_part`: a CAM-typed name without the `_camera` suffix (`CAM_shotCam_001`) falls back to the standard split, as before CFX.
 
+**Add Shots lists every project (2026-09-15):** `ui/add_shot_dialog.py` lists all project configs via `core/shot_discovery.py` (`list_projects`, `get_scene_base`, `discover_shots`) -- the scene's project first, `ctx_config.json` folded into the project it points at, roots for the running platform. A project it cannot list shows a grey line with the reason (config error / scene folder not found) instead of a blank tree.
+- One project per scene: `MainWindow._ensure_project_for_shots` refuses mixed-project selections and refuses adding another project's shots to a scene that already has shots (CTX_Shot has no project attribute; all shots resolve with the scene config). Into an empty scene, or when the config failed to load, it switches the scene to that project first.
+- `_load_config` logs the traceback and puts the reason in the status bar. If `config.project_config` lacks `deep_merge`, the session still holds pre-multi-project config code (the Reload before 3e8e970 never reloaded `config`): the message says to restart Maya.
+
 ---
 
 ## 3. Non-Negotiable Rules

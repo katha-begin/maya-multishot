@@ -660,8 +660,19 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.info("Config loaded from: %s (project %s)",
                         config_path, project)
         except Exception as e:
-            logger.error("Failed to load config: %s", e)
-            self.statusBar().showMessage("Failed to load config")
+            logger.exception("Failed to load config: %s", e)
+            reason = str(e)
+            try:
+                # Updating the tool while Maya is open, then using the Reload
+                # of a version older than 3e8e970, refreshes ui/ but keeps the
+                # old config package -- which cannot read "extends" configs.
+                from config import project_config as loaded_project_config
+                if not hasattr(loaded_project_config, 'deep_merge'):
+                    reason = ("old config code is still loaded in this Maya "
+                              "session -- restart Maya ({})".format(e))
+            except Exception:
+                pass
+            self.statusBar().showMessage("Failed to load config: {}".format(reason))
 
     def _load_existing_shots(self):
         """Load existing CTX_Shot nodes from scene."""
@@ -981,7 +992,60 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog = AddShotDialog(self._config, self)
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
             selected_shots = dialog.get_selected_shots()
+            if not self._ensure_project_for_shots(selected_shots):
+                return
             self._add_shots_to_table(selected_shots)
+
+    def _ensure_project_for_shots(self, shots):
+        """Make the scene's project config match the shots about to be added.
+
+        CTX_Shot nodes carry no project of their own: every shot in a scene
+        resolves its paths with the scene's config.  So shots from another
+        project are only added to a scene with no shots yet, and the scene is
+        switched to that project first.
+
+        Args:
+            shots (list): Shot dicts from AddShotDialog.
+
+        Returns:
+            bool: True when the shots can be added.
+        """
+        projects = {}
+        for shot in shots:
+            projects.setdefault(shot.get('project'), shot.get('config_path'))
+
+        if len(projects) > 1:
+            QtWidgets.QMessageBox.warning(
+                self, "Add Shots",
+                "Select shots from one project at a time.\n\nSelected: {}".format(
+                    ", ".join(sorted(str(p) for p in projects))))
+            return False
+
+        if not projects:
+            return True
+
+        code, config_path = list(projects.items())[0]
+        current = self._config.get_project_code() if self._config else None
+        if not code or not config_path or code == current:
+            return True
+
+        try:
+            scene_shots = self._context_manager.get_all_shots()
+        except Exception:
+            scene_shots = []
+
+        if scene_shots and self._config is not None:
+            QtWidgets.QMessageBox.warning(
+                self, "Add Shots",
+                "This scene holds {cur} shots, so {new} shots cannot be added "
+                "to it.\n\nAll shots in a scene resolve their paths with the "
+                "scene's project config ({cur}).\n\nOpen or create a {new} "
+                "scene to add {new} shots.".format(cur=current, new=code))
+            return False
+
+        logger.info("Switching scene to project %s for the shots being added", code)
+        self._apply_project_config(config_path)
+        return bool(self._config and self._config.get_project_code() == code)
 
     def _check_shot_version_status(self, shot_data):
         """Check if shot has any outdated assets.
