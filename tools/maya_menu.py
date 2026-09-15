@@ -127,6 +127,14 @@ def create_ctx_menu():
             parent=menu
         )
 
+        # Temporary EGA tool: CFX groom standins follow the active shot
+        cmds.menuItem(
+            label="EGA Groom Updater...",
+            command=lambda *args: open_groom_updater(),
+            annotation="List CFX groom standins and point them at the active shot",
+            parent=menu
+        )
+
         # Add separator
         cmds.menuItem(divider=True, parent=menu)
 
@@ -479,6 +487,27 @@ def open_batch_render_dialog():
 def open_slate_manager():
     """Open Slate Manager dialog using dockable launcher."""
     _run_launcher('launch_slate_manager.py', 'Slate Manager')
+
+
+def open_groom_updater():
+    """Open the temporary EGA Groom Updater."""
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        from ui.groom_updater_dialog import GroomUpdaterDialog
+        GroomUpdaterDialog.open_or_raise(parent=get_maya_main_window())
+    except Exception as e:
+        logger.error("Failed to open Groom Updater: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Error",
+            message="Failed to open Groom Updater:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
 
 
 def open_asset_manager():

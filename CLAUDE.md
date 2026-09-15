@@ -229,6 +229,12 @@ The repo is cloned to a different folder per studio (e.g. `X:\EGA\_temp\rich\scr
 - Per-item and banner logging in shot switching / scanning / linking / the Add Shots dialog is DEBUG, and the UI has no `print()` debugging: thousands of Script Editor lines per action froze and crashed Maya. Keep one INFO summary per operation.
 - `tests/`: `from core.nodes import nodes_legacy` to patch `cmds` / `MAYA_AVAILABLE` for `core/nodes.py` (the `core/nodes/` package shadows the file).
 
+**CFX grooms follow the active shot -- temporary, EGA (2026-09-16):** EGA scenes hold one groom `aiStandIn` per groom (built by an upstream tool for one shot), not one per shot as the CFX design assumed. With `cfx.repathOnShotSwitch` (true in `EGA.json`, false in `base.json`), `NodeManager.update_shot_paths` -- used by Set Shot and `PipelineAPI.set_active_shot` (batch render) -- calls `core/groom_updater.update_grooms_for_shot`, and skips CFX `CTX_Asset` records (Add Shots creates them with the single-file template and a namespace no node has). CTX Tools -> "EGA Groom Updater..." (`ui/groom_updater_dialog.py`) lists grooms, checks frames and lets a version be picked.
+- A groom is matched by type + name + variant parsed from its `.dso`, whatever shot it names. Path: the shot's publish, keeping the version already chosen when the standin is on that shot, else the newest version holding the `_ass` folder. Only written when it changes; `frameNumber` / node names never touched.
+- No publish for the shot, or a second standin of the same groom: hidden via the standin transform's `visibility`, path left alone. A standin on the shot is made visible.
+- Frames of the shot range (+ `frameOffset`) are checked -- missing, 0 bytes, under 10% of the median size -- reported (warning + Set Shot status bar), never skipped.
+- Known gap: `core/asset_scanner.py` still gives CFX records `assetPath` and a `TYPE_Name_Var` namespace.
+
 ---
 
 ## 3. Non-Negotiable Rules

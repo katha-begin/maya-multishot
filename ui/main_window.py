@@ -63,6 +63,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._config = None
         self._platform_config = None
+        self._last_groom_summary = None  # CFX groom update of the last Set Shot
         self._context_manager = ContextManager()
         self._shots = []  # List of dicts with shot data + CTX node reference
         self._active_shot_index = None
@@ -1507,6 +1508,8 @@ class MainWindow(QtWidgets.QMainWindow):
             logger.error("No CTX_Manager node found")
             return
 
+        self._last_groom_summary = None
+
         # Update previous button state
         if self._active_shot_index is not None:
             prev_btn = self.shot_table.cellWidget(self._active_shot_index, 4)
@@ -1748,7 +1751,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     shot_data['project'], shot_data['ep'], shot_data['seq'], shot_data['shot']
                 )
                 logger.info("Active shot set to: %s (display layer visibility updated)", shot_path)
-                self.statusBar().showMessage("Active shot: {}".format(shot_path))
+                message = "Active shot: {}".format(shot_path)
+                groom_summary = getattr(self, '_last_groom_summary', None)
+                if groom_summary and groom_summary.get('total'):
+                    from core.groom_updater import format_summary
+                    message += " | Grooms: {}".format(format_summary(groom_summary))
+                self.statusBar().showMessage(message)
 
                 # Refresh Gaffer Manager if open; auto-select the active gaffer
                 try:
@@ -1864,6 +1872,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             count = node_manager.update_shot_paths(
                 shot_node, self._config, platform_config)
+            self._last_groom_summary = node_manager.last_groom_summary
 
             if count > 0:
                 self.statusBar().showMessage(

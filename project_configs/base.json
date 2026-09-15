@@ -338,6 +338,7 @@
     "frameToken": "####",
     "frameDriver": "time",
     "extension": "ass",
+    "repathOnShotSwitch": false,
     "attributes": {
       "path": "dso",
       "useFrameExtension": "useFrameExtension",

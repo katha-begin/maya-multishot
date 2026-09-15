@@ -79,7 +79,8 @@ class NodeManager(object):
     
     def __init__(self):
         """Initialize node manager."""
-        pass
+        # Result of the last CFX groom update (core/groom_updater.py), or None.
+        self.last_groom_summary = None
     
     def get_node_type(self, node):
         """Detect node type.
@@ -596,8 +597,18 @@ class NodeManager(object):
         logger.info("Updating paths for %d assets in shot %s",
                      total, shot_node.node_name)
 
+        from core import asset_types, groom_updater
+        grooms_follow_shot = groom_updater.is_enabled(config)
+
         seen_namespaces = set()
         for asset in assets:
+            # Groom standins are repointed below; their CTX_Asset records
+            # (from Add Shots) link to no node and resolve no sequence path.
+            if grooms_follow_shot and asset_types.get_publish_shape(
+                    asset.get_asset_type(), config) == asset_types.PUBLISH_SHAPE_SEQUENCE_DIR:
+                logger.debug("Skipping %s -- groom standins follow the shot",
+                             asset.node_name)
+                continue
             ns = asset.get_namespace()
             if ns in seen_namespaces:
                 logger.debug(
@@ -614,6 +625,14 @@ class NodeManager(object):
 
         logger.info("Updated %d/%d asset paths for shot %s",
                      count, total, shot_node.node_name)
+
+        self.last_groom_summary = None
+        if grooms_follow_shot:
+            try:
+                self.last_groom_summary = groom_updater.update_grooms_for_shot(
+                    config, shot_node)
+            except Exception as e:
+                logger.warning("Groom standin update failed: %s", e)
         return count
 
     def update_all_paths(self, config, platform_config):

@@ -708,6 +708,14 @@ class ProjectConfig(object):
         """Return the CFX publish file extension (without dot)."""
         return self.get_cfx_config().get('extension', 'ass')
 
+    def is_cfx_repath_on_shot_switch(self):
+        """Return True when switching shot repoints CFX groom standins.
+
+        Temporary, per project (EGA): one standin per groom follows the active
+        shot (core/groom_updater.py) instead of one standin per shot.
+        """
+        return self.get_cfx_config().get('repathOnShotSwitch', False) is True
+
     def get_cfx_attribute(self, key):
         """Map a logical standin attribute name to its Maya attribute name.
 

@@ -19,5 +19,8 @@
       "projRoot": "/mnt/igloo_ega_x/",
       "imgRoot": "/mnt/igloo_ega_y/"
     }
+  },
+  "cfx": {
+    "repathOnShotSwitch": true
   }
 }
