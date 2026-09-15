@@ -10,7 +10,7 @@
 - **Name:** Maya Multishot Pipeline
 - **Repo:** https://github.com/katha-begin/maya-multishot.git
 - **Purpose:** Multi-shot context management for Maya artists (no scene open/close cycling)
-- **Stack:** Python 3.7+ (Maya 2022+), PySide2/PySide6, Maya cmds API, custom network nodes
+- **Stack:** Python 2.7 and 3.x (Maya 2019+, incl. Maya 2022 in Python 2 mode), PySide2/PySide6, Maya cmds API, custom network nodes
 
 ---
 
@@ -409,8 +409,42 @@ project_configs/
   `find_config()` returns the first hit, so the old order made it dead code.
 
 ### Still TODO for EGA
-`project_configs/EGA.json` has a `_todo` key listing the unknowns: imgRoot,
-linux mounts, dept list + deptPriority, assetType list, renderer. `projRoot`
-`X:/` and code `EGA` are the only confirmed values (from the CFX path).
+`project_configs/EGA.json` has a `_todo` key listing the unknowns: dept list +
+deptPriority, assetType list, renderer. Confirmed by the user (2026-09-15):
+code `EGA`, `projRoot` `X:/`, render output `imgRoot` `Y:/`, and the Linux
+mount convention `/mnt/{client}_{project}_{winDrive}/` -> `/mnt/igloo_ega_x/`,
+`/mnt/igloo_ega_y/`.
 `tokens.assetType.values` currently holds the union (incl. CFX) in base --
 split per project once the real lists are known.
+
+## Install anywhere + Python 2.7 runtime (2026-09-10) -- same branch `feature/cfx-asset-type`
+
+Trigger: studio Maya 2022 in Python 2 mode, repo copied to
+`X:\EGA\_temp\rich\script\maya-multishot`, raised "cannot import name
+get_maya_attr". Cause: that copy mixed versions (tools/maya_menu.py from
+a127e53, core/gaffer from >= 885169c), and Reload on Python 2 never reloaded
+anything (`importlib.reload` does not exist on 2.7). HEAD itself imports
+cleanly under mayapy2 and mayapy -- but RUNNING code on 2.7 exposed much more.
+
+- `ctx_bootstrap.py` (repo root): find this checkout, purge its modules BY FILE
+  LOCATION (plus any older CTX checkout already loaded), clear __pycache__ and
+  orphaned .pyc, run launchers with their own `__file__`.
+- Launchers: no `E:/dev` fallback; find the repo from their own folder or
+  sys.path and put it first. The menu runs them via `ctx_bootstrap.run_script()`.
+- Menu Reload / `reload_all_modules()` / main window "Reload All Tools" purge
+  instead of `importlib.reload`.
+- `core/compat.py`: `string_types` (47 `isinstance(x, str)` checks -- on 2.7
+  maya.cmds/Qt/json return unicode, so gaffer/slate calls and even config
+  template loading failed), `makedirs`, `is_main_thread`.
+- Batch: thread `daemon` as attribute; nvidia-smi via Popen + timer kill;
+  `str()` GPU env var name for Popen; Render.exe from `MAYA_LOCATION` first.
+- `core/nodes/__init__.py` no longer puts `core/` on sys.path.
+
+Verified: maya.standalone smoke under mayapy2 -- HEAD fails 8 of 10 runtime
+checks, new code passes 10/10 (also 10/10 under mayapy 3.7); launchers from a
+copied install in 6 modes x 2 interpreters; test suite has no regressions vs
+HEAD (all remaining failures pre-exist on HEAD).
+
+Open: if a studio tool imports its own top-level `core`/`ui`/`tools`/`config`
+before ours, our packages still need a unique namespace. Confirm first by
+printing `sys.modules['core'].__file__` in the failing session.

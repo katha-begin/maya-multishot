@@ -1,8 +1,6 @@
 {
   "extends": "base.json",
   "_todo": [
-    "CONFIRM roots.windows.imgRoot (render output drive)",
-    "CONFIRM roots.linux.* mount points",
     "CONFIRM tokens.dept.values and deptPriority.order for EGA",
     "CONFIRM tokens.assetType.values for EGA",
     "CONFIRM renderSettings / active renderer for EGA"
@@ -15,11 +13,11 @@
   "roots": {
     "windows": {
       "projRoot": "X:/",
-      "imgRoot": "X:/"
+      "imgRoot": "Y:/"
     },
     "linux": {
       "projRoot": "/mnt/igloo_ega_x/",
-      "imgRoot": "/mnt/igloo_ega_x/"
+      "imgRoot": "/mnt/igloo_ega_y/"
     }
   }
 }

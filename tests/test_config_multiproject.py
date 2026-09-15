@@ -170,6 +170,7 @@ class TestShippedConfigs(unittest.TestCase):
         cfg = ProjectConfig(os.path.join(CONFIG_DIR, 'EGA.json'))
         self.assertEqual(cfg.get_project_code(), 'EGA')
         self.assertEqual(cfg.get_root('projRoot', platform='windows'), 'X:/')
+        self.assertEqual(cfg.get_root('imgRoot', platform='windows'), 'Y:/')
 
     def test_ega_inherits_shared_templates(self):
         swa = ProjectConfig(os.path.join(CONFIG_DIR, 'SWA.json'))
