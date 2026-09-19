@@ -154,6 +154,14 @@ def _make_shot(mock, name, shot_code):
     mock.addAttr(name, longName='assets', attributeType='message')
 
 
+class AnyPublishes(dict):
+    """Stands in for a shot that published every asset in the scene."""
+
+    def get(self, key, default=None):
+        return {'dept': 'anim', 'version': 'v001', 'file_path': '',
+                'info': {'ext': 'abc'}}
+
+
 def _make_ctx_asset(mock, name, namespace, shot_code=None):
     """Create a mock CTX_Asset node with standard attrs."""
     mock.createNode('network', name=name)
@@ -227,6 +235,12 @@ class TestReconcileAssets(unittest.TestCase):
         # Create shot node
         _make_shot(self.mock, 'CTX_Shot_Ep10_sq0030_SH0140', 'SH0140')
         self.shot_name = 'CTX_Shot_Ep10_sq0030_SH0140'
+
+        # These tests cover wiring, so treat every reference as published
+        patcher = patch.object(recon_mod, '_shot_publishes',
+                               lambda config, node_name: AnyPublishes())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         self.recon_mod.cmds = self._orig_recon_cmds
@@ -489,19 +503,21 @@ class FakeConfig(object):
         return self.TEMPLATES.get(name)
 
 
-def _publish_path(shot='SH0140', dept='anim', ver='v005',
-                  asset_part='CHAR_BuffA_001', ext='abc'):
-    """Path a reference of a shot publish points at."""
-    return ('V:/SWA/all/scene/Ep10/sq0030/{shot}/{dept}/publish/{ver}/'
-            'Ep10_sq0030_{shot}__{asset_part}.{ext}'.format(
-                shot=shot, dept=dept, ver=ver, asset_part=asset_part, ext=ext))
+def _publish(dept, version, asset_part, ext='abc'):
+    """One entry of what core/asset_scanner discovers for a shot."""
+    path = ('V:/SWA/all/scene/Ep10/sq0030/SH0140/{dept}/publish/{version}/'
+            'Ep10_sq0030_SH0140__{asset_part}.{ext}'.format(
+                dept=dept, version=version, asset_part=asset_part, ext=ext))
+    return {'dept': dept, 'version': version, 'file_path': path,
+            'info': {'ext': ext}}
 
 
 class TestReconciledRecordFields(unittest.TestCase):
-    """A record the reconciler writes must resolve to a path.
+    """A record must describe a publish the shot actually has.
 
-    resolve_asset_path starts from the record's template and returns nothing
-    without one, so Set Shot left these assets on the old shot.
+    resolve_asset_path builds every path from the record's template, dept and
+    version, so a record for an asset the shot never published resolves to a
+    file that does not exist ("does not exist", "Unexpanded tokens: dept, ver").
     """
 
     def setUp(self):
@@ -529,6 +545,19 @@ class TestReconciledRecordFields(unittest.TestCase):
         self.shot_name = 'CTX_Shot_Ep10_sq0030_SH0140'
         self.config = FakeConfig()
 
+        # What the shot published, as core/asset_scanner discovers it
+        self.publishes = {
+            ('CHAR', 'BuffA', '001'): _publish('anim', 'v005', 'CHAR_BuffA_001'),
+            ('CAM', 'SWA_Ep10_SH0140_camera', '001'): _publish(
+                'anim', 'v002', 'SWA_Ep10_SH0140_camera'),
+            ('CFX', 'botgroomSamS', '001'): _publish(
+                'cfx', 'v003', 'CFX_botgroomSamS001', ext='ass'),
+        }
+        patcher = patch.object(recon_mod, '_shot_publishes',
+                               lambda config, node_name: self.publishes)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def tearDown(self):
         self.recon_mod.cmds = self._orig_recon_cmds
         self.recon_mod.MAYA_AVAILABLE = self._orig_recon_avail
@@ -542,8 +571,7 @@ class TestReconciledRecordFields(unittest.TestCase):
         return nodes[0]
 
     def test_created_record_carries_template_and_publish_fields(self):
-        _make_reference(self.mock, 'CHAR_BuffA_001RN', 'CHAR_BuffA_001',
-                        _publish_path())
+        _make_reference(self.mock, 'CHAR_BuffA_001RN', 'CHAR_BuffA_001')
 
         self.recon_mod.reconcile_assets_for_shot(self.shot_name, config=self.config)
 
@@ -557,22 +585,20 @@ class TestReconciledRecordFields(unittest.TestCase):
     def test_camera_record_uses_the_camera_template(self):
         # A camera publish carries no type or variant in its filename
         _make_reference(self.mock, 'CAM_SWA_Ep10_SH0140_camera_001RN',
-                        'CAM_SWA_Ep10_SH0140_camera_001',
-                        _publish_path(dept='anim', ver='v002',
-                                      asset_part='SWA_Ep10_SH0140_camera'))
+                        'CAM_SWA_Ep10_SH0140_camera_001')
 
         self.recon_mod.reconcile_assets_for_shot(self.shot_name, config=self.config)
 
         node = self._created_node('camera')
         self.assertEqual(self.mock.getAttr('{}.template'.format(node)),
                          CAMERA_PATH_TEMPLATE)
+        self.assertEqual(self.mock.getAttr('{}.version'.format(node)), 'v002')
 
     def test_existing_record_without_template_is_repaired(self):
         node = 'CTX_Asset_CHAR_BuffA_SH0140'
         _make_ctx_asset(self.mock, node, 'CHAR_BuffA_001')
         self.mock.addAttr(node, longName='template')
-        _make_reference(self.mock, 'CHAR_BuffA_001RN', 'CHAR_BuffA_001',
-                        _publish_path())
+        _make_reference(self.mock, 'CHAR_BuffA_001RN', 'CHAR_BuffA_001')
 
         self.recon_mod.reconcile_assets_for_shot(self.shot_name, config=self.config)
 
@@ -581,23 +607,10 @@ class TestReconciledRecordFields(unittest.TestCase):
         self.assertEqual(self.mock.getAttr('{}.department'.format(node)), 'anim')
         self.assertEqual(self.mock.getAttr('{}.version'.format(node)), 'v005')
 
-    def test_shader_reference_is_not_an_asset(self):
-        # namespaceShader is $assetType_$assetName_$variant_Shade
-        _make_reference(self.mock, 'CHAR_Ajay_001_ShadeRN', 'CHAR_Ajay_001_Shade',
-                        'V:/SWA/all/asset/Character/Main/Ajay/shade/Ajay.ma')
-
-        stats = self.recon_mod.reconcile_assets_for_shot(self.shot_name,
-                                                         config=self.config)
-
-        self.assertEqual(stats['created'], 0)
-        self.assertEqual([n for n in self.mock.nodes if n.startswith('CTX_Asset_')], [])
-
     def test_basename_namespace_parses_as_its_asset(self):
         # A CFX namespace is the whole publish name; the asset half follows '__'
         _make_reference(self.mock, 'groomRN',
-                        'Ep10_sq0030_SH0140__CFX_botgroomSamS001',
-                        _publish_path(dept='cfx', ver='v003',
-                                      asset_part='CFX_botgroomSamS001', ext='ass'))
+                        'Ep10_sq0030_SH0140__CFX_botgroomSamS001')
 
         self.recon_mod.reconcile_assets_for_shot(self.shot_name, config=self.config)
 
@@ -605,19 +618,37 @@ class TestReconciledRecordFields(unittest.TestCase):
         self.assertEqual(self.mock.getAttr('{}.asset_type'.format(node)), 'CFX')
         self.assertEqual(self.mock.getAttr('{}.asset_name'.format(node)), 'botgroomSamS')
         self.assertEqual(self.mock.getAttr('{}.variant'.format(node)), '001')
+        self.assertEqual(self.mock.getAttr('{}.department'.format(node)), 'cfx')
 
-    def test_reference_naming_another_shot_is_skipped(self):
-        # One camera per shot lives in the scene; SH0150's cannot resolve for SH0140
-        _make_reference(self.mock, 'CAM_SWA_Ep10_SH0150_camera_001RN',
-                        'CAM_SWA_Ep10_SH0150_camera_001',
-                        _publish_path(shot='SH0150',
-                                      asset_part='SWA_Ep10_SH0150_camera'))
+    def test_asset_the_shot_never_published_gets_no_record(self):
+        # Another shot's character, loaded in the scene; SH0140 has no publish
+        _make_reference(self.mock, 'CHAR_Kit_001RN', 'CHAR_Kit_001')
 
         stats = self.recon_mod.reconcile_assets_for_shot(self.shot_name,
                                                          config=self.config)
 
         self.assertEqual(stats['created'], 0)
         self.assertEqual([n for n in self.mock.nodes if n.startswith('CTX_Asset_')], [])
+
+    def test_shader_reference_is_not_an_asset(self):
+        # namespaceShader is $assetType_$assetName_$variant_Shade
+        _make_reference(self.mock, 'CHAR_BuffA_001_ShadeRN', 'CHAR_BuffA_001_Shade')
+
+        stats = self.recon_mod.reconcile_assets_for_shot(self.shot_name,
+                                                         config=self.config)
+
+        self.assertEqual(stats['created'], 0)
+        self.assertEqual([n for n in self.mock.nodes if n.startswith('CTX_Asset_')], [])
+
+    def test_set_piece_reference_of_a_set_asset_gets_no_record(self):
+        # References nested in a set assembly are not shot publishes
+        _make_reference(self.mock, 'SETS_Living_001:TRLRFloor_0001RN',
+                        'SETS_Living_001:TRLRFloor_0001')
+
+        stats = self.recon_mod.reconcile_assets_for_shot(self.shot_name,
+                                                         config=self.config)
+
+        self.assertEqual(stats['created'], 0)
 
 
 if __name__ == '__main__':

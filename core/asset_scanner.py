@@ -66,6 +66,64 @@ class AssetScanner(object):
         seq = shot_node.get_seq_code()
         shot = shot_node.get_shot_code()
 
+        master_assets = self.discover_shot_assets(ep, seq, shot, departments)
+
+        # PASS 2: Create one CTX_Asset node per winning (type, name, variant) entry.
+        created_assets = []
+        existing_shot_assets = shot_node.get_assets()
+
+        for asset_key, asset_data in master_assets.items():
+            asset_type, asset_name, variant = asset_key
+
+            # Check by identity only (no dept) -- any previously created node blocks duplicates
+            already_linked = any(
+                a.get_asset_type() == asset_type and
+                a.get_asset_name() == asset_name and
+                a.get_variant() == variant
+                for a in existing_shot_assets
+            )
+            if already_linked:
+                logger.info(
+                    "Asset already linked to this shot, skipping: %s %s %s",
+                    asset_type, asset_name, variant
+                )
+                continue
+
+            new_node = self._create_ctx_asset(
+                shot_node, shot,
+                asset_data['dept'], asset_type, asset_name, variant,
+                asset_data['version'], asset_data['file_path'], asset_data['info'],
+                len(created_assets)
+            )
+            if new_node:
+                created_assets.append(new_node)
+
+        logger.info(
+            "Created %d CTX_Asset nodes for shot %s_%s_%s",
+            len(created_assets), ep, seq, shot
+        )
+        return created_assets
+
+    def discover_shot_assets(self, ep, seq, shot, departments=None):
+        """Discover what a shot published, one entry per asset identity.
+
+        Pure filesystem discovery -- creates no nodes.  The asset reconciler
+        uses it too, so a record it creates describes a publish that exists.
+
+        Args:
+            ep (str): Episode code
+            seq (str): Sequence code
+            shot (str): Shot code
+            departments (list, optional): Departments to scan.
+                                         If None, all departments from config are used.
+
+        Returns:
+            dict: {(type, name, variant): {'dept', 'version', 'file_path', 'info'}}
+        """
+        if not self.config:
+            logger.warning("No config available for asset discovery")
+            return {}
+
         # Resolve departments list
         if departments is None:
             try:
@@ -108,42 +166,7 @@ class AssetScanner(object):
             "Priority scan: %d unique assets for %s_%s_%s across %d departments",
             len(master_assets), ep, seq, shot, len(departments)
         )
-
-        # PASS 2: Create one CTX_Asset node per winning (type, name, variant) entry.
-        created_assets = []
-        existing_shot_assets = shot_node.get_assets()
-
-        for asset_key, asset_data in master_assets.items():
-            asset_type, asset_name, variant = asset_key
-
-            # Check by identity only (no dept) -- any previously created node blocks duplicates
-            already_linked = any(
-                a.get_asset_type() == asset_type and
-                a.get_asset_name() == asset_name and
-                a.get_variant() == variant
-                for a in existing_shot_assets
-            )
-            if already_linked:
-                logger.info(
-                    "Asset already linked to this shot, skipping: %s %s %s",
-                    asset_type, asset_name, variant
-                )
-                continue
-
-            new_node = self._create_ctx_asset(
-                shot_node, shot,
-                asset_data['dept'], asset_type, asset_name, variant,
-                asset_data['version'], asset_data['file_path'], asset_data['info'],
-                len(created_assets)
-            )
-            if new_node:
-                created_assets.append(new_node)
-
-        logger.info(
-            "Created %d CTX_Asset nodes for shot %s_%s_%s",
-            len(created_assets), ep, seq, shot
-        )
-        return created_assets
+        return master_assets
 
     # ------------------------------------------------------------------
     # Internal helpers

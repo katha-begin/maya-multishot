@@ -592,3 +592,28 @@ to the new shot, and the bogus records the old reconciler left in SWA scenes --
 shader namespaces (`CHAR_Ajay_001_Shade`) and another shot's camera
 (`CTX_Asset_CAM_SWA_Ep20_SH0130_camera_SH0030`). 46f16ff stops new ones being
 created; nothing deletes the existing ones yet.
+
+## 2026-09-19 (later) -- records must describe a publish the shot has
+
+Set Shot on SWA Ep20/sq0010/SH0050 resolved 5 of 31 assets. SH0050's publish
+holds one version (v002) with 6 assets, but its CTX_Shot claimed 31: the
+reconciler adopts EVERY reference in the scene into whichever shot is set, so
+each shot claimed assets it never published (SH0030 had 60). Two symptoms in
+the log, both from those records: "... does not exist" (CHAR_Ajay, CHAR_Kit,
+PROP_BoardGame -- no SH0050 publish; the stored $ver came from another shot,
+SDRS_TRLRWallB even asked v001 while the rest asked v002) and "Unexpanded
+tokens: dept, ver" (references nested inside the SETS assembly, which are not
+shot publishes at all and had no dept/version).
+
+Fix: `AssetScanner.discover_shot_assets(ep, seq, shot)` -- pass 1 of
+`scan_shot_assets`, extracted -- is now what the reconciler consults. A
+reference only gets a record when the shot published that identity, and the
+record takes the shot's own dept/version/ext from that publish (no longer
+guessed from the reference's current path). `_names_other_shot` and the
+publish-path parsing are gone; the publish lookup subsumes them.
+Tests: TestReconciledRecordFields (7); the wiring tests stub `_shot_publishes`
+with AnyPublishes. 181 passed across the reconciler/layer/cfx/config suites.
+
+Note: existing scenes still carry the adopted records (SH0050 has 25 of them),
+so the errors persist there until something removes them -- cleanup not written
+yet, and it should report before deleting.

@@ -13,9 +13,6 @@ Usage:
 
 from __future__ import absolute_import, division, print_function
 
-import os
-import re
-
 try:
     import maya.cmds as cmds
     MAYA_AVAILABLE = True
@@ -28,13 +25,6 @@ from core.logging_config import get_logger
 from core.compat import string_types
 
 logger = get_logger(__name__)
-
-# A shot code anywhere in a name, e.g. the SH0130 of SWA_Ep20_SH0130_camera
-_SHOT_CODE_RE = re.compile(r'SH\d+[A-Za-z]?', re.IGNORECASE)
-
-# '.../<dept>/publish/<ver>/' in a publish path
-_PUBLISH_RE = re.compile(r'/(?P<dept>[^/]+)/publish/(?P<ver>v\d+(?:_\d+)?)/',
-                         re.IGNORECASE)
 
 # Namespaces that extend an asset namespace but are not assets themselves
 _DEFAULT_NAMESPACE_SUFFIXES = ('_Shade', '_Groom')
@@ -108,59 +98,51 @@ def _parse_namespace(namespace, config=None):
     return (parsed['type'], parsed['name'], parsed['variant'])
 
 
-def _parse_publish_path(path):
-    """Read department, version and extension from a reference's file path.
+def _read_shot_context(node_name):
+    """Read (ep, seq, shot) from a CTX_Shot node, legacy attribute names included."""
+    codes = []
+    for names in (('ep_code', 'ep'), ('seq_code', 'seq'), ('shot_code', 'shot')):
+        value = ''
+        for attr in names:
+            if cmds.attributeQuery(attr, node=node_name, exists=True):
+                value = cmds.getAttr('{}.{}'.format(node_name, attr)) or ''
+                if value:
+                    break
+        codes.append(value)
+    return tuple(codes)
 
-    '.../SH0140/anim/publish/v005/Ep10_sq0030_SH0140__CHAR_BuffA_001.abc'
-    -> {'dept': 'anim', 'version': 'v005', 'ext': 'abc'}
 
-    Args:
-        path (str): Reference file path.
+def _shot_publishes(config, node_name):
+    """What the shot published, keyed by (asset type, name, variant).
+
+    The same discovery Add Shots uses (core/asset_scanner), so a record the
+    reconciler writes carries the shot's own department and version and points
+    at a file that exists.
 
     Returns:
-        dict: Whatever could be read; keys are absent when the path does not
-            follow the publish layout.
+        dict: {(type, name, variant): {'dept', 'version', 'file_path', 'info'}};
+            empty when the config or the shot context is unavailable.
     """
-    fields = {}
-    if not path:
-        return fields
+    if config is None:
+        logger.warning("No project config: cannot tell what %s published", node_name)
+        return {}
 
-    text = path.replace('\\', '/')
+    ep, seq, shot = _read_shot_context(node_name)
+    if not all((ep, seq, shot)):
+        logger.warning("Incomplete shot context on %s (ep=%s seq=%s shot=%s)",
+                       node_name, ep, seq, shot)
+        return {}
 
-    match = _PUBLISH_RE.search(text)
-    if match:
-        fields['dept'] = match.group('dept')
-        fields['version'] = match.group('ver')
-
-    ext = os.path.splitext(text)[1].lstrip('.')
-    if ext:
-        fields['ext'] = ext
-
-    return fields
-
-
-def _reference_path(ref_node):
-    """Return the file a reference points at, or '' when it cannot be read."""
     try:
-        return cmds.referenceQuery(ref_node, filename=True) or ''
-    except RuntimeError:
-        return ''
+        from core.asset_scanner import AssetScanner
+
+        return AssetScanner(config).discover_shot_assets(ep, seq, shot)
+    except Exception as exc:
+        logger.warning("Could not scan the publishes of %s: %s", node_name, exc)
+        return {}
 
 
-def _names_other_shot(asset_name, shot_code):
-    """True when a name carries a different shot's code.
-
-    One camera per shot lives in a multishot scene and its publish repeats the
-    shot ('SWA_Ep20_SH0130_camera'), so a record of it under another shot can
-    never resolve to a file that exists.
-    """
-    for found in _SHOT_CODE_RE.findall(asset_name or ''):
-        if found.upper() != (shot_code or '').upper():
-            return True
-    return False
-
-
-def _fill_record(node_name, asset_type, fields, config):
+def _fill_record(node_name, asset_type, publish, config):
     """Fill in what a record needs to resolve: template and publish fields.
 
     Only empty attributes are written, so values from Add Shots or an artist
@@ -170,7 +152,7 @@ def _fill_record(node_name, asset_type, fields, config):
     Args:
         node_name (str): CTX_Asset node name.
         asset_type (str): Asset type code (e.g. 'CHAR').
-        fields (dict): Output of _parse_publish_path.
+        publish (dict): The shot's publish entry for this asset.
         config: ProjectConfig instance or None.
 
     Returns:
@@ -181,9 +163,9 @@ def _fill_record(node_name, asset_type, fields, config):
     asset = CTXAssetNode(node_name)
     values = {
         'template': asset_types.get_asset_path_template(asset_type, config),
-        'department': fields.get('dept'),
-        'version': fields.get('version'),
-        'extension': fields.get('ext'),
+        'department': publish.get('dept'),
+        'version': publish.get('version'),
+        'extension': (publish.get('info') or {}).get('ext'),
     }
 
     written = []
@@ -381,6 +363,8 @@ def reconcile_assets_for_shot(shot_node, config=None):
     if config is None:
         config = _resolve_config()
 
+    publishes = _shot_publishes(config, node_name)
+
     created = 0
     linked = 0
     skipped = 0
@@ -412,13 +396,15 @@ def reconcile_assets_for_shot(shot_node, config=None):
 
         asset_type, asset_name, variant = parsed
 
-        if _names_other_shot(asset_name, shot_code):
-            # A per-shot publish of another shot, e.g. that shot's camera
-            logger.debug("  Skipping %s -- it names another shot", ref_ns)
+        publish = publishes.get((asset_type, asset_name, variant))
+        if publish is None:
+            # The shot published no such asset: the reference belongs to another
+            # shot, or is a set piece inside one.  A record would resolve to a
+            # file that does not exist ("does not exist" on every shot switch).
+            logger.debug("  Skipping %s -- %s published no such asset",
+                         ref_ns, shot_code)
             skipped += 1
             continue
-
-        fields = _parse_publish_path(_reference_path(ref_node))
 
         # Check if CTX_Asset already exists for this shot + namespace
         existing = _find_ctx_asset_for_shot(node_name, ref_ns)
@@ -454,7 +440,7 @@ def reconcile_assets_for_shot(shot_node, config=None):
 
             # Records this created before only carried wiring, so they had no
             # template and resolved no path
-            if _fill_record(existing, asset_type, fields, config):
+            if _fill_record(existing, asset_type, publish, config):
                 logger.debug("  Filled record fields on %s", existing)
                 repaired += 1
                 if existing not in linked_nodes:
@@ -475,7 +461,7 @@ def reconcile_assets_for_shot(shot_node, config=None):
 
             # The template and publish fields Add Shots records, so the new
             # record resolves a path like any other
-            _fill_record(new_asset.node_name, asset_type, fields, config)
+            _fill_record(new_asset.node_name, asset_type, publish, config)
 
             # Wire to shot: asset.message -> shot.assets[i]
             cmds.connectAttr(
