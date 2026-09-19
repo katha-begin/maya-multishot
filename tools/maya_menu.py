@@ -135,6 +135,14 @@ def create_ctx_menu():
             parent=menu
         )
 
+        # Repair the CTX records of a scene built before the publish check
+        cmds.menuItem(
+            label="Repair Scene Records...",
+            command=lambda *args: open_record_repair(),
+            annotation="Add the records a shot's publishes need and report the ones that describe no publish",
+            parent=menu
+        )
+
         # Add separator
         cmds.menuItem(divider=True, parent=menu)
 
@@ -505,6 +513,78 @@ def open_groom_updater():
         cmds.confirmDialog(
             title="Error",
             message="Failed to open Groom Updater:\n{}".format(e),
+            button=["OK"],
+            defaultButton="OK"
+        )
+
+
+def open_record_repair():
+    """Repair the CTX_Asset records of every shot in the scene.
+
+    Adds the records a shot's publishes need, fills in the template,
+    department and version an older record lacks, and lists the records that
+    describe no publish of their shot (shader namespaces, references nested in
+    a set, other shots' assets).  Those are only deleted on confirmation.
+    """
+    if not MAYA_AVAILABLE:
+        logger.error("Maya is not available")
+        return
+
+    try:
+        from core.asset_reconciler import repair_scene_records, remove_records
+
+        report = repair_scene_records()
+
+        for entry in report['stale']:
+            logger.info("Record describing no publish: %s on %s (%s)",
+                        entry['node'], entry['shot'], entry['reason'])
+
+        lines = [
+            "Shots checked: {}".format(report['shots']),
+            "Records added: {}".format(report['created']),
+            "Records completed: {}".format(report['repaired']),
+            "Records describing no publish: {}".format(len(report['stale'])),
+        ]
+
+        if not report['stale']:
+            cmds.confirmDialog(title="Repair Scene Records",
+                               message="\n".join(lines), button=["OK"],
+                               defaultButton="OK")
+            return
+
+        lines.append("")
+        for entry in report['stale'][:15]:
+            lines.append("   {}  ({})".format(entry['node'], entry['reason']))
+        if len(report['stale']) > 15:
+            lines.append("   ... and {} more, listed in the Script Editor".format(
+                len(report['stale']) - 15))
+        lines.append("")
+        lines.append("Remove them? They resolve no path on a shot switch.")
+
+        answer = cmds.confirmDialog(
+            title="Repair Scene Records",
+            message="\n".join(lines),
+            button=["Remove", "Keep"],
+            defaultButton="Keep",
+            cancelButton="Keep",
+            dismissString="Keep"
+        )
+
+        if answer != "Remove":
+            return
+
+        removed = remove_records([entry['node'] for entry in report['stale']])
+        cmds.confirmDialog(title="Repair Scene Records",
+                           message="Removed {} records.".format(removed),
+                           button=["OK"], defaultButton="OK")
+
+    except Exception as e:
+        logger.error("Failed to repair scene records: {}".format(e))
+        import traceback
+        traceback.print_exc()
+        cmds.confirmDialog(
+            title="Error",
+            message="Failed to repair scene records:\n{}".format(e),
             button=["OK"],
             defaultButton="OK"
         )

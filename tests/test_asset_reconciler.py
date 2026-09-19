@@ -125,6 +125,12 @@ class MockCmds:
                     if d.get('_type') == node_type]
         return list(self.nodes.keys())
 
+    def delete(self, *nodes):
+        for node in nodes:
+            self.nodes.pop(node, None)
+            self.connections = [(s, d) for s, d in self.connections
+                                if s.split('.')[0] != node and d.split('.')[0] != node]
+
     def referenceQuery(self, ref_node, **kwargs):
         if kwargs.get('namespace'):
             return self.nodes.get(ref_node, {}).get('_ref_ns', '')
@@ -649,6 +655,166 @@ class TestReconciledRecordFields(unittest.TestCase):
                                                          config=self.config)
 
         self.assertEqual(stats['created'], 0)
+
+
+# ---------------------------------------------------------------------------
+# stale records left by the old reconciler
+# ---------------------------------------------------------------------------
+
+class TestStaleRecords(unittest.TestCase):
+    """Scenes built before the publish check carry records for assets the shot
+    never published: shader namespaces, references nested in a set, and other
+    shots' assets.  They resolve no path on every shot switch."""
+
+    def setUp(self):
+        self.mock = MockCmds()
+
+        import core.asset_reconciler as recon_mod
+        import core.nodes.wrappers.asset as asset_mod
+        import core.nodes.base as base_mod
+
+        self.recon_mod = recon_mod
+        self._orig_cmds = recon_mod.cmds
+        self._orig_avail = recon_mod.MAYA_AVAILABLE
+        self._orig_asset_cmds = asset_mod.cmds
+        self._orig_base_cmds = base_mod.cmds
+        self.asset_mod = asset_mod
+        self.base_mod = base_mod
+
+        recon_mod.cmds = self.mock
+        recon_mod.MAYA_AVAILABLE = True
+        asset_mod.cmds = self.mock
+        base_mod.cmds = self.mock
+
+        _make_shot(self.mock, 'CTX_Shot_Ep10_sq0030_SH0140', 'SH0140')
+        self.shot_name = 'CTX_Shot_Ep10_sq0030_SH0140'
+        self.config = FakeConfig()
+
+        self.publishes = {
+            ('CHAR', 'BuffA', '001'): _publish('anim', 'v005', 'CHAR_BuffA_001'),
+        }
+        patcher = patch.object(recon_mod, '_shot_publishes',
+                               lambda config, node_name: self.publishes)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self.recon_mod.cmds = self._orig_cmds
+        self.recon_mod.MAYA_AVAILABLE = self._orig_avail
+        self.asset_mod.cmds = self._orig_asset_cmds
+        self.base_mod.cmds = self._orig_base_cmds
+
+    def _wire(self, node, namespace):
+        _make_ctx_asset(self.mock, node, namespace)
+        self.mock.connectAttr('{}.message'.format(node),
+                              '{}.assets'.format(self.shot_name), nextAvailable=True)
+
+    def _stale_nodes(self):
+        return [record['node'] for record
+                in self.recon_mod.find_stale_records(self.shot_name, config=self.config)]
+
+    def test_record_of_a_published_asset_is_kept(self):
+        self._wire('CTX_Asset_CHAR_BuffA_SH0140', 'CHAR_BuffA_001')
+        self.assertEqual(self._stale_nodes(), [])
+
+    def test_shader_record_is_stale(self):
+        self._wire('CTX_Asset_CHAR_BuffA_Shade_SH0140', 'CHAR_BuffA_001_Shade')
+        self.assertEqual(self._stale_nodes(), ['CTX_Asset_CHAR_BuffA_Shade_SH0140'])
+
+    def test_set_piece_record_is_stale(self):
+        self._wire('TRLRFloor_SH0140', 'SETS_Living_001:TRLRFloor_0001')
+        self.assertEqual(self._stale_nodes(), ['TRLRFloor_SH0140'])
+
+    def test_record_of_another_shots_asset_is_stale(self):
+        self._wire('CTX_Asset_CHAR_Kit_SH0140', 'CHAR_Kit_001')
+        self.assertEqual(self._stale_nodes(), ['CTX_Asset_CHAR_Kit_SH0140'])
+
+    def test_every_stale_record_carries_a_reason(self):
+        self._wire('CTX_Asset_CHAR_Kit_SH0140', 'CHAR_Kit_001')
+        records = self.recon_mod.find_stale_records(self.shot_name, config=self.config)
+        self.assertEqual(len(records), 1)
+        self.assertTrue(records[0]['reason'])
+        self.assertEqual(records[0]['namespace'], 'CHAR_Kit_001')
+
+    def test_nothing_is_reported_without_publishes(self):
+        # A scan that found nothing must not condemn every record
+        self.publishes = {}
+        self._wire('CTX_Asset_CHAR_BuffA_SH0140', 'CHAR_BuffA_001')
+        self.assertEqual(self._stale_nodes(), [])
+
+    def test_remove_records_deletes_the_nodes(self):
+        self._wire('CTX_Asset_CHAR_Kit_SH0140', 'CHAR_Kit_001')
+        removed = self.recon_mod.remove_records(['CTX_Asset_CHAR_Kit_SH0140'])
+        self.assertEqual(removed, 1)
+        self.assertNotIn('CTX_Asset_CHAR_Kit_SH0140', self.mock.nodes)
+
+
+class TestRepairSceneRecords(unittest.TestCase):
+    """Repairing a scene built by the old setup: add what a shot's publishes
+    need, report what describes no publish."""
+
+    def setUp(self):
+        self.mock = MockCmds()
+
+        import core.asset_reconciler as recon_mod
+        import core.nodes.wrappers.asset as asset_mod
+        import core.nodes.base as base_mod
+
+        self.recon_mod = recon_mod
+        self._orig_cmds = recon_mod.cmds
+        self._orig_avail = recon_mod.MAYA_AVAILABLE
+        self._orig_asset_cmds = asset_mod.cmds
+        self._orig_base_cmds = base_mod.cmds
+        self.asset_mod = asset_mod
+        self.base_mod = base_mod
+
+        recon_mod.cmds = self.mock
+        recon_mod.MAYA_AVAILABLE = True
+        asset_mod.cmds = self.mock
+        base_mod.cmds = self.mock
+
+        _make_shot(self.mock, 'CTX_Shot_Ep10_sq0030_SH0140', 'SH0140')
+        self.shot_name = 'CTX_Shot_Ep10_sq0030_SH0140'
+        self.config = FakeConfig()
+
+        self.publishes = {
+            ('CHAR', 'BuffA', '001'): _publish('anim', 'v005', 'CHAR_BuffA_001'),
+        }
+        patcher = patch.object(recon_mod, '_shot_publishes',
+                               lambda config, node_name: self.publishes)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        # A reference the shot published but has no record for, and a record
+        # for an asset it never published
+        _make_reference(self.mock, 'CHAR_BuffA_001RN', 'CHAR_BuffA_001')
+        _make_ctx_asset(self.mock, 'CTX_Asset_CHAR_Kit_SH0140', 'CHAR_Kit_001')
+        self.mock.connectAttr('CTX_Asset_CHAR_Kit_SH0140.message',
+                              '{}.assets'.format(self.shot_name), nextAvailable=True)
+
+    def tearDown(self):
+        self.recon_mod.cmds = self._orig_cmds
+        self.recon_mod.MAYA_AVAILABLE = self._orig_avail
+        self.asset_mod.cmds = self._orig_asset_cmds
+        self.base_mod.cmds = self._orig_base_cmds
+
+    def test_creates_missing_records_and_reports_stale_ones(self):
+        report = self.recon_mod.repair_scene_records(config=self.config)
+
+        self.assertEqual(report['shots'], 1)
+        self.assertEqual(report['created'], 1)
+        self.assertEqual([entry['node'] for entry in report['stale']],
+                         ['CTX_Asset_CHAR_Kit_SH0140'])
+        self.assertEqual(report['removed'], 0)
+        # Reporting alone must not delete anything
+        self.assertIn('CTX_Asset_CHAR_Kit_SH0140', self.mock.nodes)
+
+    def test_remove_stale_deletes_the_reported_records(self):
+        report = self.recon_mod.repair_scene_records(config=self.config,
+                                                     remove_stale=True)
+
+        self.assertEqual(report['removed'], 1)
+        self.assertNotIn('CTX_Asset_CHAR_Kit_SH0140', self.mock.nodes)
 
 
 if __name__ == '__main__':

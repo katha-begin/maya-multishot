@@ -484,6 +484,142 @@ def reconcile_assets_for_shot(shot_node, config=None):
             'created_nodes': created_nodes, 'linked_nodes': linked_nodes}
 
 
+def find_stale_records(shot_node, config=None):
+    """CTX_Asset records wired to a shot that the shot never published.
+
+    Scenes built before the publish check carry records the reconciler adopted
+    from any reference in the scene: shader and groom namespaces, references
+    nested inside a set, and other shots' assets.  None of them resolves a
+    path, so every shot switch logs "does not exist" or "Unexpanded tokens".
+
+    Nothing is reported when the shot's publishes cannot be read, so a failed
+    scan never condemns a scene's records.
+
+    Args:
+        shot_node: CTXShotNode wrapper instance or node name string.
+        config: Optional ProjectConfig instance.
+
+    Returns:
+        list: [{'node': str, 'namespace': str, 'reason': str}, ...]
+    """
+    if not MAYA_AVAILABLE:
+        return []
+
+    node_name = shot_node if isinstance(shot_node, string_types) else shot_node.node_name
+    if not cmds.objExists(node_name):
+        return []
+
+    if config is None:
+        config = _resolve_config()
+
+    publishes = _shot_publishes(config, node_name)
+    if not publishes:
+        logger.warning("No publishes found for %s -- not reporting its records",
+                       node_name)
+        return []
+
+    stale = []
+    records = cmds.listConnections('{}.assets'.format(node_name),
+                                   source=True, destination=False) or []
+
+    for record in records:
+        if not cmds.attributeQuery('namespace', node=record, exists=True):
+            continue
+        namespace = cmds.getAttr('{}.namespace'.format(record)) or ''
+
+        parsed = _parse_namespace(namespace, config)
+        if parsed is None:
+            stale.append({'node': record, 'namespace': namespace,
+                          'reason': 'not an asset namespace'})
+            continue
+
+        if parsed not in publishes:
+            stale.append({'node': record, 'namespace': namespace,
+                          'reason': 'the shot published no such asset'})
+
+    return stale
+
+
+def repair_scene_records(config=None, remove_stale=False):
+    """Bring every shot's records in line with what the shot published.
+
+    For a scene built before the publish check:
+      - reconcile each shot, so a publish loaded in the scene gets the record
+        it needs and existing records get their template, department, version
+        and extension filled in
+      - report the records that describe no publish of their shot
+
+    Nothing is deleted unless remove_stale is set, so the report can be shown
+    first.
+
+    Args:
+        config: Optional ProjectConfig instance.
+        remove_stale (bool): Delete the reported records.
+
+    Returns:
+        dict: {'shots': int, 'created': int, 'repaired': int, 'removed': int,
+               'stale': [{'shot', 'node', 'namespace', 'reason'}, ...]}
+    """
+    report = {'shots': 0, 'created': 0, 'repaired': 0, 'removed': 0, 'stale': []}
+
+    if not MAYA_AVAILABLE:
+        logger.warning("repair_scene_records: Maya not available")
+        return report
+
+    if config is None:
+        config = _resolve_config()
+
+    for node in cmds.ls(type='network') or []:
+        if not cmds.attributeQuery('ctx_type', node=node, exists=True):
+            continue
+        if cmds.getAttr('{}.ctx_type'.format(node)) != 'CTX_Shot':
+            continue
+
+        report['shots'] += 1
+
+        stats = reconcile_assets_for_shot(node, config=config)
+        report['created'] += stats['created']
+        report['repaired'] += stats.get('repaired', 0)
+
+        for record in find_stale_records(node, config=config):
+            entry = dict(record)
+            entry['shot'] = node
+            report['stale'].append(entry)
+
+    if remove_stale:
+        report['removed'] = remove_records(
+            [entry['node'] for entry in report['stale']])
+
+    logger.info("Repaired %d shots: created=%d, repaired=%d, stale=%d, removed=%d",
+                report['shots'], report['created'], report['repaired'],
+                len(report['stale']), report['removed'])
+    return report
+
+
+def remove_records(nodes):
+    """Delete CTX_Asset nodes.
+
+    Args:
+        nodes (list): CTX_Asset node names.
+
+    Returns:
+        int: How many were deleted.
+    """
+    if not MAYA_AVAILABLE:
+        return 0
+
+    removed = 0
+    for node in nodes:
+        try:
+            if cmds.objExists(node):
+                cmds.delete(node)
+                removed += 1
+        except Exception as exc:
+            logger.warning("Could not delete %s: %s", node, exc)
+
+    return removed
+
+
 def _resolve_config():
     """Load the project config for the open scene, or None when unavailable.
 

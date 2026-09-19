@@ -617,3 +617,33 @@ with AnyPublishes. 181 passed across the reconciler/layer/cfx/config suites.
 Note: existing scenes still carry the adopted records (SH0050 has 25 of them),
 so the errors persist there until something removes them -- cleanup not written
 yet, and it should report before deleting.
+
+## 2026-09-19 (later) -- Repair Scene Records
+
+Scenes built before the publish check carry records the old reconciler adopted
+from any reference in the scene. SH0050 held 25 of them (the shot publishes 6
+assets); they log "does not exist" or "Unexpanded tokens: dept, ver" on every
+shot switch, and the ~23 `SDRS_*_Shade` records log "No top node found".
+Nothing removed them, so the scene stayed broken after the code fix.
+
+`core/asset_reconciler`:
+- `find_stale_records(shot_node, config=None)` -- records wired to a shot whose
+  namespace is not an asset namespace (shader/groom, set pieces) or whose
+  identity is not in the shot's publishes. Reports nothing when the publish
+  scan came back empty, so a failed scan never condemns a scene.
+- `remove_records(nodes)`, `repair_scene_records(config=None, remove_stale=False)`
+  -- reconciles every CTX_Shot (adding the records its publishes need, filling
+  template/dept/version on older ones) and reports the stale ones.
+CTX Tools -> "Repair Scene Records..." (`tools/maya_menu.open_record_repair`)
+runs it, lists what it found and deletes only on confirmation.
+
+Display layers confirmed correct in Maya afterwards: CTX_Active holds
+SETS_ToriiLivingRoomInt_001:Main_Grp (the whole set follows that one member --
+every piece is under it) plus the SDRS Geo_Grps the shot published. SH0070 now
+resolves 6/7 assets, against 5/31 on SH0050 before.
+
+Still open: `No Maya node linked to CTX_Asset_SETS_..._SH0070`. A SETS cache is
+imported, not referenced (5aed186: import_sets_asset creates one CTX_Asset per
+SETS abc), and update_shot_paths only repaths references, aiStandIns and
+Redshift proxies -- so a set does not follow the shot. Long-standing, not from
+these changes.
