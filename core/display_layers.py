@@ -393,6 +393,7 @@ class DisplayLayerManager(object):
             'inactive_moved': 0,
             'total_assets': 0,
             'shared_assets': 0,
+            'shared_with_active': 0,
             'skipped': 0
         }
 
@@ -450,27 +451,40 @@ class DisplayLayerManager(object):
 
         # Step 4: Move active assets to CTX_Active
         logger.debug("Step 4: Moving active assets to CTX_Active...")
+        active_nodes = set()
         for namespace in active_assets:
             top_node = self._resolve_top_node(namespace,
                                               asset_by_namespace.get(namespace))
             if top_node:
                 self._connect_node_to_layer(top_node, self.ACTIVE_LAYER)
+                active_nodes.add(top_node)
                 stats['active_moved'] += 1
             else:
                 logger.warning("  No top node found for namespace: {}".format(namespace))
                 stats['skipped'] += 1
 
         # Step 5: Move inactive assets to CTX_Inactive
+        # Subtracting namespaces is not enough: several records can resolve to
+        # one Maya node.  One camera reference serves every shot (each shot's
+        # record links to it via targetNode) and every inactive shot's record
+        # resolved to it, so this step hid the active shot's own camera.
         logger.debug("Step 5: Moving inactive assets to CTX_Inactive...")
         for namespace in inactive_assets:
             top_node = self._resolve_top_node(namespace,
                                               asset_by_namespace.get(namespace))
-            if top_node:
-                self._connect_node_to_layer(top_node, self.INACTIVE_LAYER)
-                stats['inactive_moved'] += 1
-            else:
+            if not top_node:
                 logger.warning("  No top node found for namespace: {}".format(namespace))
                 stats['skipped'] += 1
+                continue
+
+            if top_node in active_nodes:
+                logger.debug("  %s resolves to %s, which the active shot uses "
+                             "-- leaving it visible", namespace, top_node)
+                stats['shared_with_active'] += 1
+                continue
+
+            self._connect_node_to_layer(top_node, self.INACTIVE_LAYER)
+            stats['inactive_moved'] += 1
 
         logger.debug("=" * 80)
         logger.debug("Layer switch complete:")

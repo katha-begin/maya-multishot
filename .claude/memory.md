@@ -567,3 +567,28 @@ Tests: `tests/test_asset_reconciler.py::TestReconciledRecordFields` (5, written
 first and failing). Suite: 163 passed; the 8 `tests/test_asset_manager.py`
 failures are pre-existing (same set with the change stashed). Not verified in
 Maya: no Maya here.
+
+## 2026-09-19 -- active shot's camera was hidden (CTX_Inactive)
+
+Reported alongside the asset-path fix: "active and inactive is broken". Scene
+probe: `CTX_Inactive` held `CAM_SWA_Ep20_SH0080_camera_001:cam` while SH0080
+was the active shot, plus five `CHAR_*_001_Shade:Place3dTexture_Grp`.
+
+Root cause: one camera reference serves the whole scene
+(`SWA_Ep20_SH0060_cameraRN`, repathed per shot) and EVERY shot's camera record
+targetNodes to it. `switch_shot_layers` subtracts NAMESPACES (inactive = all -
+active), but an inactive shot's camera namespace does not exist in Maya, so
+`_resolve_top_node` falls back to targetNode and returns the one camera the
+active shot is using. Step 5 runs after step 4, so the active shot's camera was
+connected to CTX_Inactive last and disappeared.
+
+Fix: step 4 collects the nodes it made active; step 5 skips any node already in
+that set (counted as `shared_with_active`). Namespace subtraction alone cannot
+see that several records resolve to one node.
+Tests: `tests/test_shot_layer_switch.py` (4, written first; 3 failed before).
+
+Still open (user is testing before we touch it): Set Shot not repointing assets
+to the new shot, and the bogus records the old reconciler left in SWA scenes --
+shader namespaces (`CHAR_Ajay_001_Shade`) and another shot's camera
+(`CTX_Asset_CAM_SWA_Ep20_SH0130_camera_SH0030`). 46f16ff stops new ones being
+created; nothing deletes the existing ones yet.
