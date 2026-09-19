@@ -305,19 +305,11 @@ class AssetScanner(object):
         asset_node.set_department(dept)
         asset_node.set_version(version)
 
-        # Resolve template path (camera assets use a simplified template)
-        if asset_type == 'CAM':
-            base_template = self.config.get_template('assetPath')
-            if base_template:
-                asset_path_template = base_template.replace(
-                    '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext',
-                    '$ep_$seq_$shot__$assetName.$ext'
-                )
-                logger.debug("Using camera-specific template: %s", asset_path_template)
-            else:
-                asset_path_template = None
-        else:
-            asset_path_template = self.config.get_template('assetPath')
+        # Resolve template path (camera assets use a simplified template).
+        # Shared with the asset reconciler, so both record the same template.
+        from core import asset_types
+        asset_path_template = asset_types.get_asset_path_template(
+            asset_type, self.config)
 
         if asset_path_template:
             asset_node.set_template(asset_path_template)

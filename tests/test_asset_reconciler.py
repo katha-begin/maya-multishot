@@ -464,5 +464,161 @@ class TestCheckAssetInScene(unittest.TestCase):
         self.assertEqual(result, 'unlinked')
 
 
+
+# ---------------------------------------------------------------------------
+# reconciled record fields -- what resolve_asset_path needs
+# ---------------------------------------------------------------------------
+
+ASSET_PATH_TEMPLATE = ('$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/'
+                       '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext')
+CAMERA_PATH_TEMPLATE = ('$projRoot$project/$sceneBase/$ep/$seq/$shot/$dept/publish/$ver/'
+                        '$ep_$seq_$shot__$assetName.$ext')
+
+
+class FakeConfig(object):
+    """Minimal ProjectConfig stand-in -- the templates the reconciler reads."""
+
+    TEMPLATES = {
+        'assetPath': ASSET_PATH_TEMPLATE,
+        'namespace': '$assetType_$assetName_$variant',
+        'namespaceShader': '$assetType_$assetName_$variant_Shade',
+        'namespaceGroom': '$assetType_$assetName_$variant_Groom',
+    }
+
+    def get_template(self, name):
+        return self.TEMPLATES.get(name)
+
+
+def _publish_path(shot='SH0140', dept='anim', ver='v005',
+                  asset_part='CHAR_BuffA_001', ext='abc'):
+    """Path a reference of a shot publish points at."""
+    return ('V:/SWA/all/scene/Ep10/sq0030/{shot}/{dept}/publish/{ver}/'
+            'Ep10_sq0030_{shot}__{asset_part}.{ext}'.format(
+                shot=shot, dept=dept, ver=ver, asset_part=asset_part, ext=ext))
+
+
+class TestReconciledRecordFields(unittest.TestCase):
+    """A record the reconciler writes must resolve to a path.
+
+    resolve_asset_path starts from the record's template and returns nothing
+    without one, so Set Shot left these assets on the old shot.
+    """
+
+    def setUp(self):
+        self.mock = MockCmds()
+
+        import core.asset_reconciler as recon_mod
+        import core.nodes.wrappers.asset as asset_mod
+        import core.nodes.base as base_mod
+
+        self.recon_mod = recon_mod
+        self.asset_mod = asset_mod
+        self.base_mod = base_mod
+
+        self._orig_recon_cmds = recon_mod.cmds
+        self._orig_recon_avail = recon_mod.MAYA_AVAILABLE
+        self._orig_asset_cmds = asset_mod.cmds
+        self._orig_base_cmds = base_mod.cmds
+
+        recon_mod.cmds = self.mock
+        recon_mod.MAYA_AVAILABLE = True
+        asset_mod.cmds = self.mock
+        base_mod.cmds = self.mock
+
+        _make_shot(self.mock, 'CTX_Shot_Ep10_sq0030_SH0140', 'SH0140')
+        self.shot_name = 'CTX_Shot_Ep10_sq0030_SH0140'
+        self.config = FakeConfig()
+
+    def tearDown(self):
+        self.recon_mod.cmds = self._orig_recon_cmds
+        self.recon_mod.MAYA_AVAILABLE = self._orig_recon_avail
+        self.asset_mod.cmds = self._orig_asset_cmds
+        self.base_mod.cmds = self._orig_base_cmds
+
+    def _created_node(self, fragment):
+        nodes = [n for n in self.mock.nodes
+                 if n.startswith('CTX_Asset_') and fragment in n]
+        self.assertEqual(len(nodes), 1, "expected one record for {}".format(fragment))
+        return nodes[0]
+
+    def test_created_record_carries_template_and_publish_fields(self):
+        _make_reference(self.mock, 'CHAR_BuffA_001RN', 'CHAR_BuffA_001',
+                        _publish_path())
+
+        self.recon_mod.reconcile_assets_for_shot(self.shot_name, config=self.config)
+
+        node = self._created_node('BuffA')
+        self.assertEqual(self.mock.getAttr('{}.template'.format(node)),
+                         ASSET_PATH_TEMPLATE)
+        self.assertEqual(self.mock.getAttr('{}.department'.format(node)), 'anim')
+        self.assertEqual(self.mock.getAttr('{}.version'.format(node)), 'v005')
+        self.assertEqual(self.mock.getAttr('{}.extension'.format(node)), 'abc')
+
+    def test_camera_record_uses_the_camera_template(self):
+        # A camera publish carries no type or variant in its filename
+        _make_reference(self.mock, 'CAM_SWA_Ep10_SH0140_camera_001RN',
+                        'CAM_SWA_Ep10_SH0140_camera_001',
+                        _publish_path(dept='anim', ver='v002',
+                                      asset_part='SWA_Ep10_SH0140_camera'))
+
+        self.recon_mod.reconcile_assets_for_shot(self.shot_name, config=self.config)
+
+        node = self._created_node('camera')
+        self.assertEqual(self.mock.getAttr('{}.template'.format(node)),
+                         CAMERA_PATH_TEMPLATE)
+
+    def test_existing_record_without_template_is_repaired(self):
+        node = 'CTX_Asset_CHAR_BuffA_SH0140'
+        _make_ctx_asset(self.mock, node, 'CHAR_BuffA_001')
+        self.mock.addAttr(node, longName='template')
+        _make_reference(self.mock, 'CHAR_BuffA_001RN', 'CHAR_BuffA_001',
+                        _publish_path())
+
+        self.recon_mod.reconcile_assets_for_shot(self.shot_name, config=self.config)
+
+        self.assertEqual(self.mock.getAttr('{}.template'.format(node)),
+                         ASSET_PATH_TEMPLATE)
+        self.assertEqual(self.mock.getAttr('{}.department'.format(node)), 'anim')
+        self.assertEqual(self.mock.getAttr('{}.version'.format(node)), 'v005')
+
+    def test_shader_reference_is_not_an_asset(self):
+        # namespaceShader is $assetType_$assetName_$variant_Shade
+        _make_reference(self.mock, 'CHAR_Ajay_001_ShadeRN', 'CHAR_Ajay_001_Shade',
+                        'V:/SWA/all/asset/Character/Main/Ajay/shade/Ajay.ma')
+
+        stats = self.recon_mod.reconcile_assets_for_shot(self.shot_name,
+                                                         config=self.config)
+
+        self.assertEqual(stats['created'], 0)
+        self.assertEqual([n for n in self.mock.nodes if n.startswith('CTX_Asset_')], [])
+
+    def test_basename_namespace_parses_as_its_asset(self):
+        # A CFX namespace is the whole publish name; the asset half follows '__'
+        _make_reference(self.mock, 'groomRN',
+                        'Ep10_sq0030_SH0140__CFX_botgroomSamS001',
+                        _publish_path(dept='cfx', ver='v003',
+                                      asset_part='CFX_botgroomSamS001', ext='ass'))
+
+        self.recon_mod.reconcile_assets_for_shot(self.shot_name, config=self.config)
+
+        node = self._created_node('botgroom')
+        self.assertEqual(self.mock.getAttr('{}.asset_type'.format(node)), 'CFX')
+        self.assertEqual(self.mock.getAttr('{}.asset_name'.format(node)), 'botgroomSamS')
+        self.assertEqual(self.mock.getAttr('{}.variant'.format(node)), '001')
+
+    def test_reference_naming_another_shot_is_skipped(self):
+        # One camera per shot lives in the scene; SH0150's cannot resolve for SH0140
+        _make_reference(self.mock, 'CAM_SWA_Ep10_SH0150_camera_001RN',
+                        'CAM_SWA_Ep10_SH0150_camera_001',
+                        _publish_path(shot='SH0150',
+                                      asset_part='SWA_Ep10_SH0150_camera'))
+
+        stats = self.recon_mod.reconcile_assets_for_shot(self.shot_name,
+                                                         config=self.config)
+
+        self.assertEqual(stats['created'], 0)
+        self.assertEqual([n for n in self.mock.nodes if n.startswith('CTX_Asset_')], [])
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -84,6 +84,10 @@ _DEFAULT_POLICIES = {
 _DEFAULT_EXTENSIONS = ['abc', 'vdb', 'ass', 'rs', 'ma', 'mb']
 _DEFAULT_CAMERA_SUFFIX = '_camera'
 
+# The asset half of a publish name, and the camera form that carries only a name
+_ASSET_NAME_TOKENS = '$ep_$seq_$shot__$assetType_$assetName_$variant.$ext'
+_CAMERA_NAME_TOKENS = '$ep_$seq_$shot__$assetName.$ext'
+
 
 # ---------------------------------------------------------------------------
 # config access -- every reader tolerates config=None
@@ -137,6 +141,38 @@ def get_policy(asset_type, config=None):
 def get_publish_shape(asset_type, config=None):
     """Return 'file' or 'sequenceDir' for an asset type."""
     return get_policy(asset_type, config)['publishShape']
+
+
+def get_asset_path_template(asset_type, config=None):
+    """Return the publish path template for an asset type.
+
+    A camera publish carries neither type nor variant in its filename
+    ('Ep20_sq0010_SH0030__SWA_Ep20_SH0030_camera.abc'), so a camera-parsed
+    type gets the same template with those tokens dropped.
+
+    Args:
+        asset_type (str): Asset type code (e.g. 'CHAR').
+        config: Optional ProjectConfig instance.
+
+    Returns:
+        str or None: Template, or None when the config carries no 'assetPath'.
+    """
+    getter = getattr(config, 'get_template', None)
+    if not callable(getter):
+        return None
+
+    try:
+        template = getter('assetPath')
+    except Exception:
+        return None
+
+    if not template:
+        return None
+
+    if get_policy(asset_type, config)['parse'] == PARSE_CAMERA:
+        return template.replace(_ASSET_NAME_TOKENS, _CAMERA_NAME_TOKENS)
+
+    return template
 
 
 def _get_extensions(config):

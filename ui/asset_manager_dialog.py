@@ -1608,9 +1608,10 @@ class AssetManagerDialog(QtWidgets.QDialog):
 
         try:
             from core.asset_reconciler import reconcile_assets_for_shot
-            stats = reconcile_assets_for_shot(shot_node_name)
-            logger.info("Link result: created=%d, linked=%d, skipped=%d",
-                        stats['created'], stats['linked'], stats['skipped'])
+            stats = reconcile_assets_for_shot(shot_node_name, config=self._config)
+            logger.info("Link result: created=%d, linked=%d, repaired=%d, skipped=%d",
+                        stats['created'], stats['linked'],
+                        stats.get('repaired', 0), stats['skipped'])
 
             # Assign new/linked assets to display layers
             affected = stats['created_nodes'] + stats['linked_nodes']

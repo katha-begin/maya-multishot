@@ -530,3 +530,40 @@ with `AttributeError: ... Qt has no attribute 'Transparent'` (old bug in
 the per-shot debug prints. User asked for Add Shots to list only a selected project:
 added a Project combo (scene's project selected, one project scanned at a time).
 Offscreen check under mayapy 2 + 3: 10/10.
+
+## 2026-09-19 -- SWA shot assets resolved no path (asset reconciler records)
+
+Reported: "the last update broke SWA -- setting an asset shot in the Context
+Manager does not resolve the path to the shot asset". Scene dump from the artist
+showed every CTX_Asset except the ones for the ACTIVE shot carried a template;
+the active shot's two (`CTX_Asset_CAM_SWA_Ep20_SH0130_camera_SH0030`,
+`CTX_Asset_CHAR_Ajay_001_SH0030`) had `template: None`.
+
+Root cause: `core/asset_reconciler.py` creates records with
+`CTXAssetNode.create(type/name/variant/shot/namespace)` and nothing else -- no
+template, department, version or extension. `NodeManager.resolve_asset_path`
+starts from the record's template and returns None without one ("No template on
+..." then "Could not resolve path for ..."). d3d6bf8 made `_get_shot_code` read
+`shot_code`, so reconcile stopped skipping schema-based shots and started
+creating these template-less records on SWA scenes -- the regression.
+
+Two more bugs in the same file: its own `_parse_namespace` split on `_` and took
+the last part as the variant, so the shader namespace `CHAR_Ajay_001_Shade`
+(config `namespaceShader`) became an asset named `Ajay_001` variant `Shade`; and
+every reference was adopted into the active shot, including another shot's
+camera, whose publish filename repeats its own shot code and can never resolve.
+
+Fix: `asset_types.get_asset_path_template()` (shared with `asset_scanner`, keeps
+the camera form `$ep_$seq_$shot__$assetName.$ext`); the reconciler fills
+template/department/version/extension on create AND on existing records missing
+them (repair of already-saved scenes, counted as `repaired` in the stats),
+reads department/version/extension from the reference's publish path, parses
+namespaces through `core.asset_types`, skips `_Shade`/`_Groom` namespaces and
+references naming another shot. `reconcile_assets_for_shot(shot_node,
+config=None)` -- callers in `tools/pipeline_api.py` and
+`ui/asset_manager_dialog.py` pass their config.
+
+Tests: `tests/test_asset_reconciler.py::TestReconciledRecordFields` (5, written
+first and failing). Suite: 163 passed; the 8 `tests/test_asset_manager.py`
+failures are pre-existing (same set with the change stashed). Not verified in
+Maya: no Maya here.
