@@ -415,7 +415,7 @@ class DisplayLayerManager(object):
 
             for asset in assets:
                 namespace = asset.get_namespace()
-                if namespace:
+                if namespace and not self._is_nested_component(namespace):
                     all_assets.add(namespace)
                     asset_by_namespace.setdefault(namespace, asset)
                     # Track asset usage across shots
@@ -439,7 +439,7 @@ class DisplayLayerManager(object):
         active_assets = set()
         for asset in active_shot_node.get_assets():
             namespace = asset.get_namespace()
-            if namespace:
+            if namespace and not self._is_nested_component(namespace):
                 active_assets.add(namespace)
 
         logger.debug("Active shot has {} assets".format(len(active_assets)))
@@ -496,6 +496,35 @@ class DisplayLayerManager(object):
         logger.debug("=" * 80)
 
         return stats
+
+    @staticmethod
+    def _is_nested_component(namespace):
+        """True when a namespace names a piece of another asset, not an asset.
+
+        An imported SETS asset references its pieces into namespaces nested
+        under its own:
+
+            SETS_ToriiLivingRoomInt_001                  <- the asset
+            SETS_ToriiLivingRoomInt_001:TRLRWallA_0001   <- a piece of it
+
+        The reconciler used to adopt those pieces as CTX_Asset records of
+        whichever shot was open, so every other shot computed them as inactive
+        and pinned each piece's Geo_Grp to CTX_Inactive.  A child carrying its
+        own drawOverride connection stops inheriting its parent's layer, so the
+        set's top transform stayed in CTX_Active while the set itself went
+        invisible.
+
+        Only an asset's top transform belongs in a display layer; its pieces
+        follow it through the hierarchy.  Every namespace build_namespace()
+        produces is a single segment, so an embedded ':' means nesting.
+
+        Args:
+            namespace (str): Namespace or identity string.
+
+        Returns:
+            bool: True when the namespace is nested inside another one.
+        """
+        return ':' in (namespace or '').strip(':')
 
     def _resolve_top_node(self, namespace, asset=None):
         """Resolve an asset's top transform, by namespace or by targetNode.
