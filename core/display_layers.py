@@ -122,106 +122,7 @@ class DisplayLayerManager(object):
         # Set inactive layer hidden
         self.hide_layer(self.INACTIVE_LAYER)
 
-    def _connect_visibility_to_active(self, shot_node, layer_name):
-        """Connect display layer visibility to CTX_Shot is_active attribute.
 
-        This creates a direct Maya connection so that when the shot's is_active
-        attribute changes, the display layer visibility automatically updates.
-
-        Args:
-            shot_node (str): CTX_Shot node name
-            layer_name (str): Display layer name
-        """
-        logger.debug("=" * 60)
-        logger.debug("CONNECTING VISIBILITY TO IS_ACTIVE")
-        logger.debug("Shot node: {}".format(shot_node))
-        logger.debug("Layer name: {}".format(layer_name))
-
-        if not cmds.objExists(shot_node):
-            logger.warning("Shot node does not exist: {}".format(shot_node))
-            return
-
-        if not cmds.objExists(layer_name):
-            logger.warning("Layer does not exist: {}".format(layer_name))
-            return
-
-        # Check if connection already exists
-        source_attr = "{}.is_active".format(shot_node)
-        dest_attr = "{}.visibility".format(layer_name)
-
-        logger.debug("Source attr: {}".format(source_attr))
-        logger.debug("Dest attr: {}".format(dest_attr))
-
-        # Check if already connected
-        connections = cmds.listConnections(dest_attr, source=True, destination=False, plugs=True) or []
-        logger.debug("Existing connections to {}: {}".format(dest_attr, connections))
-
-        if source_attr in connections:
-            logger.debug("Already connected! Skipping.")
-            return  # Already connected
-
-        # Disconnect any existing connections to visibility
-        if connections:
-            logger.debug("Disconnecting existing connections...")
-            for conn in connections:
-                try:
-                    cmds.disconnectAttr(conn, dest_attr)
-                    logger.debug("Disconnected: {} -> {}".format(conn, dest_attr))
-                except Exception as e:
-                    logger.warning("Failed to disconnect {}: {}".format(conn, e))
-
-        # Connect is_active to visibility
-        try:
-            logger.debug("Connecting {} -> {}".format(source_attr, dest_attr))
-            cmds.connectAttr(source_attr, dest_attr, force=True)
-            logger.debug("SUCCESS! Connection established.")
-
-            # Verify connection
-            is_connected = cmds.isConnected(source_attr, dest_attr)
-            logger.debug("Verification: isConnected = {}".format(is_connected))
-        except Exception as e:
-            logger.error("FAILED to connect: {}".format(e))
-            logger.error("Will fall back to manual visibility control")
-
-        logger.debug("=" * 60)
-
-    def create_display_layer(self, ep_code, seq_code, shot_code, shot_node=None):
-        """Create display layer for shot and link to CTX_Shot node.
-
-        Args:
-            ep_code (str): Episode code (e.g., 'Ep04')
-            seq_code (str): Sequence code (e.g., 'sq0070')
-            shot_code (str): Shot code (e.g., 'SH0170')
-            shot_node (CTXShotNode, optional): CTX_Shot node to link to
-
-        Returns:
-            str: Layer name
-        """
-        # Build layer name
-        layer_name = "{}{}_{}_{}".format(self.LAYER_PREFIX, ep_code, seq_code, shot_code)
-
-        # Check if layer already exists
-        if cmds.objExists(layer_name):
-            # Link to shot node if provided and not already linked
-            if shot_node:
-                shot_node.link_display_layer(layer_name)
-                # Connect is_active to visibility
-                self._connect_visibility_to_active(shot_node.node_name, layer_name)
-            return layer_name
-
-        # Create new layer
-        cmds.createDisplayLayer(name=layer_name, empty=True, noRecurse=True)
-
-        # Set visible by default
-        self.show_layer(layer_name)
-
-        # Link to shot node if provided
-        if shot_node:
-            shot_node.link_display_layer(layer_name)
-            # Connect is_active to visibility
-            self._connect_visibility_to_active(shot_node.node_name, layer_name)
-
-        return layer_name
     
     def assign_to_layer(self, maya_node, layer_name):
         """Assign Maya node to display layer using drawInfo -> drawOverride connection.
@@ -945,18 +846,21 @@ class DisplayLayerManager(object):
         return members if members else []
 
     def get_all_ctx_layers(self):
-        """Get all CTX display layers.
+        """The display layers this tool owns, and only those.
+
+        Exactly CTX_Active and CTX_Inactive, whichever of them exist.  Every
+        other display layer in the scene belongs to the artist -- MASTER_BG_A,
+        MASTER_CHAR_A, layer1 -- and nothing here may show, hide or delete one.
+
+        Deliberately not a "CTX_" prefix match.  That was the per-shot layer
+        scheme (CTX_<ep>_<seq>_<shot>), abandoned for the two global layers,
+        and a prefix would also claim any layer an artist named CTX_*.
 
         Returns:
-            list: List of CTX layer names
+            list: Existing CTX layer names.
         """
-        # Get all display layers
-        all_layers = cmds.ls(type='displayLayer')
-
-        # Filter for CTX layers
-        ctx_layers = [layer for layer in all_layers if layer.startswith(self.LAYER_PREFIX)]
-
-        return ctx_layers
+        return [layer for layer in (self.ACTIVE_LAYER, self.INACTIVE_LAYER)
+                if cmds.objExists(layer)]
 
     def is_in_layer(self, maya_node, layer_name):
         """Check if node is in display layer.
@@ -971,71 +875,5 @@ class DisplayLayerManager(object):
         members = self.get_layer_members(layer_name)
         return maya_node in members
 
-    def cleanup_empty_layers(self, dry_run=False):
-        """Remove display layers with no members.
 
-        Args:
-            dry_run (bool): If True, only return layers that would be deleted
-
-        Returns:
-            list: List of deleted (or would-be-deleted) layer names
-        """
-        empty_layers = []
-
-        # Get all CTX layers
-        ctx_layers = self.get_all_ctx_layers()
-
-        # Find empty layers
-        for layer in ctx_layers:
-            members = self.get_layer_members(layer)
-            if not members:
-                empty_layers.append(layer)
-
-        # Delete if not dry run
-        if not dry_run and empty_layers:
-            for layer in empty_layers:
-                cmds.delete(layer)
-
-        return empty_layers
-
-    def cleanup_orphaned_layers(self, shot_nodes, dry_run=False):
-        """Remove layers not linked to any shot nodes.
-
-        Args:
-            shot_nodes (list): List of CTX_Shot node names
-            dry_run (bool): If True, only return layers that would be deleted
-
-        Returns:
-            list: List of deleted (or would-be-deleted) layer names
-        """
-        orphaned_layers = []
-
-        # Get all CTX layers
-        ctx_layers = self.get_all_ctx_layers()
-
-        # Build set of valid layer names from shot nodes
-        valid_layers = set()
-        for shot_node in shot_nodes:
-            # Extract ep, seq, shot from node attributes
-            if cmds.objExists(shot_node):
-                try:
-                    ep = cmds.getAttr("{}.ep_code".format(shot_node))
-                    seq = cmds.getAttr("{}.seq_code".format(shot_node))
-                    shot = cmds.getAttr("{}.shot_code".format(shot_node))
-                    layer_name = "{}{}_{}_{}".format(self.LAYER_PREFIX, ep, seq, shot)
-                    valid_layers.add(layer_name)
-                except:
-                    pass
-
-        # Find orphaned layers
-        for layer in ctx_layers:
-            if layer not in valid_layers:
-                orphaned_layers.append(layer)
-
-        # Delete if not dry run
-        if not dry_run and orphaned_layers:
-            for layer in orphaned_layers:
-                cmds.delete(layer)
-
-        return orphaned_layers
 

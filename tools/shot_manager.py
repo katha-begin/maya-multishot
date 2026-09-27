@@ -138,9 +138,10 @@ class ShotManager(BaseManager):
         # Connect to manager
         cmds.connectAttr("{}.message".format(shot_node), "{}.shots".format(manager_node), nextAvailable=True)
 
-        # Create display layer if layer manager available
+        # A shot gets no layer of its own: assets move between the two global
+        # layers on Set Shot.  Just make sure those exist.
         if self.layer_manager:
-            self.layer_manager.create_display_layer(ep, seq, shot)
+            self.layer_manager.ensure_global_layers()
 
         return shot_node
 
@@ -366,11 +367,13 @@ class ShotManager(BaseManager):
         if not manager:
             warnings.append("Shot is not connected to a manager")
 
-        # Check display layer
+        # Check display layers.  A shot has no layer of its own -- assets move
+        # between the two global layers -- so report those missing instead.
         if self.layer_manager:
-            layer = self.layer_manager.get_layer_for_shot(ep, seq, shot)
-            if not layer:
-                warnings.append("Display layer not found for shot")
+            for layer in (self.layer_manager.ACTIVE_LAYER,
+                          self.layer_manager.INACTIVE_LAYER):
+                if not cmds.objExists(layer):
+                    warnings.append("Display layer {} not found".format(layer))
 
         # Check asset paths
         assets = cmds.listConnections("{}.assets".format(shot_node), source=True, destination=False) or []

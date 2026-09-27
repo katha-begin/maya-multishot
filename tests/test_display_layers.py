@@ -1,5 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Tests for core/display_layers.py"""
+"""Tests for core/display_layers.py -- the two global layer system.
+
+Assets are not given a layer each and shots are not given a layer each.
+There are exactly two, CTX_Active and CTX_Inactive, and an asset's top
+transform is moved between them by connecting
+
+    <layer>.drawInfo -> <transform>.drawOverride
+
+These tests replaced an older suite written against the abandoned per-shot
+scheme (CTX_<ep>_<seq>_<shot>, created by create_display_layer and cleaned up
+by cleanup_empty_layers / cleanup_orphaned_layers).  Those functions relied on
+a LAYER_PREFIX attribute that no longer existed, so every one of them raised
+AttributeError; they have been removed rather than revived, because a "CTX_"
+prefix would also match CTX_Active and CTX_Inactive themselves -- and the
+cleanup functions would then delete them.
+
+Runs without Maya.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -9,281 +26,219 @@ import unittest
 import os
 import sys
 
-# Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.display_layers import DisplayLayerManager
 
 
 class MockCmds(object):
-    """Enhanced mock Maya commands for testing."""
-    
+    """Models display layers and drawInfo -> drawOverride connections."""
+
     def __init__(self):
-        self.layers = {}  # layer_name -> [members]
-        self.layer_visibility = {}  # layer_name -> visibility
-        self.nodes = set()  # existing nodes
-    
+        self.layers = {}            # layer -> [member transforms]
+        self.layer_visibility = {}  # layer -> 0/1
+        self.nodes = set()          # transforms that exist
+        self.parents = {}           # child -> parent
+        self.connections = {}       # '<node>.drawOverride' -> '<layer>.drawInfo'
+
+    # -- existence -----------------------------------------------------
     def createDisplayLayer(self, name=None, empty=True, noRecurse=False):
-        """Mock createDisplayLayer."""
         if name:
             self.layers[name] = []
             self.layer_visibility[name] = 1
             return name
-        return "displayLayer1"
-    
+        return 'displayLayer1'
+
     def objExists(self, name):
-        """Mock objExists."""
-        return name in self.layers or name in self.nodes
-    
-    def editDisplayLayerMembers(self, layer, *nodes, **kwargs):
-        """Mock editDisplayLayerMembers."""
-        if kwargs.get('query'):
-            return self.layers.get(layer, [])
-        
-        # Add nodes to layer
-        if layer in self.layers:
-            for node in nodes:
-                if node not in self.layers[layer]:
-                    self.layers[layer].append(node)
-    
-    def setAttr(self, attr, value):
-        """Mock setAttr."""
-        # Extract layer name from attr
-        layer_name = attr.split('.')[0]
-        if layer_name in self.layer_visibility:
-            self.layer_visibility[layer_name] = value
-    
-    def getAttr(self, attr):
-        """Mock getAttr."""
-        # Extract layer name from attr
-        parts = attr.split('.')
-        layer_name = parts[0]
-        
+        base = name.split('.')[0]
+        return base in self.layers or base in self.nodes
+
+    def delete(self, *nodes):
+        for node in nodes:
+            self.layers.pop(node, None)
+            self.layer_visibility.pop(node, None)
+
+    # -- attributes ----------------------------------------------------
+    def setAttr(self, plug, value, **kwargs):
+        layer = plug.split('.')[0]
+        if layer in self.layer_visibility:
+            self.layer_visibility[layer] = value
+
+    def getAttr(self, plug):
+        parts = plug.split('.')
         if len(parts) > 1 and parts[1] == 'visibility':
-            return self.layer_visibility.get(layer_name, 1)
-        
-        # For shot node attributes
-        if 'ep' in attr:
-            return 'Ep04'
-        elif 'seq' in attr:
-            return 'sq0070'
-        elif 'shot' in attr:
-            return 'SH0170'
-        
+            return self.layer_visibility.get(parts[0], 1)
         return None
-    
+
+    def attributeQuery(self, attr, **kwargs):
+        node = kwargs.get('node')
+        if attr == 'drawInfo':
+            return node in self.layers
+        return False
+
+    # -- dag -----------------------------------------------------------
+    def nodeType(self, name):
+        return 'displayLayer' if name in self.layers else 'transform'
+
+    def listRelatives(self, node, **kwargs):
+        if kwargs.get('parent'):
+            parent = self.parents.get(node)
+            return [parent] if parent else None
+        return None
+
     def ls(self, *args, **kwargs):
-        """Mock ls."""
         if kwargs.get('type') == 'displayLayer':
             return list(self.layers.keys())
         return []
-    
-    def delete(self, *nodes):
-        """Mock delete."""
-        for node in nodes:
-            if node in self.layers:
-                del self.layers[node]
-            if node in self.layer_visibility:
-                del self.layer_visibility[node]
-    
-    def listConnections(self, node, **kwargs):
-        """Mock listConnections."""
+
+    # -- connections ---------------------------------------------------
+    def connectAttr(self, source, dest, **kwargs):
+        self.connections[dest] = source
+        layer = source.split('.')[0]
+        node = dest.split('.')[0]
+        for members in self.layers.values():
+            if node in members:
+                members.remove(node)
+        self.layers.setdefault(layer, []).append(node)
+
+    def disconnectAttr(self, source, dest):
+        self.connections.pop(dest, None)
+
+    def isConnected(self, source, dest):
+        return self.connections.get(dest) == source
+
+    def listConnections(self, plug, **kwargs):
+        if plug.endswith('.drawOverride') and kwargs.get('plugs'):
+            existing = self.connections.get(plug)
+            return [existing] if existing else None
         return []
 
+    def editDisplayLayerMembers(self, layer, *nodes, **kwargs):
+        if kwargs.get('query'):
+            return self.layers.get(layer, [])
+        for node in nodes:
+            if node not in self.layers.setdefault(layer, []):
+                self.layers[layer].append(node)
 
-class TestDisplayLayerManager(unittest.TestCase):
-    """Test DisplayLayerManager class."""
-    
+    def refresh(self, **kwargs):
+        pass
+
+
+class DisplayLayerTestCase(unittest.TestCase):
+
     def setUp(self):
-        """Set up test fixtures."""
-        # Replace cmds with mock
         import core.display_layers as dl_module
         self.original_cmds = dl_module.cmds
         self.mock_cmds = MockCmds()
         dl_module.cmds = self.mock_cmds
-        
-        # Create manager
+
         self.manager = DisplayLayerManager()
-        
-        # Add some test nodes
+
         self.mock_cmds.nodes.add('pCube1')
         self.mock_cmds.nodes.add('pSphere1')
-    
+
+        self.active = DisplayLayerManager.ACTIVE_LAYER
+        self.inactive = DisplayLayerManager.INACTIVE_LAYER
+
     def tearDown(self):
-        """Clean up test fixtures."""
-        # Restore original cmds
         import core.display_layers as dl_module
         dl_module.cmds = self.original_cmds
-    
-    def test_create_display_layer(self):
-        """Test creating display layer."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        
-        self.assertEqual(layer, 'CTX_Ep04_sq0070_SH0170')
-        self.assertIn(layer, self.mock_cmds.layers)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer], 1)
-    
-    def test_create_display_layer_existing(self):
-        """Test creating layer that already exists."""
-        layer1 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        
-        self.assertEqual(layer1, layer2)
-        self.assertEqual(len(self.mock_cmds.layers), 1)
-    
-    def test_assign_to_layer(self):
-        """Test assigning node to layer."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        self.manager.assign_to_layer('pCube1', layer)
-        
-        self.assertIn('pCube1', self.mock_cmds.layers[layer])
-    
-    def test_assign_to_layer_invalid_layer(self):
-        """Test assigning to non-existent layer."""
+
+
+class TestGlobalLayers(DisplayLayerTestCase):
+
+    def test_both_global_layers_are_created(self):
+        self.assertIn(self.active, self.mock_cmds.layers)
+        self.assertIn(self.inactive, self.mock_cmds.layers)
+
+    def test_active_is_visible_and_inactive_is_hidden(self):
+        self.assertEqual(self.mock_cmds.layer_visibility[self.active], 1)
+        self.assertEqual(self.mock_cmds.layer_visibility[self.inactive], 0)
+
+    def test_ensure_global_layers_is_idempotent(self):
+        before = sorted(self.mock_cmds.layers)
+        self.manager.ensure_global_layers()
+        self.assertEqual(sorted(self.mock_cmds.layers), before)
+
+
+class TestAssignToLayer(DisplayLayerTestCase):
+
+    def test_assign_connects_draw_override_to_the_layer(self):
+        self.manager.assign_to_layer('pCube1', self.active)
+
+        self.assertEqual(self.mock_cmds.connections['pCube1.drawOverride'],
+                         self.active + '.drawInfo')
+
+    def test_assign_moves_a_node_between_layers(self):
+        self.manager.assign_to_layer('pCube1', self.active)
+        self.manager.assign_to_layer('pCube1', self.inactive)
+
+        self.assertEqual(self.mock_cmds.connections['pCube1.drawOverride'],
+                         self.inactive + '.drawInfo')
+        self.assertNotIn('pCube1', self.mock_cmds.layers[self.active])
+
+    def test_missing_layer_raises(self):
         with self.assertRaises(ValueError):
-            self.manager.assign_to_layer('pCube1', 'invalid_layer')
-    
-    def test_assign_to_layer_invalid_node(self):
-        """Test assigning non-existent node."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
+            self.manager.assign_to_layer('pCube1', 'no_such_layer')
 
+    def test_missing_node_raises(self):
         with self.assertRaises(ValueError):
-            self.manager.assign_to_layer('invalid_node', layer)
+            self.manager.assign_to_layer('no_such_node', self.active)
 
-    def test_assign_batch(self):
-        """Test batch assignment."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        self.manager.assign_batch(['pCube1', 'pSphere1'], layer)
 
-        self.assertIn('pCube1', self.mock_cmds.layers[layer])
-        self.assertIn('pSphere1', self.mock_cmds.layers[layer])
+class TestVisibility(DisplayLayerTestCase):
 
     def test_set_layer_visibility(self):
-        """Test setting layer visibility."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
+        self.manager.set_layer_visibility(self.active, False)
+        self.assertEqual(self.mock_cmds.layer_visibility[self.active], 0)
 
-        self.manager.set_layer_visibility(layer, False)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer], 0)
-
-        self.manager.set_layer_visibility(layer, True)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer], 1)
+        self.manager.set_layer_visibility(self.active, True)
+        self.assertEqual(self.mock_cmds.layer_visibility[self.active], 1)
 
     def test_show_layer(self):
-        """Test showing layer."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        self.manager.hide_layer(layer)
-        self.manager.show_layer(layer)
-
-        self.assertEqual(self.mock_cmds.layer_visibility[layer], 1)
+        self.manager.hide_layer(self.active)
+        self.manager.show_layer(self.active)
+        self.assertEqual(self.mock_cmds.layer_visibility[self.active], 1)
 
     def test_hide_layer(self):
-        """Test hiding layer."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        self.manager.hide_layer(layer)
+        self.manager.hide_layer(self.active)
+        self.assertEqual(self.mock_cmds.layer_visibility[self.active], 0)
 
-        self.assertEqual(self.mock_cmds.layer_visibility[layer], 0)
 
-    def test_get_layer_for_shot(self):
-        """Test getting layer for shot."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-
-        result = self.manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0170')
-        self.assertEqual(result, layer)
-
-    def test_get_layer_for_shot_not_found(self):
-        """Test getting layer that doesn't exist."""
-        result = self.manager.get_layer_for_shot('Ep99', 'sq9999', 'SH9999')
-        self.assertIsNone(result)
+class TestMembership(DisplayLayerTestCase):
 
     def test_get_layer_members(self):
-        """Test getting layer members."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        self.manager.assign_to_layer('pCube1', layer)
-        self.manager.assign_to_layer('pSphere1', layer)
+        self.manager.assign_to_layer('pCube1', self.active)
+        self.manager.assign_to_layer('pSphere1', self.active)
 
-        members = self.manager.get_layer_members(layer)
-        self.assertEqual(len(members), 2)
+        members = self.manager.get_layer_members(self.active)
         self.assertIn('pCube1', members)
         self.assertIn('pSphere1', members)
 
     def test_get_layer_members_empty(self):
-        """Test getting members of empty layer."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
+        self.assertEqual(self.manager.get_layer_members(self.inactive), [])
 
-        members = self.manager.get_layer_members(layer)
-        self.assertEqual(members, [])
-
-    def test_get_layer_members_invalid(self):
-        """Test getting members of non-existent layer."""
-        members = self.manager.get_layer_members('invalid_layer')
-        self.assertEqual(members, [])
-
-    def test_get_all_ctx_layers(self):
-        """Test getting all CTX layers."""
-        layer1 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0180')
-
-        # Create non-CTX layer
-        self.mock_cmds.createDisplayLayer(name='other_layer')
-
-        ctx_layers = self.manager.get_all_ctx_layers()
-        self.assertEqual(len(ctx_layers), 2)
-        self.assertIn(layer1, ctx_layers)
-        self.assertIn(layer2, ctx_layers)
-        self.assertNotIn('other_layer', ctx_layers)
+    def test_get_layer_members_invalid_layer(self):
+        self.assertEqual(self.manager.get_layer_members('no_such_layer'), [])
 
     def test_is_in_layer(self):
-        """Test checking if node is in layer."""
-        layer = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        self.manager.assign_to_layer('pCube1', layer)
+        self.manager.assign_to_layer('pCube1', self.active)
 
-        self.assertTrue(self.manager.is_in_layer('pCube1', layer))
-        self.assertFalse(self.manager.is_in_layer('pSphere1', layer))
+        self.assertTrue(self.manager.is_in_layer('pCube1', self.active))
+        self.assertFalse(self.manager.is_in_layer('pSphere1', self.active))
 
-    def test_cleanup_empty_layers(self):
-        """Test cleaning up empty layers."""
-        layer1 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0180')
 
-        # Add node to layer1
-        self.manager.assign_to_layer('pCube1', layer1)
+class TestGetAllCtxLayers(DisplayLayerTestCase):
+    """Scope is covered in depth by tests/test_ctx_layer_scope.py."""
 
-        # Cleanup
-        deleted = self.manager.cleanup_empty_layers()
+    def test_returns_the_two_global_layers_only(self):
+        self.mock_cmds.createDisplayLayer(name='MASTER_BG_A')
 
-        self.assertEqual(len(deleted), 1)
-        self.assertIn(layer2, deleted)
-        self.assertNotIn(layer2, self.mock_cmds.layers)
-        self.assertIn(layer1, self.mock_cmds.layers)
+        ctx_layers = self.manager.get_all_ctx_layers()
 
-    def test_cleanup_empty_layers_dry_run(self):
-        """Test dry run of cleanup."""
-        layer1 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0180')
-
-        # Dry run
-        deleted = self.manager.cleanup_empty_layers(dry_run=True)
-
-        self.assertEqual(len(deleted), 2)
-        # Layers should still exist
-        self.assertIn(layer1, self.mock_cmds.layers)
-        self.assertIn(layer2, self.mock_cmds.layers)
-
-    def test_cleanup_orphaned_layers(self):
-        """Test cleaning up orphaned layers."""
-        layer1 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.manager.create_display_layer('Ep04', 'sq0070', 'SH0180')
-
-        # Create mock shot node
-        self.mock_cmds.nodes.add('CTX_Shot_SH0170')
-
-        # Cleanup (only layer1 is valid)
-        deleted = self.manager.cleanup_orphaned_layers(['CTX_Shot_SH0170'])
-
-        self.assertEqual(len(deleted), 1)
-        self.assertIn(layer2, deleted)
+        self.assertEqual(sorted(ctx_layers), sorted([self.active, self.inactive]))
+        self.assertNotIn('MASTER_BG_A', ctx_layers)
 
 
 if __name__ == '__main__':
     unittest.main()
-

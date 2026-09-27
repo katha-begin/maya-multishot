@@ -130,7 +130,10 @@ class TestShotSwitcher(unittest.TestCase):
             'seq': 'sq0070',
             'shot': 'SH0180'
         }
-    
+
+        # A layer the artist made.  Nothing here may show, hide or delete it.
+        self.mock_cmds.createDisplayLayer(name='MASTER_BG_A')
+
     def tearDown(self):
         """Clean up test fixtures."""
         # Restore original cmds
@@ -150,25 +153,28 @@ class TestShotSwitcher(unittest.TestCase):
         active = self.mock_cmds.nodes['CTX_Manager']['active_shot_id']
         self.assertEqual(active, 'CTX_Shot_SH0170')
 
-        # Check layer was created and shown
-        layer = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0170')
-        self.assertIsNotNone(layer)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer], 1)
+        # The shot is flagged active; a shot has no layer of its own
+        self.assertTrue(self.mock_cmds.nodes['CTX_Shot_SH0170']['is_active'])
+
+        # and the two global layers exist, at their canonical visibility
+        active = DisplayLayerManager.ACTIVE_LAYER
+        inactive = DisplayLayerManager.INACTIVE_LAYER
+        self.assertEqual(self.mock_cmds.layer_visibility[active], 1)
+        self.assertEqual(self.mock_cmds.layer_visibility[inactive], 0)
 
     def test_switch_to_shot_hide_others(self):
-        """Test switching hides other shots."""
-        # Switch to first shot
+        """Switching flags the new shot active and leaves the globals alone."""
         self.switcher.switch_to_shot('CTX_Shot_SH0170', 'CTX_Manager')
-
-        # Switch to second shot
         self.switcher.switch_to_shot('CTX_Shot_SH0180', 'CTX_Manager', hide_others=True)
 
-        # Check first shot's layer is hidden
-        layer1 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0180')
+        self.assertTrue(self.mock_cmds.nodes['CTX_Shot_SH0180']['is_active'])
 
-        self.assertEqual(self.mock_cmds.layer_visibility[layer1], 0)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer2], 1)
+        # Switching must never flip the global layers themselves --
+        # assets move between them, the layers stay put.
+        active = DisplayLayerManager.ACTIVE_LAYER
+        inactive = DisplayLayerManager.INACTIVE_LAYER
+        self.assertEqual(self.mock_cmds.layer_visibility[active], 1)
+        self.assertEqual(self.mock_cmds.layer_visibility[inactive], 0)
 
     def test_switch_to_shot_invalid_shot(self):
         """Test switching to invalid shot."""
@@ -227,12 +233,11 @@ class TestShotSwitcher(unittest.TestCase):
         # Show all
         self.switcher.show_all_shots()
 
-        # Check all layers visible
-        layer1 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0180')
-
-        self.assertEqual(self.mock_cmds.layer_visibility[layer1], 1)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer2], 1)
+        # Both global layers become visible -- and nothing else is touched
+        for layer in (DisplayLayerManager.ACTIVE_LAYER,
+                      DisplayLayerManager.INACTIVE_LAYER):
+            self.assertEqual(self.mock_cmds.layer_visibility[layer], 1)
+        self.assertEqual(self.mock_cmds.layer_visibility.get('MASTER_BG_A'), 1)
 
     def test_hide_all_shots(self):
         """Test hiding all shots."""
@@ -243,28 +248,20 @@ class TestShotSwitcher(unittest.TestCase):
         # Hide all
         self.switcher.hide_all_shots()
 
-        # Check all layers hidden
-        layer1 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0180')
+        for layer in (DisplayLayerManager.ACTIVE_LAYER,
+                      DisplayLayerManager.INACTIVE_LAYER):
+            self.assertEqual(self.mock_cmds.layer_visibility[layer], 0)
 
-        self.assertEqual(self.mock_cmds.layer_visibility[layer1], 0)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer2], 0)
+        # The artist's own layer is untouched
+        self.assertEqual(self.mock_cmds.layer_visibility.get('MASTER_BG_A'), 1)
 
     def test_isolate_shot(self):
-        """Test isolating a shot."""
-        # Create layers
-        self.switcher.switch_to_shot('CTX_Shot_SH0170', 'CTX_Manager')
+        """isolate_shot delegates to switch_to_shot."""
         self.switcher.switch_to_shot('CTX_Shot_SH0180', 'CTX_Manager')
 
-        # Isolate first shot
         self.switcher.isolate_shot('CTX_Shot_SH0170', 'CTX_Manager')
 
-        # Check only first shot visible
-        layer1 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0180')
-
-        self.assertEqual(self.mock_cmds.layer_visibility[layer1], 1)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer2], 0)
+        self.assertTrue(self.mock_cmds.nodes['CTX_Shot_SH0170']['is_active'])
 
     def test_unisolate_all(self):
         """Test unisolating all shots."""
@@ -275,12 +272,10 @@ class TestShotSwitcher(unittest.TestCase):
         # Unisolate
         self.switcher.unisolate_all()
 
-        # Check all visible
-        layer1 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0170')
-        layer2 = self.layer_manager.get_layer_for_shot('Ep04', 'sq0070', 'SH0180')
-
-        self.assertEqual(self.mock_cmds.layer_visibility[layer1], 1)
-        self.assertEqual(self.mock_cmds.layer_visibility[layer2], 1)
+        # Both global layers end up visible
+        for layer in (DisplayLayerManager.ACTIVE_LAYER,
+                      DisplayLayerManager.INACTIVE_LAYER):
+            self.assertEqual(self.mock_cmds.layer_visibility[layer], 1)
 
 
 if __name__ == '__main__':
